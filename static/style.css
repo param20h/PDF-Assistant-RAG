@@ -1,0 +1,376 @@
+/* ── Global ─────────────────────────────────────────── */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    background-color: #f5f5f5;
+    color: #333;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background-color: #2c3e50;
+    color: white;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    font-size: 14px;
+}
+
+.logout-btn {
+    background-color: #e74c3c;
+    padding: 6px 14px;
+    font-size: 13px;
+}
+
+.logout-btn:hover {
+    background-color: #c0392b;
+}
+
+header h1 {
+    font-size: 28px;
+    margin-bottom: 5px;
+}
+
+header p {
+    font-size: 14px;
+    color: #ccc;
+}
+
+header a {
+    color: #ccc;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+header a:hover {
+    color: white;
+}
+
+/* ── Container ──────────────────────────────────────── */
+.container {
+    max-width: 800px;
+    margin: 30px auto;
+    padding: 20px;
+}
+
+/* ── Upload Box ─────────────────────────────────────── */
+.upload-box {
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.upload-box h2 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+}
+
+.upload-box input[type="file"] {
+    display: block;
+    margin: 0 auto 15px auto;
+    padding: 10px;
+}
+
+/* ── Buttons ────────────────────────────────────────── */
+button {
+    background-color: #2c3e50;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    margin: 5px;
+}
+
+button:hover {
+    background-color: #1a252f;
+}
+
+/* ── Nav Button ─────────────────────────────────────── */
+.nav-btn {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.nav-btn a {
+    text-decoration: none;
+}
+
+/* ── Upload Status ──────────────────────────────────── */
+#uploadStatus {
+    margin-top: 15px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* ── Chat Box ───────────────────────────────────────── */
+.chat-box {
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 20px;
+    height: 450px;
+    overflow-y: auto;
+    margin-bottom: 15px;
+}
+
+/* ── Messages ───────────────────────────────────────── */
+.message {
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+
+.message.user {
+    background-color: #d6eaf8;
+    text-align: right;
+}
+
+.message.bot {
+    background-color: #eafaf1;
+    text-align: left;
+}
+
+.message.error {
+    background-color: #fadbd8;
+    text-align: left;
+}
+
+/* ── Sources ────────────────────────────────────────── */
+.sources {
+    background-color: #fef9e7;
+    border-left: 4px solid #f39c12;
+    padding: 10px 15px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    font-size: 13px;
+}
+
+.sources ul {
+    margin-top: 5px;
+    padding-left: 20px;
+}
+
+.sources ul li {
+    margin-top: 3px;
+}
+/* ...existing code... */
+
+.confidence {
+    font-size: 12px;
+    font-weight: bold;
+    margin-left: 10px;
+}
+
+.sources li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid #f0e0b0;
+}
+
+.sources li:last-child {
+    border-bottom: none;
+}
+.input-area {
+    display: flex;
+    gap: 10px;
+}
+
+.input-area input {
+    flex: 1;
+    padding: 10px 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 14px;
+    outline: none;
+}
+
+.input-area input:focus {
+    border-color: #2c3e50;
+}
+
+#loader {
+    text-align: center;
+    font-size: 14px;
+    color: #888;
+    margin-top: 10px;
+}
+
+/* ...existing code... */
+
+/* ── Files Box ──────────────────────────────────────── */
+.files-box {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-top: 20px;
+}
+
+.files-box h2 {
+    margin-bottom: 15px;
+    color: #2c3e50;
+}
+
+.files-box ul {
+    list-style: none;
+    padding: 0;
+}
+
+
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+    color: #333;
+}
+
+.file-item:last-child {
+    border-bottom: none;
+}
+
+.file-item:hover {
+    background-color: #f5f5f5;
+    border-radius: 5px;
+}
+
+.delete-btn {
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.delete-btn:hover {
+    background-color: #c0392b;
+}
+
+
+/* ── Clear Box ───────────────────────────────────────── */
+.clear-box {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-top: 20px;
+    text-align: center;
+}
+
+.clear-box h2 {
+    margin-bottom: 10px;
+    color: #2c3e50;
+}
+
+.clear-box p {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 15px;
+}
+
+/* ── Clear Vector Button ─────────────────────────────── */
+.clear-vector-btn {
+    background-color: #e67e22;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.clear-vector-btn:hover {
+    background-color: #d35400;
+}
+
+#clearStatus {
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* ...existing code... */
+
+/* ── Auth Box ────────────────────────────────────────── */
+.auth-box {
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    max-width: 400px;
+    margin: 40px auto;
+    text-align: center;
+}
+
+.auth-box h2 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+}
+
+.auth-box input {
+    width: 100%;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 14px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.auth-box input:focus {
+    border-color: #2c3e50;
+}
+
+.auth-box button {
+    width: 100%;
+    padding: 10px;
+    font-size: 15px;
+}
+
+.auth-box p {
+    margin-top: 15px;
+    font-size: 13px;
+    color: #888;
+}
+
+.auth-box a {
+    color: #2c3e50;
+    font-weight: bold;
+    text-decoration: none;
+}
+
+.auth-box a:hover {
+    text-decoration: underline;
+}
+
+.error-msg {
+    background-color: #fadbd8;
+    color: #e74c3c;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+    font-size: 13px;
+}

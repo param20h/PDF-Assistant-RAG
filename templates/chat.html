@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Chat</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <!-- ── Header ── -->
+    <header>
+        <h1>💬 RAG PDF Assistant</h1>
+        <a href="/">← Upload New PDF</a>
+    </header>
+
+    <!-- ── Chat Box ── -->
+    <div class="container">
+
+        <!-- ── Current File Badge ── -->
+        <div id="currentFileBadge" class="file-badge">
+            📄 No file selected
+        </div>
+
+        <div class="chat-box" id="chatBox">
+            <!-- Messages appear here -->
+        </div>
+
+        <!-- ── Input Area ── -->
+        <div class="input-area">
+            <input 
+                type="text" 
+                id="questionInput" 
+                placeholder="Ask a question..." 
+            />
+            <button id="askBtn">Ask</button>
+            <button id="clearBtn">Clear History</button>
+        </div>
+
+        <!-- ── Loading Spinner ── -->
+        <div id="loader" style="display:none;">
+            ⏳ Thinking...
+        </div>
+    </div>
+
+    <script>
+        // ── Store Current Filename ───────────────────────
+        let currentFile = localStorage.getItem("currentFile") || ""
+
+        // ── Show Current File Badge ──────────────────────
+        const badge = document.getElementById("currentFileBadge")
+        if (currentFile) {
+            badge.innerText = `📄 Asking from: ${currentFile}`
+            badge.style.backgroundColor = "#eafaf1"
+            badge.style.color = "green"
+        } else {
+            badge.innerText = "⚠️ No file selected - Go back and upload a PDF"
+            badge.style.backgroundColor = "#fadbd8"
+            badge.style.color = "red"
+        }
+
+        // ── Ask Question ─────────────────────────────────
+        document.getElementById("askBtn").addEventListener("click", async () => {
+            const question = document.getElementById("questionInput").value.trim()
+            const chatBox = document.getElementById("chatBox")
+            const loader = document.getElementById("loader")
+
+            if (!question) {
+                alert("Please enter a question!")
+                return
+            }
+
+            if (!currentFile) {
+                alert("Please upload a PDF first!")
+                return
+            }
+
+            // ── Show user message ──
+            chatBox.innerHTML += `
+                <div class="message user">
+                    <strong>You:</strong> ${question}
+                </div>
+            `
+
+            document.getElementById("questionInput").value = ""
+            loader.style.display = "block"
+            chatBox.scrollTop = chatBox.scrollHeight
+
+            try {
+                const response = await fetch("/ask", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ 
+                        question: question,
+                        filename: currentFile
+                    })
+                })
+
+                const data = await response.json()
+                loader.style.display = "none"
+
+                if (response.ok) {
+                    // ── Show answer ──
+                    chatBox.innerHTML += `
+                        <div class="message bot">
+                            <strong>Assistant:</strong> ${data.answer}
+                        </div>
+                    `
+
+                    // ── Show sources with confidence score ──
+                    if (data.sources && data.sources.length > 0) {
+                        let sourcesHtml = `<div class="sources"><strong>📌 Sources:</strong><ul>`
+                        data.sources.forEach(src => {
+                            let confidenceColor = src.confidence >= 70 ? "green"
+                                               : src.confidence >= 40 ? "orange"
+                                               : "red"
+                            sourcesHtml += `
+                                <li>
+                                    📄 ${src.filename} - Page ${src.page}
+                                    <span class="confidence" style="color:${confidenceColor}">
+                                        ● ${src.confidence}% match
+                                    </span>
+                                </li>
+                            `
+                        })
+                        sourcesHtml += `</ul></div>`
+                        chatBox.innerHTML += sourcesHtml
+                    }
+
+                } else {
+                    chatBox.innerHTML += `
+                        <div class="message error">
+                            ❌ ${data.error}
+                        </div>
+                    `
+                }
+
+            } catch (error) {
+                loader.style.display = "none"
+                chatBox.innerHTML += `
+                    <div class="message error">
+                        ❌ Something went wrong. Please try again.
+                    </div>
+                `
+            }
+
+            // ── Auto scroll to bottom ──
+            chatBox.scrollTop = chatBox.scrollHeight
+        })
+
+
+        // ── Clear History ─────────────────────────────────
+        document.getElementById("clearBtn").addEventListener("click", async () => {
+            if (!confirm("Are you sure you want to clear chat history?")) return
+            await fetch("/clear", { method: "POST" })
+            document.getElementById("chatBox").innerHTML = ""
+        })
+
+
+        // ── Enter Key Support ─────────────────────────────
+        document.getElementById("questionInput").addEventListener("keypress", (e) => {
+            if (e.key === "Enter") {
+                document.getElementById("askBtn").click()
+            }
+        })
+    </script>
+
+</body>
+</html>

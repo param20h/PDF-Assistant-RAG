@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Application</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <!-- ── Header ── -->
+    <header>
+    <h1>📄 RAG PDF Assistant</h1>
+    <div class="header-right">
+        <span>👤 {{ username }}</span>
+        <a href="/logout"><button class="logout-btn">Logout</button></a>
+    </div>
+    </header>
+
+    <div class="container">
+        <!-- ── Upload Section ── -->
+        <div class="upload-box">
+            <h2>Upload PDF</h2>
+            <form id="uploadForm">
+                <input type="file" id="pdfFile" accept=".pdf" required />
+                <button type="submit">Upload & Index</button>
+            </form>
+            <div id="uploadStatus"></div>
+        </div>
+
+        <!-- ── Uploaded Files List ── -->
+        <div class="files-box">
+            <h2>📋 Uploaded Files</h2>
+            <ul id="filesList">
+                <!-- Files appear here -->
+            </ul>
+        </div>
+
+        <div class="clear-box">
+            <h2>🔄 Reset Vector Store</h2>
+            <p>This will delete all stored embeddings</p>
+            <button id="clearVectorBtn" class="clear-vector-btn">
+                🔄 Clear Vector Store
+            </button>
+            <div id="clearStatus"></div>
+        </div>
+
+        <!-- ── Navigate to Chat ── -->
+        <div class="nav-btn">
+            <a href="/chat">
+                <button>Go to Chat →</button>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // ── Load Files on Page Load ───────────────────────
+        async function loadFiles() {
+            const response = await fetch("/files")
+            const data = await response.json()
+            const filesList = document.getElementById("filesList")
+
+            filesList.innerHTML = ""
+
+            if (data.files.length === 0) {
+                filesList.innerHTML = "<li>No files uploaded yet</li>"
+                return
+            }
+
+            data.files.forEach(file => {
+                filesList.innerHTML += `
+                    <li class="file-item">
+                    <span>📄 ${file}</span>
+                    <button 
+                        class="delete-btn" 
+                        onclick="deleteFile('${file}')">
+                        🗑️ Delete
+                    </button>
+                </li>
+                `
+            })
+        }
+
+        // ── Upload PDF ────────────────────────────────────
+        document.getElementById("uploadForm").addEventListener("submit", async (e) => {
+            e.preventDefault()
+
+            const fileInput = document.getElementById("pdfFile")
+            const statusDiv = document.getElementById("uploadStatus")
+            const formData = new FormData()
+
+            formData.append("pdf", fileInput.files[0])
+            statusDiv.innerText = "Uploading..."
+
+            const response = await fetch("/upload", {
+                method: "POST",
+                body: formData
+            })
+
+            const data = await response.json()
+
+            if (response.ok) {
+                localStorage.setItem("currentFile", fileInput.files[0].name)
+                statusDiv.innerText = "✅ " + data.message
+                statusDiv.style.color = "green"
+                loadFiles()  // Refresh files list
+            } else {
+                statusDiv.innerText = "❌ " + data.error
+                statusDiv.style.color = "red"
+            }
+        })
+
+        document.getElementById("clearVectorBtn").addEventListener("click", async () => {
+        if (!confirm("Are you sure? This will delete ALL embeddings!")) return
+
+        const clearStatus = document.getElementById("clearStatus")
+        clearStatus.innerText = "Clearing..."
+
+        const response = await fetch("/clear_vectorstore", {
+            method: "POST"
+        })
+
+        const data = await response.json()
+
+        if (response.ok) {
+            clearStatus.innerText = "✅ " + data.message
+            clearStatus.style.color = "green"
+            localStorage.removeItem("currentFile")
+            loadFiles()
+        } else {
+            clearStatus.innerText = "❌ " + data.error
+            clearStatus.style.color = "red"
+        }
+    })
+
+        // ── Load Files on Page Load ───────────────────────
+        async function deleteFile(filename) {
+        if (!confirm(`Are you sure you want to delete ${filename}?`)) return
+
+        const response = await fetch("/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: filename })
+        })
+
+        const data = await response.json()
+
+        if (response.ok) {
+            alert("✅ " + data.message)
+
+            // Clear localStorage if deleted file was selected
+            if (localStorage.getItem("currentFile") === filename) {
+                localStorage.removeItem("currentFile")
+            }
+
+            loadFiles() // Refresh list
+        } else {
+            alert("❌ " + data.error)
+        }
+    }
+        loadFiles()
+    </script>
+
+</body>
+</html>

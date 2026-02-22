@@ -1,0 +1,9 @@
+flask
+python-dotenv
+pymupdf
+faiss-cpu
+sentence-transformers
+ollama
+flask-login
+flask-sqlalchemy
+werkzeug
