@@ -22,7 +22,7 @@
         <div class="upload-box">
             <h2>Upload PDF</h2>
             <form id="uploadForm">
-                <input type="file" id="pdfFile" accept=".pdf" required />
+                <input type="file" id="pdfFile" accept=".pdf,.docx,.txt,.md" required />
                 <button type="submit">Upload & Index</button>
             </form>
             <div id="uploadStatus"></div>
@@ -68,6 +68,10 @@
             }
 
             data.files.forEach(file => {
+                let icon = "📄"
+                if (file.endsWith(".docx")) icon = "📝"
+                if (file.endsWith(".txt")) icon = "📃"
+                
                 filesList.innerHTML += `
                     <li class="file-item">
                     <span>📄 ${file}</span>

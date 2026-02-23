@@ -374,3 +374,36 @@ button:hover {
     margin-bottom: 15px;
     font-size: 13px;
 }
+
+.google-btn {
+    background-color: #4285f4;
+    color: white;
+    width: 100%;
+    padding: 10px;
+    font-size: 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 5px;
+}
+
+.google-btn:hover {
+    background-color: #357abd;
+}
+
+/* ── Divider ─────────────────────────────────────────── */
+.divider {
+    display: flex;
+    align-items: center;
+    margin: 15px 0;
+    color: #888;
+    font-size: 13px;
+}
+
+.divider::before,
+.divider::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid #ccc;
+    margin: 0 10px;
+}

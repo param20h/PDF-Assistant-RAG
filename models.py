@@ -9,7 +9,9 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    upload_folder = db.Column(db.String(200), nullable=True)
+    # ── Google OAuth ──
+    google_id = db.Column(db.String(200), nullable=True)
+    profile_pic = db.Column(db.String(200), nullable=True)
 
     def set_password(self, password):
         self.password = generate_password_hash(password)

@@ -25,6 +25,18 @@
                 <button type="submit">Login</button>
             </form>
 
+            <div class="divider">
+                <span>
+                    OR
+                </span>
+            </div>
+
+             <a href="{{ url_for('google.login') }}">
+                <button class="google-btn">
+                    🌐 Login with Google
+                </button>
+            </a>
+
             <p>Don't have an account? <a href="/register">Register</a></p>
         </div>
     </div>

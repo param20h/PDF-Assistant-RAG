@@ -18,3 +18,6 @@ UPLOAD_FOLDER = "uploads"
 CHROMA_DB_PATH = "vectorstore"
 
 TOP_K = 10
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")

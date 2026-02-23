@@ -7,3 +7,5 @@ ollama
 flask-login
 flask-sqlalchemy
 werkzeug
+python-docx
+flask-dance

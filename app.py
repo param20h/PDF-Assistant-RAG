@@ -1,15 +1,44 @@
 import os
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+os.environ["REQUESTS_CA_BUNDLE"] = ""
+os.environ["CURL_CA_BUNDLE"] = ""
+
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+import urllib3
+urllib3.disable_warnings()
+
+# ── Patch HTTPAdapter BEFORE any other imports ────────
+import requests
+original_send = requests.adapters.HTTPAdapter.send
+def patched_send(self, request, **kwargs):
+    kwargs["verify"] = False
+    return original_send(self, request, **kwargs)
+requests.adapters.HTTPAdapter.send = patched_send
+
+# ── Patch OAuth2Session fetch_token ───────────────────
+from requests_oauthlib import OAuth2Session
+original_fetch = OAuth2Session.fetch_token
+def patched_fetch(self, *args, **kwargs):
+    kwargs["verify"] = False
+    return original_fetch(self, *args, **kwargs)
+OAuth2Session.fetch_token = patched_fetch
+
 import pickle
 import shutil
 from flask import Flask, request, jsonify, render_template, redirect, url_for
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from flask_dance.contrib.google import make_google_blueprint, google
+from flask_dance.consumer import oauth_authorized
 from dotenv import load_dotenv
 from models import db, User
 from rag.chunker import load_and_chunk
 from rag.embeddings import store_embeddings
 from rag.retriever import retrieve_chunks
 from rag.generator import generate_answer
-from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI
+from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 
 # ── Init ─────────────────────────────────────────────
 load_dotenv()
@@ -24,6 +53,14 @@ META_PATH = os.path.join("vectorstore", "metadata.pkl")
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("vectorstore", exist_ok=True)
 
+# ── Google Blueprint ──────────────────────────────────
+google_bp = make_google_blueprint(
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    scope=["openid", "profile", "email"],
+)
+app.register_blueprint(google_bp, url_prefix="/login")
+
 # ── Database & Login Manager ──────────────────────────
 db.init_app(app)
 login_manager = LoginManager()
@@ -34,15 +71,52 @@ chat_history = {}
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
-# ── Create DB ─────────────────────────────────────────
 with app.app_context():
     db.create_all()
 
-# ── Helper ────────────────────────────────────────────
+# ── Google OAuth Signal Handler ───────────────────────
+@oauth_authorized.connect_via(google_bp)
+def google_logged_in(blueprint, token):
+    if not token:
+        return False
+
+    try:
+        resp = blueprint.session.get("/oauth2/v2/userinfo")
+        if not resp.ok:
+            return False
+
+        google_info = resp.json()
+        email = google_info.get("email")
+        name = google_info.get("name", "")
+        username = name.replace(" ", "_").lower() if name else email.split("@")[0]
+
+        if not email:
+            return False
+
+        with app.app_context():
+            user = User.query.filter_by(email=email).first()
+
+            if not user:
+                if User.query.filter_by(username=username).first():
+                    username = username + "_g"
+
+                user = User(username=username, email=email)
+                user.set_password(os.urandom(24).hex())
+                db.session.add(user)
+                db.session.commit()
+
+            login_user(user)
+
+    except Exception as e:
+        print(f"Google login error: {e}")
+
+    return False
+
+# ── Helper Functions ──────────────────────────────────
 def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in {"pdf"}
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in {"pdf", "docx", "txt"}
 
 def get_user_upload_folder(username):
     folder = os.path.join("uploads", username)
@@ -79,7 +153,6 @@ def register():
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-
         return redirect(url_for("login"))
 
     return render_template("register.html")
@@ -119,12 +192,12 @@ def chat():
 def get_files():
     try:
         folder = get_user_upload_folder(current_user.username)
-        files = [f for f in os.listdir(folder) if f.endswith(".pdf")]
+        files = [f for f in os.listdir(folder) if f.endswith((".pdf", ".docx", ".txt"))]
         return jsonify({"files": files}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/upload", methods=["GET", "POST"])
+@app.route("/upload", methods=["POST"])
 @login_required
 def upload():
     try:
@@ -137,7 +210,7 @@ def upload():
             return jsonify({"error": "No file selected"}), 400
 
         if not allowed_file(file.filename):
-            return jsonify({"error": "Only PDF files allowed"}), 400
+            return jsonify({"error": "Only PDF, DOCX & TXT files allowed"}), 400
 
         folder = get_user_upload_folder(current_user.username)
         filepath = os.path.join(folder, file.filename)
