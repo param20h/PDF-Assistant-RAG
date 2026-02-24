@@ -33,19 +33,18 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_dance.consumer import oauth_authorized
 from dotenv import load_dotenv
-from models import db, User
+from models import User
 from rag.chunker import load_and_chunk
 from rag.embeddings import store_embeddings
 from rag.retriever import retrieve_chunks
 from rag.generator import generate_answer
-from config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+from config import SECRET_KEY, MONGO_URI, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 
 # ── Init ─────────────────────────────────────────────
 load_dotenv()
 app = Flask(__name__)
 
 app.config["SECRET_KEY"] = SECRET_KEY
-app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 app.config["UPLOAD_FOLDER"] = "uploads"
 
 META_PATH = os.path.join("vectorstore", "metadata.pkl")
@@ -62,7 +61,6 @@ google_bp = make_google_blueprint(
 app.register_blueprint(google_bp, url_prefix="/login")
 
 # ── Database & Login Manager ──────────────────────────
-db.init_app(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -71,10 +69,7 @@ chat_history = {}
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(User, int(user_id))
-
-with app.app_context():
-    db.create_all()
+    return User.get(user_id)
 
 # ── Google OAuth Signal Handler ───────────────────────
 @oauth_authorized.connect_via(google_bp)
@@ -90,22 +85,30 @@ def google_logged_in(blueprint, token):
         google_info = resp.json()
         email = google_info.get("email")
         name = google_info.get("name", "")
+        picture = google_info.get("picture","")
         username = name.replace(" ", "_").lower() if name else email.split("@")[0]
 
         if not email:
             return False
 
         with app.app_context():
-            user = User.query.filter_by(email=email).first()
+            user = User.find_by_email(email)
 
             if not user:
-                if User.query.filter_by(username=username).first():
+                if User.find_by_username(username):
                     username = username + "_g"
 
-                user = User(username=username, email=email)
+                user = User(
+                    username=username,
+                    email=email,
+                    profile_pic=picture
+                )
                 user.set_password(os.urandom(24).hex())
-                db.session.add(user)
-                db.session.commit()
+                user.save()
+            else:
+                if picture and user.profile_pic != picture:
+                    user.profile_pic = picture
+                    user.save()
 
             login_user(user)
 
@@ -113,6 +116,52 @@ def google_logged_in(blueprint, token):
         print(f"Google login error: {e}")
 
     return False
+
+@app.route("/upload_profile_pic", methods=["POST"])
+@login_required
+def upload_profile_pic():
+    try:
+        if "profile_pic" not in request.files:
+            return jsonify({"error": "No file found"}), 400
+
+        file = request.files["profile_pic"]
+
+        if file.filename == "":
+            return jsonify({"error": "No file selected"}), 400
+
+        # ── Check file type ──
+        allowed = {"png", "jpg", "jpeg", "gif", "webp"}
+        ext = file.filename.rsplit(".", 1)[1].lower()
+        if ext not in allowed:
+            return jsonify({"error": "Only image files allowed"}), 400
+
+        # ── Save profile pic ──
+        pic_folder = os.path.join("static", "profile_pics")
+        os.makedirs(pic_folder, exist_ok=True)
+
+        filename = f"{current_user.username}.{ext}"
+        filepath = os.path.join(pic_folder, filename)
+        file.save(filepath)
+
+        current_user.profile_pic = f"/static/profile_pics/{filename}"
+        current_user.save()
+
+        return jsonify({
+            "message": "Profile picture updated!",
+            "profile_pic": current_user.profile_pic
+        }), 200
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+
+@app.route("/get_profile", methods=["GET"])
+@login_required
+def get_profile():
+    return jsonify({
+        "username": current_user.username,
+        "profile_pic": current_user.profile_pic or ""
+    }), 200
 
 # ── Helper Functions ──────────────────────────────────
 def allowed_file(filename):
@@ -143,16 +192,15 @@ def register():
         email = data.get("email")
         password = data.get("password")
 
-        if User.query.filter_by(username=username).first():
+        if User.find_by_username(username):
             return render_template("register.html", error="Username already exists!")
 
-        if User.query.filter_by(email=email).first():
+        if User.find_by_email(email):
             return render_template("register.html", error="Email already exists!")
 
         user = User(username=username, email=email)
         user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
+        user.save()
         return redirect(url_for("login"))
 
     return render_template("register.html")
@@ -164,7 +212,7 @@ def login():
         username = data.get("username")
         password = data.get("password")
 
-        user = User.query.filter_by(username=username).first()
+        user = User.find_by_username(username)
 
         if not user or not user.check_password(password):
             return render_template("login.html", error="Invalid username or password!")
@@ -187,6 +235,68 @@ def logout():
 def chat():
     return render_template("chat.html", username=current_user.username)
 
+@app.route("/admin", methods=["GET"])
+@login_required
+def admin_dashboard():
+    if not current_user.is_admin:
+        return "Unauthorized", 403
+    users = User.get_all()
+    user_files = {}
+    for user in users:
+        folder = get_user_upload_folder(user.username)
+        if os.path.exists(folder):
+            user_files[user.username] = [f for f in os.listdir(folder) if f.endswith((".pdf", ".docx", ".txt"))]
+        else:
+            user_files[user.username] = []
+    
+    return render_template("admin.html", users=users, user_files=user_files)
+
+@app.route("/download/<username>/<filename>")
+@login_required
+def download_file(username, filename):
+    # Only the owner or an admin can download
+    if current_user.username != username and not current_user.is_admin:
+        return "Unauthorized", 403
+        
+    folder = get_user_upload_folder(username)
+    filepath = os.path.join(folder, filename)
+    if not os.path.exists(filepath):
+        return "File not found", 404
+        
+    from flask import send_file
+    return send_file(filepath, as_attachment=True)
+
+@app.route("/profile", methods=["GET"])
+@login_required
+def profile():
+    return render_template("profile.html", current_user=current_user)
+
+@app.route("/update_settings", methods=["POST"])
+@login_required
+def update_settings():
+    try:
+        data = request.get_json()
+        current_user.preferred_model = data.get("preferred_model", "groq")
+        
+        # Determine if we are deleting keys or setting new ones
+        groq_req = data.get("groq_key", "").strip()
+        gemini_req = data.get("gemini_key", "").strip()
+        
+        if groq_req == "DELETE":
+            current_user.set_groq_key(None)
+        elif groq_req:
+            current_user.set_groq_key(groq_req)
+            
+        if gemini_req == "DELETE":
+            current_user.set_gemini_key(None)
+        elif gemini_req:
+            current_user.set_gemini_key(gemini_req)
+        
+        current_user.save()
+        return jsonify({"message": "Settings updated successfully!"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/files", methods=["GET"])
 @login_required
 def get_files():
@@ -201,6 +311,9 @@ def get_files():
 @login_required
 def upload():
     try:
+        if not current_user.get_groq_key() and not current_user.get_gemini_key():
+            return jsonify({"error": "⚠️ Please add your Groq or Gemini API key in the Profile page to upload and chat."}), 400
+
         if "pdf" not in request.files:
             return jsonify({"error": "No file found"}), 400
 
@@ -229,6 +342,9 @@ def upload():
 @login_required
 def ask():
     try:
+        if not current_user.get_groq_key() and not current_user.get_gemini_key():
+            return jsonify({"error": "⚠️ Please add your Groq or Gemini API key in the Profile page to upload and chat."}), 400
+
         data = request.get_json()
         question = data.get("question", "").strip()
         filename = data.get("filename", "").strip()
@@ -238,7 +354,7 @@ def ask():
 
         meta_path = get_user_meta_path(current_user.username)
         context_chunks = retrieve_chunks(question, filename, meta_path)
-        answer = generate_answer(question, context_chunks)
+        answer = generate_answer(question, context_chunks, current_user)
 
         username = current_user.username
         if username not in chat_history:

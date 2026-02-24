@@ -1,402 +1,564 @@
-/* ── Global ─────────────────────────────────────────── */
+/* ── Google Fonts ───────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+/* ── Global Variables ───────────────────────────────── */
+:root {
+    --bg-gradient: #09090b;
+    --glass-bg: rgba(255, 255, 255, 0.02);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+
+    --primary-color: #fafafa;
+    --primary-hover: #e4e4e7;
+    --primary-text: #09090b;
+    --accent-color: #3b82f6;
+    --danger-color: #ef4444;
+    --danger-hover: #dc2626;
+    --success-color: #10b981;
+
+    --text-main: #fafafa;
+    --text-muted: #a1a1aa;
+
+    --transition-speed: 0.25s;
+
+    --header-bg: rgba(9, 9, 11, 0.85);
+    --input-bg: rgba(255, 255, 255, 0.03);
+    --item-hover-bg: rgba(255, 255, 255, 0.05);
+}
+
+body.light-mode {
+    --bg-gradient: #ffffff;
+    --glass-bg: #ffffff;
+    --glass-border: rgba(0, 0, 0, 0.1);
+    --glass-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+
+    --primary-color: #18181b;
+    --primary-hover: #27272a;
+    --primary-text: #fafafa;
+
+    --text-main: #18181b;
+    --text-muted: #71717a;
+
+    --header-bg: rgba(255, 255, 255, 0.85);
+    --input-bg: #fdfdfd;
+    --item-hover-bg: #f4f4f5;
+}
+
+/* ── Global Styles ──────────────────────────────────── */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    font-family: Arial, sans-serif;
+    font-family: 'Outfit', sans-serif;
 }
 
 body {
-    background-color: #f5f5f5;
-    color: #333;
+    background: var(--bg-gradient);
+    color: var(--text-main);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
+/* ── Header ─────────────────────────────────────────── */
 header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px;
-    background-color: #2c3e50;
-    color: white;
+    padding: 15px 40px;
+    background: var(--header-bg);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+header h1 {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0;
+    background: linear-gradient(to right, #8b5cf6, #0ea5e9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+header a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    transition: color var(--transition-speed) ease;
+}
+
+header a:hover {
+    color: var(--text-main);
 }
 
 .header-right {
     display: flex;
     align-items: center;
-    gap: 15px;
-    font-size: 14px;
-}
-
-.logout-btn {
-    background-color: #e74c3c;
-    padding: 6px 14px;
-    font-size: 13px;
-}
-
-.logout-btn:hover {
-    background-color: #c0392b;
-}
-
-header h1 {
-    font-size: 28px;
-    margin-bottom: 5px;
-}
-
-header p {
-    font-size: 14px;
-    color: #ccc;
-}
-
-header a {
-    color: #ccc;
-    text-decoration: none;
-    font-size: 14px;
-}
-
-header a:hover {
-    color: white;
+    gap: 16px;
 }
 
 /* ── Container ──────────────────────────────────────── */
 .container {
-    max-width: 800px;
-    margin: 30px auto;
-    padding: 20px;
+    max-width: 850px;
+    width: 100%;
+    margin: 40px auto;
+    padding: 0 20px;
+    flex-grow: 1;
+    animation: fadeIn 0.6s ease-out;
 }
 
-/* ── Upload Box ─────────────────────────────────────── */
-.upload-box {
-    background-color: white;
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Glassmorphism Cards ────────────────────────────── */
+.upload-box,
+.files-box,
+.clear-box,
+.auth-box,
+.chat-box {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
     padding: 30px;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    text-align: center;
+    box-shadow: var(--glass-shadow);
+    margin-bottom: 25px;
+    transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
 }
 
-.upload-box h2 {
+.upload-box:hover,
+.files-box:hover,
+.clear-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+}
+
+.upload-box h2,
+.files-box h2,
+.clear-box h2,
+.auth-box h2 {
     margin-bottom: 20px;
-    color: #2c3e50;
+    color: var(--text-main);
+    font-weight: 600;
+    font-size: 20px;
 }
 
-.upload-box input[type="file"] {
+/* ── Form Inputs & Uploads ──────────────────────────── */
+input[type="file"] {
     display: block;
-    margin: 0 auto 15px auto;
-    padding: 10px;
+    width: 100%;
+    margin: 0 auto 20px auto;
+    padding: 12px;
+    background: var(--input-bg);
+    border: 1px dashed var(--glass-border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition-speed);
+}
+
+input[type="file"]:hover {
+    border-color: var(--primary-color);
+    background: var(--item-hover-bg);
+}
+
+input[type="text"],
+input[type="password"],
+input[type="email"] {
+    width: 100%;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    background: var(--input-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    color: var(--text-main);
+    font-size: 15px;
+    outline: none;
+    transition: all var(--transition-speed) ease;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--glass-border);
 }
 
 /* ── Buttons ────────────────────────────────────────── */
 button {
-    background-color: #2c3e50;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
+    background: var(--primary-color);
+    color: var(--primary-text);
+    border: 1px solid var(--glass-border);
+    padding: 12px 24px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 14px;
-    margin: 5px;
+    font-weight: 500;
+    transition: all var(--transition-speed) ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 button:hover {
-    background-color: #1a252f;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    background: var(--primary-hover);
+}
+
+#askBtn {
+    border-radius: 8px;
+    padding: 12px 20px;
+}
+
+#clearBtn {
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: none;
+    color: var(--text-muted);
+}
+
+#clearBtn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-main);
+}
+
+.logout-btn {
+    background: var(--danger-color);
+    color: white;
+    border-color: transparent;
+    box-shadow: none;
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+.logout-btn:hover {
+    background: var(--danger-hover);
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+}
+
+.delete-btn {
+    background: transparent;
+    color: var(--danger-color);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    box-shadow: none;
+}
+
+.delete-btn:hover {
+    background: var(--danger-color);
+    color: white;
+    transform: none;
+}
+
+.clear-vector-btn {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-color);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    box-shadow: none;
+    margin-top: 10px;
+}
+
+.clear-vector-btn:hover {
+    background: var(--danger-color);
+    color: white;
+}
+
+.google-btn {
+    background: white;
+    color: #333;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.google-btn:hover {
+    background: #f1f5f9;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
 }
 
 /* ── Nav Button ─────────────────────────────────────── */
 .nav-btn {
     text-align: center;
-    margin-top: 20px;
+    margin-top: 30px;
 }
 
-.nav-btn a {
-    text-decoration: none;
+.nav-btn button {
+    padding: 14px 32px;
+    font-size: 16px;
+    border-radius: 30px;
 }
 
-/* ── Upload Status ──────────────────────────────────── */
-#uploadStatus {
+/* ── Status Texts ───────────────────────────────────── */
+#uploadStatus,
+#clearStatus {
     margin-top: 15px;
     font-size: 14px;
-    font-weight: bold;
+    font-weight: 500;
 }
 
-/* ── Chat Box ───────────────────────────────────────── */
-.chat-box {
-    background-color: white;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    padding: 20px;
-    height: 450px;
-    overflow-y: auto;
-    margin-bottom: 15px;
-}
-
-/* ── Messages ───────────────────────────────────────── */
-.message {
-    padding: 10px 15px;
-    border-radius: 8px;
-    margin-bottom: 10px;
-    line-height: 1.5;
-}
-
-.message.user {
-    background-color: #d6eaf8;
-    text-align: right;
-}
-
-.message.bot {
-    background-color: #eafaf1;
-    text-align: left;
-}
-
-.message.error {
-    background-color: #fadbd8;
-    text-align: left;
-}
-
-/* ── Sources ────────────────────────────────────────── */
-.sources {
-    background-color: #fef9e7;
-    border-left: 4px solid #f39c12;
-    padding: 10px 15px;
-    border-radius: 5px;
-    margin-bottom: 10px;
-    font-size: 13px;
-}
-
-.sources ul {
-    margin-top: 5px;
-    padding-left: 20px;
-}
-
-.sources ul li {
-    margin-top: 3px;
-}
-/* ...existing code... */
-
-.confidence {
-    font-size: 12px;
-    font-weight: bold;
-    margin-left: 10px;
-}
-
-.sources li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 5px 0;
-    border-bottom: 1px solid #f0e0b0;
-}
-
-.sources li:last-child {
-    border-bottom: none;
-}
-.input-area {
-    display: flex;
-    gap: 10px;
-}
-
-.input-area input {
-    flex: 1;
-    padding: 10px 15px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-size: 14px;
-    outline: none;
-}
-
-.input-area input:focus {
-    border-color: #2c3e50;
-}
-
-#loader {
-    text-align: center;
-    font-size: 14px;
-    color: #888;
-    margin-top: 10px;
-}
-
-/* ...existing code... */
-
-/* ── Files Box ──────────────────────────────────────── */
-.files-box {
-    background-color: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    margin-top: 20px;
-}
-
-.files-box h2 {
-    margin-bottom: 15px;
-    color: #2c3e50;
-}
-
+/* ── Files List ─────────────────────────────────────── */
 .files-box ul {
     list-style: none;
-    padding: 0;
 }
-
 
 .file-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 15px;
-    border-bottom: 1px solid #eee;
-    font-size: 14px;
-    color: #333;
+    padding: 14px 18px;
+    background: var(--input-bg);
+    border: 1px solid var(--glass-border);
+    margin-bottom: 10px;
+    border-radius: 10px;
+    font-size: 15px;
+    transition: all var(--transition-speed) ease;
+}
+
+.file-item.active-file {
+    background: rgba(139, 92, 246, 0.25);
+    border-color: var(--primary-color);
 }
 
 .file-item:last-child {
-    border-bottom: none;
+    margin-bottom: 0;
 }
 
 .file-item:hover {
-    background-color: #f5f5f5;
-    border-radius: 5px;
+    background: var(--item-hover-bg);
+    border-color: rgba(139, 92, 246, 0.3);
 }
 
-.delete-btn {
-    background-color: #e74c3c;
-    color: white;
-    border: none;
-    padding: 5px 10px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 12px;
+.file-item span {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
-.delete-btn:hover {
-    background-color: #c0392b;
-}
-
-
-/* ── Clear Box ───────────────────────────────────────── */
-.clear-box {
-    background-color: white;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    margin-top: 20px;
-    text-align: center;
-}
-
-.clear-box h2 {
-    margin-bottom: 10px;
-    color: #2c3e50;
-}
-
-.clear-box p {
-    font-size: 13px;
-    color: #888;
-    margin-bottom: 15px;
-}
-
-/* ── Clear Vector Button ─────────────────────────────── */
-.clear-vector-btn {
-    background-color: #e67e22;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.clear-vector-btn:hover {
-    background-color: #d35400;
-}
-
-#clearStatus {
-    margin-top: 10px;
-    font-size: 14px;
-    font-weight: bold;
-}
-
-/* ...existing code... */
-
-/* ── Auth Box ────────────────────────────────────────── */
-.auth-box {
-    background-color: white;
-    padding: 30px;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    max-width: 400px;
-    margin: 40px auto;
-    text-align: center;
-}
-
-.auth-box h2 {
+/* ── Chat Box ───────────────────────────────────────── */
+.chat-box {
+    height: 500px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 25px;
+    gap: 16px;
     margin-bottom: 20px;
-    color: #2c3e50;
 }
 
-.auth-box input {
-    width: 100%;
-    padding: 10px 15px;
-    margin-bottom: 15px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-size: 14px;
-    outline: none;
-    box-sizing: border-box;
+/* Custom Scrollbar for Chat */
+.chat-box::-webkit-scrollbar {
+    width: 6px;
 }
 
-.auth-box input:focus {
-    border-color: #2c3e50;
+.chat-box::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
 }
 
-.auth-box button {
-    width: 100%;
-    padding: 10px;
+.chat-box::-webkit-scrollbar-thumb {
+    background: var(--text-muted);
+    border-radius: 10px;
+}
+
+.chat-box::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-color);
+}
+
+/* ── Messages ───────────────────────────────────────── */
+.message {
+    padding: 14px 18px;
+    border-radius: 14px;
+    line-height: 1.6;
+    max-width: 85%;
     font-size: 15px;
+    animation: messagePop 0.3s ease-out;
+}
+
+@keyframes messagePop {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.message.user {
+    background: var(--primary-color);
+    color: var(--primary-text);
+    border: 1px solid var(--glass-border);
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+}
+
+.message.bot {
+    background: var(--input-bg);
+    border: 1px solid var(--glass-border);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}
+
+.message.error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--danger-color);
+    align-self: flex-start;
+}
+
+/* ── Input Area ─────────────────────────────────────── */
+.input-area {
+    display: flex;
+    gap: 12px;
+    background: var(--glass-bg);
+    padding: 15px;
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(16px);
+}
+
+.input-area input {
+    flex: 1;
+    margin-bottom: 0;
+    border: none;
+    background: var(--input-bg);
+}
+
+#loader {
+    text-align: center;
+    font-size: 14px;
+    color: var(--primary-color);
+    margin-top: -10px;
+    margin-bottom: 10px;
+    font-weight: 500;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.6;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.6;
+    }
+}
+
+/* ── Sources & Badge ────────────────────────────────── */
+.sources {
+    margin-top: 10px;
+    background: var(--input-bg);
+    border-left: 3px solid var(--accent-color);
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.sources ul {
+    margin-top: 8px;
+    padding-left: 0;
+    list-style: none;
+}
+
+.sources li {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.sources li:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.confidence {
+    color: var(--success-color);
+    font-weight: 600;
+}
+
+.file-badge {
+    text-align: center;
+    padding: 10px 15px;
+    border-radius: 20px;
+    display: inline-block;
+    margin: 0 auto 20px;
+    font-size: 14px;
+    font-weight: 500;
+    background: rgba(16, 185, 129, 0.2);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: var(--success-color);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Auth Box ───────────────────────────────────────── */
+.auth-box {
+    max-width: 420px;
+    margin: 60px auto;
+    text-align: center;
 }
 
 .auth-box p {
-    margin-top: 15px;
-    font-size: 13px;
-    color: #888;
+    margin-top: 20px;
+    font-size: 14px;
+    color: var(--text-muted);
 }
 
 .auth-box a {
-    color: #2c3e50;
-    font-weight: bold;
+    color: var(--primary-color);
+    font-weight: 600;
     text-decoration: none;
+    transition: color var(--transition-speed);
 }
 
 .auth-box a:hover {
+    color: var(--primary-hover);
     text-decoration: underline;
 }
 
 .error-msg {
-    background-color: #fadbd8;
-    color: #e74c3c;
-    padding: 10px;
-    border-radius: 5px;
-    margin-bottom: 15px;
-    font-size: 13px;
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-color);
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-.google-btn {
-    background-color: #4285f4;
-    color: white;
-    width: 100%;
-    padding: 10px;
-    font-size: 15px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    margin-top: 5px;
-}
-
-.google-btn:hover {
-    background-color: #357abd;
-}
-
-/* ── Divider ─────────────────────────────────────────── */
 .divider {
     display: flex;
     align-items: center;
-    margin: 15px 0;
-    color: #888;
+    margin: 20px 0;
+    color: var(--text-muted);
     font-size: 13px;
 }
 
@@ -404,6 +566,49 @@ button:hover {
 .divider::after {
     content: "";
     flex: 1;
-    border-bottom: 1px solid #ccc;
-    margin: 0 10px;
+    border-bottom: 1px solid var(--glass-border);
+    margin: 0 15px;
+}
+
+/* ── Profile Pic ────────────────────────────────────── */
+.profile-container {
+    position: relative;
+    display: inline-block;
+}
+
+.profile-pic {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--primary-color);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.profile-pic:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    filter: brightness(0.8);
+}
+
+.profile-pic:hover::after {
+    content: "Edit";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-size: 11px;
+    width: 100%;
+    text-align: center;
+    border-radius: 0 0 50% 50%;
+    pointer-events: none;
+}
+
+.username-text {
+    font-size: 16px;
+    color: var(--text-main);
+    font-weight: 500;
 }

@@ -1,23 +1,27 @@
-import os 
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-MODEL_NAME = os.getenv("MODEL_NAME", "llama3:latest")
+# ── App Config ───────────────────────────────────────
+SECRET_KEY = os.getenv("SECRET_KEY", "your_secret_key_here")
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", b"T4tQj_3jK7z_gBqxZ1j_aGj8sFpXv_f4jZ8Rj9sPqG0=")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/rag_app")
 
-EMBEDDING_MODEL = "all-MiniLM-L6-V2"
+# ── Upload Config ────────────────────────────────────
+UPLOAD_FOLDER = "uploads"
+ALLOWED_EXTENSIONS = {"pdf", "docx", "txt"}
 
-SECRET_KEY = "your_secret_key_here"
-SQLALCHEMY_DATABASE_URI = "sqlite:///users.db"
-
+# ── Embedding Config ─────────────────────────────────
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+CHROMA_DB_PATH = "vectorstore"
+TOP_K = 50
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
-UPLOAD_FOLDER = "uploads"
-CHROMA_DB_PATH = "vectorstore"
+# ── Groq Config ──────────────────────────────────────
+GROQ_MODEL = "llama-3.3-70b-versatile"  
 
-TOP_K = 10
-
+# ── Google OAuth Config ──────────────────────────────
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")

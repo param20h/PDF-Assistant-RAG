@@ -1,17 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Chat</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
+
 <body>
 
     <!-- ── Header ── -->
     <header>
         <h1>💬 RAG PDF Assistant</h1>
-        <a href="/">← Upload New PDF</a>
+        <div class="header-right">
+            <button class="logout-btn" style="background-color: var(--primary-color);"
+                onclick="toggleLightMode()">🌗</button>
+            <a href="/profile">👤 Profile</a>
+            <a href="/">← Dashboard</a>
+        </div>
     </header>
 
     <!-- ── Chat Box ── -->
@@ -28,18 +36,14 @@
 
         <!-- ── Input Area ── -->
         <div class="input-area">
-            <input 
-                type="text" 
-                id="questionInput" 
-                placeholder="Ask a question..." 
-            />
+            <input type="text" id="questionInput" placeholder="Ask a question..." />
             <button id="askBtn">Ask</button>
             <button id="clearBtn">Clear History</button>
         </div>
 
         <!-- ── Loading Spinner ── -->
         <div id="loader" style="display:none;">
-            ⏳ Thinking...
+            Generating response...
         </div>
     </div>
 
@@ -71,7 +75,13 @@
             }
 
             if (!currentFile) {
-                alert("Please upload a PDF first!")
+                chatBox.innerHTML += `
+                    <div class="message error">
+                        ❌ Please go back and upload a PDF first!
+                    </div>
+                `
+                document.getElementById("questionInput").value = ""
+                chatBox.scrollTop = chatBox.scrollHeight
                 return
             }
 
@@ -90,7 +100,7 @@
                 const response = await fetch("/ask", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         question: question,
                         filename: currentFile
                     })
@@ -106,35 +116,13 @@
                             <strong>Assistant:</strong> ${data.answer}
                         </div>
                     `
-
-                    // ── Show sources with confidence score ──
-                    if (data.sources && data.sources.length > 0) {
-                        let sourcesHtml = `<div class="sources"><strong>📌 Sources:</strong><ul>`
-                        data.sources.forEach(src => {
-                            let confidenceColor = src.confidence >= 70 ? "green"
-                                               : src.confidence >= 40 ? "orange"
-                                               : "red"
-                            sourcesHtml += `
-                                <li>
-                                    📄 ${src.filename} - Page ${src.page}
-                                    <span class="confidence" style="color:${confidenceColor}">
-                                        ● ${src.confidence}% match
-                                    </span>
-                                </li>
-                            `
-                        })
-                        sourcesHtml += `</ul></div>`
-                        chatBox.innerHTML += sourcesHtml
-                    }
-
                 } else {
                     chatBox.innerHTML += `
                         <div class="message error">
-                            ❌ ${data.error}
+                            ❌ Error: ${data.error || "Unknown error"}
                         </div>
                     `
                 }
-
             } catch (error) {
                 loader.style.display = "none"
                 chatBox.innerHTML += `
@@ -166,4 +154,5 @@
     </script>
 
 </body>
+
 </html>
