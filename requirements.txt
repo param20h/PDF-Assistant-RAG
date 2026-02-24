@@ -3,9 +3,11 @@ python-dotenv
 pymupdf
 faiss-cpu
 sentence-transformers
-ollama
 flask-login
-flask-sqlalchemy
+pymongo
 werkzeug
-python-docx
 flask-dance
+python-docx
+groq
+requests
+requests-oauthlib
