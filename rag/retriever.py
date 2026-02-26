@@ -26,13 +26,13 @@ def retrieve_chunks(query, filename=None, meta_path=None):
     with open(meta_path, "rb") as f:
         metadata = pickle.load(f)
 
-    # ── Fix: use min to avoid out of range ──
-    n_results = min(TOP_K, len(metadata))
+    # ── Fix: search a larger pool to allow filtering by filename ──
+    n_search = min(100, len(metadata))
 
-    if n_results == 0:
+    if n_search == 0:
         return []
 
-    distances, indices = index.search(query_embedding, n_results)
+    distances, indices = index.search(query_embedding, n_search)
 
     # ── Fix: check distances is not empty ──
     if len(distances) == 0 or len(distances[0]) == 0:
@@ -62,5 +62,19 @@ def retrieve_chunks(query, filename=None, meta_path=None):
 
         if len(chunks) == TOP_K:
             break
+
+    # fallback: if no specific good match, and the user asks a very generic question 
+    # and we have chunks for this file, just return the first chunk of the file
+    if not chunks and filename:
+        for idx in range(len(metadata)):
+            if metadata[idx]["filename"] == filename:
+                chunks.append({
+                    "text": metadata[idx]["text"],
+                    "filename": metadata[idx]["filename"],
+                    "page": metadata[idx]["page"],
+                    "score": 0.0,
+                    "confidence": 0.0
+                })
+                break
 
     return chunks 
