@@ -11,3 +11,4 @@ python-docx
 groq
 requests
 requests-oauthlib
+gunicorn

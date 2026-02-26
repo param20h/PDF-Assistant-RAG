@@ -1,0 +1,11 @@
+.env
+__pycache__
+.venv
+venv
+env
+.git
+.gitignore
+uploads/
+vectorstore/
+*.db
+static/profile_pics/
