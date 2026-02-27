@@ -1,3 +1,12 @@
+---
+title: RAG PDF Assistant
+emoji: 📄
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # 📄 RAG PDF Assistant
 
 A **Retrieval-Augmented Generation (RAG)** based document assistant built with Flask, FAISS, Sentence Transformers, Groq API, and Gemini. Upload PDFs, DOCX, or TXT files and intuitively chat with them using modern AI models.
@@ -132,7 +141,7 @@ Visit `http://localhost:5000` in your web browser.
 
 ---
 
-## 🔐 DevSecOps Pipeline (Coming Soon)
+## 🔐 DevSecOps Pipeline (Coming Soon)       
 
 | Tool | Purpose |
 |------|---------|
