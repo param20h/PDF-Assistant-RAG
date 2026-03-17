@@ -12,15 +12,13 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/rag_app")
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {"pdf", "docx", "txt", "md"}
 
-# ── Embedding Config ─────────────────────────────────
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-CHROMA_DB_PATH = "vectorstore"
-TOP_K = 50
+# ── RAG Config ───────────────────────────────────────
+TOP_K = 5
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 
 # ── Groq Config ──────────────────────────────────────
-GROQ_MODEL = "llama-3.3-70b-versatile"  
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # ── Google OAuth Config ──────────────────────────────
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")

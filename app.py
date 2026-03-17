@@ -26,16 +26,14 @@ def patched_fetch(self, *args, **kwargs):
     return original_fetch(self, *args, **kwargs)
 OAuth2Session.fetch_token = patched_fetch
 
-import pickle
-import shutil
-from flask import Flask, request, jsonify, render_template, redirect, url_for
+from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_dance.contrib.google import make_google_blueprint, google
 from flask_dance.consumer import oauth_authorized
 from dotenv import load_dotenv
 from models import User
 from rag.chunker import load_and_chunk
-from rag.embeddings import store_embeddings
+from rag.embeddings import store_embeddings, delete_embeddings, clear_all_embeddings
 from rag.retriever import retrieve_chunks
 from rag.generator import generate_answer
 from config import SECRET_KEY, MONGO_URI, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
@@ -47,10 +45,7 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["UPLOAD_FOLDER"] = "uploads"
 
-META_PATH = os.path.join("vectorstore", "metadata.pkl")
-
 os.makedirs("uploads", exist_ok=True)
-os.makedirs("vectorstore", exist_ok=True)
 
 # ── Google Blueprint ──────────────────────────────────
 google_bp = make_google_blueprint(
@@ -172,10 +167,9 @@ def get_user_upload_folder(username):
     os.makedirs(folder, exist_ok=True)
     return folder
 
-def get_user_meta_path(username):
-    path = os.path.join("vectorstore", username)
-    os.makedirs(path, exist_ok=True)
-    return os.path.join(path, "metadata.pkl")
+def user_has_rag_keys(user):
+    """Check if user has all required keys for RAG operations."""
+    return (user.get_gemini_key() and user.get_pinecone_key() and user.pinecone_index_name)
 
 # ── Auth Routes ───────────────────────────────────────
 
@@ -254,7 +248,6 @@ def admin_dashboard():
 @app.route("/download/<username>/<filename>")
 @login_required
 def download_file(username, filename):
-    # Only the owner or an admin can download
     if current_user.username != username and not current_user.is_admin:
         return "Unauthorized", 403
         
@@ -263,7 +256,6 @@ def download_file(username, filename):
     if not os.path.exists(filepath):
         return "File not found", 404
         
-    from flask import send_file
     return send_file(filepath, as_attachment=True)
 
 @app.route("/profile", methods=["GET"])
@@ -278,19 +270,31 @@ def update_settings():
         data = request.get_json()
         current_user.preferred_model = data.get("preferred_model", "groq")
         
-        # Determine if we are deleting keys or setting new ones
+        # ── Groq Key ──
         groq_req = data.get("groq_key", "").strip()
-        gemini_req = data.get("gemini_key", "").strip()
-        
         if groq_req == "DELETE":
             current_user.set_groq_key(None)
         elif groq_req:
             current_user.set_groq_key(groq_req)
             
+        # ── Gemini Key ──
+        gemini_req = data.get("gemini_key", "").strip()
         if gemini_req == "DELETE":
             current_user.set_gemini_key(None)
         elif gemini_req:
             current_user.set_gemini_key(gemini_req)
+
+        # ── Pinecone Key ──
+        pinecone_req = data.get("pinecone_key", "").strip()
+        if pinecone_req == "DELETE":
+            current_user.set_pinecone_key(None)
+        elif pinecone_req:
+            current_user.set_pinecone_key(pinecone_req)
+
+        # ── Pinecone Index Name ──
+        pinecone_index = data.get("pinecone_index", "").strip()
+        if pinecone_index:
+            current_user.pinecone_index_name = pinecone_index
         
         current_user.save()
         return jsonify({"message": "Settings updated successfully!"}), 200
@@ -311,8 +315,8 @@ def get_files():
 @login_required
 def upload():
     try:
-        if not current_user.get_groq_key() and not current_user.get_gemini_key():
-            return jsonify({"error": "⚠️ Please add your Groq or Gemini API key in the Profile page to upload and chat."}), 400
+        if not user_has_rag_keys(current_user):
+            return jsonify({"error": "⚠️ Please add your Gemini API key, Pinecone API key, and Pinecone index name in the Profile page to upload and chat."}), 400
 
         if "pdf" not in request.files:
             return jsonify({"error": "No file found"}), 400
@@ -329,9 +333,8 @@ def upload():
         filepath = os.path.join(folder, file.filename)
         file.save(filepath)
 
-        meta_path = get_user_meta_path(current_user.username)
         chunks = load_and_chunk(filepath)
-        store_embeddings(chunks, file.filename, meta_path)
+        store_embeddings(chunks, file.filename, current_user)
 
         return jsonify({"message": f"{file.filename} uploaded successfully!"}), 200
 
@@ -342,8 +345,8 @@ def upload():
 @login_required
 def ask():
     try:
-        if not current_user.get_groq_key() and not current_user.get_gemini_key():
-            return jsonify({"error": "⚠️ Please add your Groq or Gemini API key in the Profile page to upload and chat."}), 400
+        if not user_has_rag_keys(current_user):
+            return jsonify({"error": "⚠️ Please add your Gemini API key, Pinecone API key, and Pinecone index name in the Profile page to upload and chat."}), 400
 
         data = request.get_json()
         question = data.get("question", "").strip()
@@ -352,8 +355,7 @@ def ask():
         if not question:
             return jsonify({"error": "Question cannot be empty"}), 400
 
-        meta_path = get_user_meta_path(current_user.username)
-        context_chunks = retrieve_chunks(question, filename, meta_path)
+        context_chunks = retrieve_chunks(question, filename, current_user)
         answer = generate_answer(question, context_chunks, current_user)
 
         username = current_user.username
@@ -410,13 +412,8 @@ def delete():
 
         os.remove(filepath)
 
-        meta_path = get_user_meta_path(current_user.username)
-        if os.path.exists(meta_path):
-            with open(meta_path, "rb") as f:
-                metadata = pickle.load(f)
-            new_metadata = [m for m in metadata if m["filename"] != filename]
-            with open(meta_path, "wb") as f:
-                pickle.dump(new_metadata, f)
+        # Delete vectors from Pinecone
+        delete_embeddings(filename, current_user)
 
         return jsonify({"message": f"{filename} deleted successfully!"}), 200
 
@@ -427,13 +424,8 @@ def delete():
 @login_required
 def clear_vectorstore():
     try:
-        username = current_user.username
-        vectorstore_path = os.path.join("vectorstore", username)
-
-        if os.path.exists(vectorstore_path):
-            shutil.rmtree(vectorstore_path)
-            os.makedirs(vectorstore_path, exist_ok=True)
-
+        # Clear all vectors in user's Pinecone namespace
+        clear_all_embeddings(current_user)
         return jsonify({"message": "Vector store cleared successfully!"}), 200
 
     except Exception as e:

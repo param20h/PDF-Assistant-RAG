@@ -55,14 +55,32 @@
                 </select>
 
                 <label style="color: var(--text-main); font-weight: 500; font-size: 14px;">Groq API Key
-                    (Optional)</label>
+                    (Optional — for chat generation)</label>
                 <input type="password" id="groqKey" name="groq_key" placeholder="Enter your Groq API Key..."
-                    value="{{ current_user.groq_api_key or '' }}" style="margin-top: 10px;">
+                    value="" data-has-key="{{ 'true' if current_user.groq_api_key else 'false' }}" style="margin-top: 10px;">
 
                 <label style="color: var(--text-main); font-weight: 500; font-size: 14px;">Gemini API Key
-                    (Optional)</label>
+                    (Required — used for embeddings & chat)</label>
                 <input type="password" id="geminiKey" name="gemini_key" placeholder="Enter your Gemini API Key..."
-                    value="{{ current_user.gemini_api_key or '' }}" style="margin-top: 10px;">
+                    value="" data-has-key="{{ 'true' if current_user.gemini_api_key else 'false' }}" style="margin-top: 10px;">
+
+                <hr style="border: 1px solid var(--glass-border); margin: 20px 0;">
+
+                <h3 style="margin-bottom: 10px; color: var(--text-main);">🌲 Pinecone Vector Database</h3>
+                <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">
+                    Create a free index at <a href="https://app.pinecone.io" target="_blank" style="color: var(--primary-color);">pinecone.io</a> 
+                    (Serverless, Dimension: 768, Metric: Cosine)
+                </p>
+
+                <label style="color: var(--text-main); font-weight: 500; font-size: 14px;">Pinecone API Key
+                    (Required)</label>
+                <input type="password" id="pineconeKey" name="pinecone_key" placeholder="Enter your Pinecone API Key..."
+                    value="" data-has-key="{{ 'true' if current_user.pinecone_api_key else 'false' }}" style="margin-top: 10px;">
+
+                <label style="color: var(--text-main); font-weight: 500; font-size: 14px;">Pinecone Index Name
+                    (Required)</label>
+                <input type="text" id="pineconeIndex" name="pinecone_index" placeholder="e.g. rag-app"
+                    value="{{ current_user.pinecone_index_name or '' }}" style="margin-top: 10px;">
 
                 <button type="submit" style="width: 100%; margin-top: 15px;">Save Settings</button>
             </form>
@@ -100,6 +118,11 @@
             }
         }
 
+        // Show placeholder for existing keys
+        document.querySelectorAll('[data-has-key="true"]').forEach(input => {
+            input.placeholder = "••••••••  (key saved — leave blank to keep)"
+        })
+
         document.getElementById("settingsForm").addEventListener("submit", async (e) => {
             e.preventDefault()
             const statusDiv = document.getElementById("settingsStatus")
@@ -107,13 +130,21 @@
             statusDiv.style.color = "var(--primary-color)"
 
             const preferredModel = document.getElementById("preferredModel").value
-            const groqKey = document.getElementById("groqKey").value
-            const geminiKey = document.getElementById("geminiKey").value
+            const groqKey = document.getElementById("groqKey").value.trim()
+            const geminiKey = document.getElementById("geminiKey").value.trim()
+            const pineconeKey = document.getElementById("pineconeKey").value.trim()
+            const pineconeIndex = document.getElementById("pineconeIndex").value.trim()
+
+            // Only send keys if user actually typed a new value
+            const payload = { preferred_model: preferredModel, pinecone_index: pineconeIndex }
+            if (groqKey) payload.groq_key = groqKey
+            if (geminiKey) payload.gemini_key = geminiKey
+            if (pineconeKey) payload.pinecone_key = pineconeKey
 
             const response = await fetch("/update_settings", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ preferred_model: preferredModel, groq_key: groqKey, gemini_key: geminiKey })
+                body: JSON.stringify(payload)
             })
 
             const data = await response.json()
@@ -141,6 +172,7 @@
                 let icon = "📄"
                 if (file.endsWith(".docx")) icon = "📝"
                 if (file.endsWith(".txt")) icon = "📃"
+                if (file.endsWith(".md")) icon = "📑"
 
                 filesList.innerHTML += `
                     <li class="file-item">

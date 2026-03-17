@@ -1,8 +1,9 @@
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
-load_dotenv()  # ← Load .env file first
+load_dotenv()
 
 from groq import Groq
 from config import GROQ_MODEL
@@ -44,9 +45,11 @@ Answer:"""
             if not key:
                 return "❌ No Gemini API key available. Please add it in your Profile settings."
             
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel("gemini-1.5-flash") # Fast & Free Gemini Model
-            response = model.generate_content(prompt)
+            client = genai.Client(api_key=key, http_options=types.HttpOptions(api_version="v1"))
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
             return response.text
         else:
             key = user.get_groq_key() if user else None

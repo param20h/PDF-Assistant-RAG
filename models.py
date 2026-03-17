@@ -7,15 +7,19 @@ from config import ENCRYPTION_KEY, MONGO_URI
 
 # Connect to MongoDB
 mongo_client = pymongo.MongoClient(MONGO_URI)
-db = mongo_client.get_default_database()
-if not db.name:
+try:
+    db = mongo_client.get_default_database()
+except pymongo.errors.ConfigurationError:
     db = mongo_client["rag_app"]
 
 users_collection = db["users"]
 cipher_suite = Fernet(ENCRYPTION_KEY)
 
 class User(UserMixin):
-    def __init__(self, username, email, password=None, _id=None, google_id=None, profile_pic=None, groq_api_key=None, gemini_api_key=None, preferred_model="groq", is_admin=False):
+    def __init__(self, username, email, password=None, _id=None, google_id=None,
+                 profile_pic=None, groq_api_key=None, gemini_api_key=None,
+                 pinecone_api_key=None, pinecone_index_name=None,
+                 preferred_model="groq", is_admin=False):
         self.username = username
         self.email = email
         self.password = password
@@ -23,6 +27,8 @@ class User(UserMixin):
         self.profile_pic = profile_pic
         self.groq_api_key = groq_api_key
         self.gemini_api_key = gemini_api_key
+        self.pinecone_api_key = pinecone_api_key
+        self.pinecone_index_name = pinecone_index_name or ""
         self.preferred_model = preferred_model
         self.is_admin = is_admin
         if _id:
@@ -31,7 +37,7 @@ class User(UserMixin):
             self.id = None
 
     def get_id(self):
-        return self.id or self.username  # fallback to username if id is not yet set
+        return self.id or self.username
 
     def save(self):
         user_data = {
@@ -42,6 +48,8 @@ class User(UserMixin):
             "profile_pic": self.profile_pic,
             "groq_api_key": self.groq_api_key,
             "gemini_api_key": self.gemini_api_key,
+            "pinecone_api_key": self.pinecone_api_key,
+            "pinecone_index_name": self.pinecone_index_name,
             "preferred_model": self.preferred_model,
             "is_admin": self.is_admin
         }
@@ -58,6 +66,7 @@ class User(UserMixin):
     def check_password(self, password):
         return check_password_hash(self.password, password)
 
+    # ── Groq Key ─────────────────────────────────────
     def set_groq_key(self, api_key):
         if api_key:
             self.groq_api_key = cipher_suite.encrypt(api_key.encode('utf-8')).decode('utf-8')
@@ -72,6 +81,7 @@ class User(UserMixin):
                 return None
         return None
 
+    # ── Gemini Key ───────────────────────────────────
     def set_gemini_key(self, api_key):
         if api_key:
             self.gemini_api_key = cipher_suite.encrypt(api_key.encode('utf-8')).decode('utf-8')
@@ -82,6 +92,21 @@ class User(UserMixin):
         if self.gemini_api_key:
             try:
                 return cipher_suite.decrypt(self.gemini_api_key.encode('utf-8')).decode('utf-8')
+            except Exception:
+                return None
+        return None
+
+    # ── Pinecone Key ─────────────────────────────────
+    def set_pinecone_key(self, api_key):
+        if api_key:
+            self.pinecone_api_key = cipher_suite.encrypt(api_key.encode('utf-8')).decode('utf-8')
+        else:
+            self.pinecone_api_key = None
+
+    def get_pinecone_key(self):
+        if self.pinecone_api_key:
+            try:
+                return cipher_suite.decrypt(self.pinecone_api_key.encode('utf-8')).decode('utf-8')
             except Exception:
                 return None
         return None

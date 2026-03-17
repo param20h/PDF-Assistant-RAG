@@ -1,8 +1,6 @@
 flask
 python-dotenv
 pymupdf
-faiss-cpu
-sentence-transformers
 flask-login
 pymongo
 werkzeug
@@ -11,6 +9,7 @@ python-docx
 groq
 requests
 requests-oauthlib
-google-generativeai
+google-genai
 cryptography
 gunicorn
+pinecone

@@ -1,49 +1,98 @@
-import faiss
-import numpy as np
-import pickle
-import os
-from sentence_transformers import SentenceTransformer
-from config import EMBEDDING_MODEL, CHROMA_DB_PATH
+from google import genai
+from google.genai import types
+from pinecone import Pinecone
+from config import CHUNK_SIZE, CHUNK_OVERLAP
 
-# ── Load Model ───────────────────────────────────────
-embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+# ── Gemini Embedding ─────────────────────────────────
+def embed_text(text, gemini_key):
+    """Generate embedding using Gemini's free gemini-embedding-001 model."""
+    client = genai.Client(api_key=gemini_key)
+    result = client.models.embed_content(
+        model="gemini-embedding-001",
+        contents=text
+    )
+    return result.embeddings[0].values  # 3072-dimensional vector
 
-INDEX_PATH = CHROMA_DB_PATH + "/index.faiss"
+# ── Get Pinecone Index ───────────────────────────────
+def get_pinecone_index(pinecone_key, index_name):
+    """Connect to user's Pinecone index."""
+    pc = Pinecone(api_key=pinecone_key)
+    return pc.Index(index_name)
 
-def embed_text(text):
-    return embedding_model.encode(text)
+# ── Store Embeddings in Pinecone ─────────────────────
+def store_embeddings(chunks, filename, user):
+    """Embed chunks using Gemini and upsert into user's Pinecone index."""
+    gemini_key = user.get_gemini_key()
+    pinecone_key = user.get_pinecone_key()
+    index_name = user.pinecone_index_name
 
-# ── Updated to accept meta_path ──────────────────────
-def store_embeddings(chunks, filename, meta_path):
-    embeddings = []
-    metadata = []
+    if not gemini_key:
+        raise ValueError("Gemini API key is required for embeddings. Please add it in your Profile.")
+    if not pinecone_key or not index_name:
+        raise ValueError("Pinecone API key and index name are required. Please add them in your Profile.")
 
-    for i, chunk in enumerate(chunks):
-        emb = embed_text(chunk["text"])
-        embeddings.append(emb)
-        metadata.append({
-            "text": chunk["text"],
-            "filename": filename,
-            "page": chunk["page"],
-            "chunk_index": i
-        })
+    index = get_pinecone_index(pinecone_key, index_name)
+    namespace = user.username
 
-    embeddings_np = np.array(embeddings).astype("float32")
-    dimension = embeddings_np.shape[1]
+    # Batch upsert vectors
+    batch_size = 50
+    for i in range(0, len(chunks), batch_size):
+        batch = chunks[i:i + batch_size]
+        vectors = []
 
-    index_path = os.path.join(os.path.dirname(meta_path), "index.faiss")
+        for j, chunk in enumerate(batch):
+            embedding = embed_text(chunk["text"], gemini_key)
+            vector_id = f"{filename}_{i + j}"
 
-    if os.path.exists(index_path):
-        index = faiss.read_index(index_path)
-        with open(meta_path, "rb") as f:
-            existing_metadata = pickle.load(f)
-    else:
-        index = faiss.IndexFlatL2(dimension)
-        existing_metadata = []
+            vectors.append({
+                "id": vector_id,
+                "values": embedding,
+                "metadata": {
+                    "text": chunk["text"],
+                    "filename": filename,
+                    "page": chunk["page"],
+                    "chunk_index": i + j
+                }
+            })
 
-    index.add(embeddings_np)
-    existing_metadata.extend(metadata)
+        index.upsert(vectors=vectors, namespace=namespace)
 
-    faiss.write_index(index, index_path)
-    with open(meta_path, "wb") as f:
-        pickle.dump(existing_metadata, f)
+# ── Delete Vectors by Filename ───────────────────────
+def delete_embeddings(filename, user):
+    """Delete all vectors for a specific file from user's Pinecone index."""
+    pinecone_key = user.get_pinecone_key()
+    index_name = user.pinecone_index_name
+
+    if not pinecone_key or not index_name:
+        return
+
+    index = get_pinecone_index(pinecone_key, index_name)
+    namespace = user.username
+
+    try:
+        dummy_vector = [0.0] * 3072
+        results = index.query(
+            vector=dummy_vector,
+            top_k=10000,
+            namespace=namespace,
+            filter={"filename": {"$eq": filename}},
+            include_metadata=False
+        )
+        
+        if results.matches:
+            ids_to_delete = [match.id for match in results.matches]
+            index.delete(ids=ids_to_delete, namespace=namespace)
+    except Exception as e:
+        print(f"Error deleting embeddings: {e}")
+
+# ── Clear All Vectors for User ───────────────────────
+def clear_all_embeddings(user):
+    """Delete all vectors in user's namespace."""
+    pinecone_key = user.get_pinecone_key()
+    index_name = user.pinecone_index_name
+
+    if not pinecone_key or not index_name:
+        return
+
+    index = get_pinecone_index(pinecone_key, index_name)
+    index.delete(delete_all=True, namespace=user.username)

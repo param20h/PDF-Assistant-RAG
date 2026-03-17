@@ -1,80 +1,71 @@
-import faiss
-import numpy as np
-import pickle
-import os
-from sentence_transformers import SentenceTransformer
-from config import EMBEDDING_MODEL, TOP_K
+from google import genai
+from google.genai import types
+from pinecone import Pinecone
+from config import TOP_K
 
-embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+# ── Gemini Embedding ─────────────────────────────────
+def embed_query(query, gemini_key):
+    """Generate query embedding using Gemini's gemini-embedding-001."""
+    client = genai.Client(api_key=gemini_key)
+    result = client.models.embed_content(
+        model="gemini-embedding-001",
+        contents=query
+    )
+    return result.embeddings[0].values
 
-def embed_query(query):
-    return embedding_model.encode(query)
-
-def retrieve_chunks(query, filename=None, meta_path=None):
-    if meta_path is None or not os.path.exists(meta_path):
+# ── Retrieve Chunks from Pinecone ────────────────────
+def retrieve_chunks(query, filename=None, user=None):
+    """Query user's Pinecone index for relevant chunks."""
+    if not user:
         return []
 
-    index_path = os.path.join(os.path.dirname(meta_path), "index.faiss")
+    gemini_key = user.get_gemini_key()
+    pinecone_key = user.get_pinecone_key()
+    index_name = user.pinecone_index_name
 
-    if not os.path.exists(index_path):
+    if not gemini_key or not pinecone_key or not index_name:
         return []
 
-    query_embedding = np.array([embed_query(query)]).astype("float32")
+    try:
+        # Generate query embedding
+        query_embedding = embed_query(query, gemini_key)
 
-    index = faiss.read_index(index_path)
+        # Connect to Pinecone
+        pc = Pinecone(api_key=pinecone_key)
+        index = pc.Index(index_name)
 
-    with open(meta_path, "rb") as f:
-        metadata = pickle.load(f)
+        # Build metadata filter
+        filter_dict = None
+        if filename:
+            filter_dict = {"filename": {"$eq": filename}}
 
-    # ── Fix: search a larger pool to allow filtering by filename ──
-    n_search = min(100, len(metadata))
+        # Query Pinecone
+        results = index.query(
+            vector=query_embedding,
+            top_k=TOP_K,
+            namespace=user.username,
+            filter=filter_dict,
+            include_metadata=True
+        )
 
-    if n_search == 0:
-        return []
+        # Format results
+        chunks = []
+        if results.matches:
+            max_score = max(m.score for m in results.matches) if results.matches else 1
 
-    distances, indices = index.search(query_embedding, n_search)
+            for match in results.matches:
+                confidence = round((match.score / max_score) * 100, 2) if max_score > 0 else 0
 
-    # ── Fix: check distances is not empty ──
-    if len(distances) == 0 or len(distances[0]) == 0:
-        return []
-
-    max_distance = float(distances[0].max()) if distances[0].max() > 0 else 1
-
-    chunks = []
-    for i, idx in enumerate(indices[0]):
-        # ── Fix: skip invalid indices ──
-        if idx == -1 or idx >= len(metadata):
-            continue
-
-        if filename and metadata[idx]["filename"] != filename:
-            continue
-
-        raw_score = float(distances[0][i])
-        confidence = round((1 - (raw_score / max_distance)) * 100, 2)
-
-        chunks.append({
-            "text": metadata[idx]["text"],
-            "filename": metadata[idx]["filename"],
-            "page": metadata[idx]["page"],
-            "score": raw_score,
-            "confidence": confidence
-        })
-
-        if len(chunks) == TOP_K:
-            break
-
-    # fallback: if no specific good match, and the user asks a very generic question 
-    # and we have chunks for this file, just return the first chunk of the file
-    if not chunks and filename:
-        for idx in range(len(metadata)):
-            if metadata[idx]["filename"] == filename:
                 chunks.append({
-                    "text": metadata[idx]["text"],
-                    "filename": metadata[idx]["filename"],
-                    "page": metadata[idx]["page"],
-                    "score": 0.0,
-                    "confidence": 0.0
+                    "text": match.metadata.get("text", ""),
+                    "filename": match.metadata.get("filename", ""),
+                    "page": match.metadata.get("page", 1),
+                    "score": round(match.score, 4),
+                    "confidence": confidence
                 })
-                break
 
-    return chunks 
+        return chunks
+
+    except Exception as e:
+        print(f"Retrieval error: {e}")
+        return []
