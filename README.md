@@ -98,11 +98,11 @@ cp .env.example .env
 
 Fill in the required server-side variables:
 ```env
-SECRET_KEY=your_secure_random_key
-ENCRYPTION_KEY=your_fernet_key
-MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/rag_app
-GOOGLE_CLIENT_ID=your_google_oauth_client_id
-GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
+SECRET_KEY=<your-secret-key>
+ENCRYPTION_KEY=<your-fernet-key>
+MONGO_URI=<your-mongodb-atlas-uri>
+GOOGLE_CLIENT_ID=<your-google-client-id>
+GOOGLE_CLIENT_SECRET=<your-google-client-secret>
 ```
 
 > **Generate keys:**
