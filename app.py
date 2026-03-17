@@ -165,7 +165,7 @@ def get_profile():
 
 # ── Helper Functions ──────────────────────────────────
 def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in {"pdf", "docx", "txt"}
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in {"pdf", "docx", "txt", "md"}
 
 def get_user_upload_folder(username):
     folder = os.path.join("uploads", username)
@@ -245,7 +245,7 @@ def admin_dashboard():
     for user in users:
         folder = get_user_upload_folder(user.username)
         if os.path.exists(folder):
-            user_files[user.username] = [f for f in os.listdir(folder) if f.endswith((".pdf", ".docx", ".txt"))]
+            user_files[user.username] = [f for f in os.listdir(folder) if f.endswith((".pdf", ".docx", ".txt", ".md"))]
         else:
             user_files[user.username] = []
     
@@ -302,7 +302,7 @@ def update_settings():
 def get_files():
     try:
         folder = get_user_upload_folder(current_user.username)
-        files = [f for f in os.listdir(folder) if f.endswith((".pdf", ".docx", ".txt"))]
+        files = [f for f in os.listdir(folder) if f.endswith((".pdf", ".docx", ".txt", ".md"))]
         return jsonify({"files": files}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -323,7 +323,7 @@ def upload():
             return jsonify({"error": "No file selected"}), 400
 
         if not allowed_file(file.filename):
-            return jsonify({"error": "Only PDF, DOCX & TXT files allowed"}), 400
+            return jsonify({"error": "Only PDF, DOCX, TXT & MD files allowed"}), 400
 
         folder = get_user_upload_folder(current_user.username)
         filepath = os.path.join(folder, file.filename)

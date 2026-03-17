@@ -132,7 +132,7 @@ Visit `http://localhost:5000` in your web browser.
 
 ---
 
-## 🔐 DevSecOps Pipeline (Coming Soon)
+## 🔐 DevSecOps Pipeline 
 
 | Tool | Purpose |
 |------|---------|
@@ -147,12 +147,15 @@ Visit `http://localhost:5000` in your web browser.
 
 ---
 
-## 🐳 Docker (Coming Soon)
+## 🐳 Docker Deployment
+
+To spin up the application along with its dedicated MongoDB container, simply run:
 
 ```bash
-docker build -t rag-pdf-assistant .
-docker run -p 5000:5000 rag-pdf-assistant
+docker-compose up -d --build
 ```
+
+Then visit `http://localhost:5000` in your web browser!
 
 ---
 

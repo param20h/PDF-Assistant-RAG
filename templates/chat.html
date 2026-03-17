@@ -23,26 +23,30 @@
     </header>
 
     <!-- ── Chat Box ── -->
-    <div class="container">
+    <div class="container"
+        style="max-width: 1000px; display: flex; flex-direction: column; height: 85vh; margin-top: 20px;">
 
         <!-- ── Current File Badge ── -->
-        <div id="currentFileBadge" class="file-badge">
+        <div id="currentFileBadge" class="file-badge" style="align-self: flex-start; margin-bottom: 10px;">
             📄 No file selected
         </div>
 
-        <div class="chat-box" id="chatBox">
+        <div class="chat-box" id="chatBox"
+            style="flex-grow: 1; height: auto; border-radius: 16px 16px 0 0; border-bottom: none; margin-bottom: 0;">
             <!-- Messages appear here -->
         </div>
 
         <!-- ── Input Area ── -->
-        <div class="input-area">
-            <input type="text" id="questionInput" placeholder="Ask a question..." />
-            <button id="askBtn">Ask</button>
-            <button id="clearBtn">Clear History</button>
+        <div class="input-area"
+            style="border-radius: 0 0 16px 16px; border-top: 1px solid var(--glass-border); padding: 20px;">
+            <input type="text" id="questionInput" placeholder="Ask a question about your document..."
+                style="font-size: 16px; padding: 15px;" />
+            <button id="askBtn" style="padding: 15px 30px; font-size: 16px; min-width: 100px;">Ask</button>
+            <button id="clearBtn" style="padding: 15px 20px;">Clear</button>
         </div>
 
         <!-- ── Loading Spinner ── -->
-        <div id="loader" style="display:none;">
+        <div id="loader" style="display:none; margin-top: 15px;">
             Generating response...
         </div>
     </div>

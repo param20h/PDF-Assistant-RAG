@@ -10,7 +10,7 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/rag_app")
 
 # ── Upload Config ────────────────────────────────────
 UPLOAD_FOLDER = "uploads"
-ALLOWED_EXTENSIONS = {"pdf", "docx", "txt"}
+ALLOWED_EXTENSIONS = {"pdf", "docx", "txt", "md"}
 
 # ── Embedding Config ─────────────────────────────────
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"

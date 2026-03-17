@@ -74,7 +74,7 @@ def load_and_chunk(filepath):
         pages = load_pdf(filepath)
     elif ext == "docx":
         pages = load_docx(filepath)
-    elif ext == "txt":
+    elif ext in ["txt", "md"]:
         pages = load_txt(filepath)
     else:
         raise ValueError(f"Unsupported file type: {ext}")

@@ -52,40 +52,44 @@
         </div>
     </header>
 
-    <div class="container">
-        <!-- ── Upload Section ── -->
-        <div class="upload-box">
-            <h2>Upload PDF</h2>
-            <form id="uploadForm">
-                <input type="file" id="pdfFile" accept=".pdf,.docx,.txt,.md" required />
-                <button type="submit">Upload & Index</button>
-            </form>
-            <div id="uploadStatus"></div>
-        </div>
+    <div class="container" style="max-width: 1100px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <div class="left-panel">
+                <!-- ── Upload Section ── -->
+                <div class="upload-box">
+                    <h2>Upload PDF</h2>
+                    <form id="uploadForm">
+                        <input type="file" id="pdfFile" accept=".pdf,.docx,.txt,.md" required />
+                        <button style="width: 100%;" type="submit">Upload & Index</button>
+                    </form>
+                    <div id="uploadStatus"></div>
+                </div>
 
-        <!-- ── Uploaded Files List ── -->
-        <div class="files-box">
-            <h2>📋 Uploaded Files</h2>
-            <ul id="filesList">
-                <!-- Files appear here -->
-            </ul>
-        </div>
+                <!-- ── Navigate to Chat ── -->
+                <div class="nav-btn" style="text-align: left; margin-top: 20px;">
+                    <a href="/chat" style="display: block;">
+                        <button style="width: 100%; background: var(--accent-color); color: white; padding: 18px; font-size: 18px;">Go to Chat →</button>
+                    </a>
+                </div>
+            </div>
 
-
-        <div class="clear-box">
-            <h2>🔄 Reset Vector Store</h2>
-            <p>This will delete all stored embeddings</p>
-            <button id="clearVectorBtn" class="clear-vector-btn">
-                🔄 Clear Vector Store
-            </button>
-            <div id="clearStatus"></div>
-        </div>
-
-        <!-- ── Navigate to Chat ── -->
-        <div class="nav-btn">
-            <a href="/chat">
-                <button>Go to Chat →</button>
-            </a>
+            <div class="right-panel">
+                <!-- ── Uploaded Files List ── -->
+                <div class="files-box" style="height: 100%; display: flex; flex-direction: column;">
+                    <h2>📋 Uploaded Files</h2>
+                    <ul id="filesList" style="flex-grow: 1; overflow-y: auto; max-height: 400px; padding-right: 10px;">
+                        <!-- Files appear here -->
+                    </ul>
+                    
+                    <div class="clear-box" style="margin-top: 20px; margin-bottom: 0;">
+                        <h2 style="font-size: 16px;">🔄 Reset Vector Store</h2>
+                        <button id="clearVectorBtn" class="clear-vector-btn" style="width: 100%;">
+                            🔄 Clear Vector Store
+                        </button>
+                        <div id="clearStatus"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

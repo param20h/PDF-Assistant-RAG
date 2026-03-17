@@ -11,3 +11,6 @@ python-docx
 groq
 requests
 requests-oauthlib
+google-generativeai
+cryptography
+gunicorn

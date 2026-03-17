@@ -1,0 +1,93 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  security-scans:
+    name: Security & Quality Scans
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies for SAST
+        run: |
+          pip install bandit
+      
+      - name: Bandit - SAST Scan
+        run: bandit -r . -f custom || echo "Bandit scan completed"
+        continue-on-error: true
+
+      - name: Gitleaks - Hardcoded Secrets Detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Snyk - Vulnerability Scanner
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+        continue-on-error: true
+
+      - name: SonarCloud - Code Quality Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        continue-on-error: true
+
+  docker-scan:
+    name: Container Security
+    runs-on: ubuntu-latest
+    needs: security-scans
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Build Docker Image
+        run: docker build -t rag-app-local .
+
+      - name: Trivy - Container Vulnerability Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'rag-app-local'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+
+  # Note: OWASP ZAP DAST scan requires the app to be temporarily booted or continuously deployed
+  dast-scan:
+    name: OWASP ZAP DAST
+    runs-on: ubuntu-latest
+    needs: docker-scan
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        
+      - name: Run Docker Compose Background
+        run: docker compose up -d
+        
+      - name: Wait for App to Boot
+        run: sleep 15
+        
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://localhost:5000'
+        continue-on-error: true
