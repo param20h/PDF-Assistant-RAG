@@ -42,6 +42,10 @@ from config import SECRET_KEY, MONGO_URI, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 load_dotenv()
 app = Flask(__name__)
 
+# Trust reverse proxy headers (Render, Heroku, etc.)
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["UPLOAD_FOLDER"] = "uploads"
 
