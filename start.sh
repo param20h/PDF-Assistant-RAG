@@ -2,6 +2,7 @@
 set -e
 
 echo "🚀 Starting Document AI Analyst..."
+echo "📂 Working directory: $(pwd)"
 
 # Navigate to backend directory
 cd /app/backend
@@ -11,4 +12,5 @@ exec uvicorn app.main:app \
     --host 0.0.0.0 \
     --port 7860 \
     --workers 1 \
-    --log-level info
+    --log-level info \
+    --timeout-keep-alive 120
