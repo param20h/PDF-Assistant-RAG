@@ -5,7 +5,7 @@ Supports PDF, DOCX, TXT, and Markdown files with page-level metadata.
 import fitz  # PyMuPDF
 import docx
 from typing import List, Dict, Any
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.config import get_settings
 
 settings = get_settings()
