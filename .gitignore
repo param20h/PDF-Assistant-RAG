@@ -1,8 +1,30 @@
-.env
-uploads/
-vectorstore/
+# Dependencies
+node_modules/
 __pycache__/
 *.pyc
 .venv/
+*.egg-info/
 
+# Data (runtime generated)
+data/
+*.db
 
+# Environment
+.env
+backend/.env
+
+# Build outputs
+frontend/out/
+frontend/.next/
+.next/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+*.log

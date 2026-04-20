@@ -1,31 +1,19 @@
 version: '3.8'
 
 services:
-  web:
+  app:
     build: .
     ports:
-      - "5000:5000"
+      - "7860:7860"
     volumes:
-      - ./uploads:/app/uploads
-      - ./vectorstore:/app/vectorstore
+      - app_data:/app/data
     environment:
-      - MONGO_URI=mongodb://mongo:27017/rag_app
-      # Google OAuth Keys should be passed through .env
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - SECRET_KEY=${SECRET_KEY}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-    depends_on:
-      - mongo
-    restart: always
-
-  mongo:
-    image: mongo:6.0
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    restart: always
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
+      - HF_TOKEN=${HF_TOKEN}
+      - DATABASE_URL=sqlite:///./data/app.db
+      - UPLOAD_DIR=./data/uploads
+      - CHROMA_PERSIST_DIR=./data/chroma_db
+    restart: unless-stopped
 
 volumes:
-  mongo_data:
+  app_data:

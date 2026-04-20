@@ -1,0 +1,42 @@
+# ── Enterprise Agentic RAG System — Backend Dependencies ──
+
+# Core Framework
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database
+sqlalchemy
+aiosqlite
+
+# Auth
+pyjwt
+passlib[bcrypt]
+python-dotenv
+
+# Config
+pydantic-settings
+pydantic[email]
+
+# Document Processing
+PyMuPDF
+python-docx
+
+# LangChain & RAG
+langchain
+langchain-community
+langchain-huggingface
+langchain-text-splitters
+
+# Embeddings & ML
+sentence-transformers
+transformers
+
+# Vector Database
+chromadb
+
+# LLM Inference
+huggingface-hub
+
+# Production
+gunicorn
