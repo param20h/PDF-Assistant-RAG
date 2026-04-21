@@ -3,7 +3,7 @@
  * Handles authentication headers and base URL configuration.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:7860";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 interface FetchOptions extends RequestInit {
   token?: string;

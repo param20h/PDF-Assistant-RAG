@@ -101,7 +101,7 @@ if os.path.exists(FRONTEND_BUILD_DIR):
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-    @app.get("/{full_path:path}")
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
     async def serve_frontend(full_path: str):
         """Serve Next.js static export — tries exact file, then .html, then index.html."""
         # Try exact file path
@@ -113,6 +113,11 @@ if os.path.exists(FRONTEND_BUILD_DIR):
         html_path = os.path.join(FRONTEND_BUILD_DIR, f"{full_path}.html")
         if os.path.isfile(html_path):
             return FileResponse(html_path)
+
+        # Try .txt for RSC payloads (Next.js uses .txt for RSC data)
+        txt_path = os.path.join(FRONTEND_BUILD_DIR, f"{full_path}.txt")
+        if os.path.isfile(txt_path):
+            return FileResponse(txt_path)
 
         # Try as directory index
         index_path = os.path.join(FRONTEND_BUILD_DIR, full_path, "index.html")
