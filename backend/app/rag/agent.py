@@ -78,17 +78,21 @@ def generate_answer(
 
     # ── Handle greetings ─────────────────────────────
     if is_greeting(question):
-        messages = _chat_messages(
-            "You are Document AI Analyst, a friendly AI assistant for document analysis.",
-            question,
-        )
-        response = client.chat_completion(
-            messages=messages,
-            model=settings.LLM_MODEL,
-            max_tokens=256,
-            temperature=0.7,
-        )
-        answer = response.choices[0].message.content.strip()
+        try:
+            messages = _chat_messages(
+                "You are Document AI Analyst, a friendly AI assistant for document analysis.",
+                question,
+            )
+            response = client.chat_completion(
+                messages=messages,
+                model=settings.LLM_MODEL,
+                max_tokens=256,
+                temperature=0.7,
+            )
+            answer = response.choices[0].message.content.strip() if response.choices else "Hello! I'm Document AI Analyst. Upload a PDF and ask me questions about it."
+        except Exception as e:
+            logger.error(f"Greeting error: {e}")
+            answer = "Hello! I'm Document AI Analyst. Upload a PDF and ask me questions about it."
         return {"answer": answer, "sources": []}
 
     # ── Retrieve relevant chunks ─────────────────────
@@ -111,7 +115,10 @@ def generate_answer(
             max_tokens=settings.LLM_MAX_NEW_TOKENS,
             temperature=settings.LLM_TEMPERATURE,
         )
-        answer = response.choices[0].message.content.strip()
+        if response.choices:
+            answer = response.choices[0].message.content.strip()
+        else:
+            answer = "I couldn't generate a response. Please try again."
     except Exception as e:
         logger.error(f"LLM generation error: {e}")
         answer = f"I encountered an error generating a response. Please try again. Error: {str(e)}"
@@ -159,9 +166,10 @@ def generate_answer_stream(
                 stream=True,
             )
             for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield f"data: {json.dumps({'type': 'token', 'data': delta})}\n\n"
+                if chunk.choices:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield f"data: {json.dumps({'type': 'token', 'data': delta})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
 
@@ -203,9 +211,10 @@ def generate_answer_stream(
             stream=True,
         )
         for chunk in stream:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                yield f"data: {json.dumps({'type': 'token', 'data': delta})}\n\n"
+            if chunk.choices:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield f"data: {json.dumps({'type': 'token', 'data': delta})}\n\n"
 
     except Exception as e:
         logger.error(f"LLM streaming error: {e}")
