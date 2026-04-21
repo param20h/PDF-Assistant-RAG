@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # ── LLM (HuggingFace Inference API) ──────────────────
     HF_TOKEN: str = ""
-    LLM_MODEL: str = "mistralai/Mistral-7B-Instruct-v0.2"
+    LLM_MODEL: str = "Qwen/Qwen2.5-72B-Instruct"
     LLM_MAX_NEW_TOKENS: int = 1024
     LLM_TEMPERATURE: float = 0.3
 
