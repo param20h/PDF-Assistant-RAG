@@ -29,7 +29,9 @@ dev-frontend:
 
 dev:
 	@echo "Starting backend (port $(BACKEND_PORT)) and frontend (port 3000)..."
-	$(MAKE) dev-backend & $(MAKE) dev-frontend & wait
+	npx concurrently --kill-others --names "BACKEND,FRONTEND" --prefix-colors "blue,green" \
+		"$(MAKE) dev-backend" \
+		"$(MAKE) dev-frontend"
 
 test:
 	cd $(BACKEND_DIR) && python -m pytest -v
@@ -53,7 +55,6 @@ build:
 	cd $(FRONTEND_DIR) && npm run build
 
 clean:
-	rm -rf .venv
 	rm -rf $(BACKEND_DIR)/__pycache__
 	find $(BACKEND_DIR) -type d -name __pycache__ -exec rm -rf {} +
 	rm -rf $(FRONTEND_DIR)/.next
