@@ -55,7 +55,7 @@ build:
 clean:
 	rm -rf .venv
 	rm -rf $(BACKEND_DIR)/__pycache__
-	rm -rf $(BACKEND_DIR)/**/__pycache__
+	find $(BACKEND_DIR) -type d -name __pycache__ -exec rm -rf {} +
 	rm -rf $(FRONTEND_DIR)/.next
 	rm -rf $(FRONTEND_DIR)/out
 	rm -rf $(FRONTEND_DIR)/build
