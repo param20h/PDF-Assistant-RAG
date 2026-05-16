@@ -1,0 +1,84 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report! Please fill this out as completely as possible.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear description of what the bug is.
+      placeholder: "When I do X, Y happens instead of Z."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How do we reproduce this bug?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Logs
+      description: Paste any relevant error output or screenshots here.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area Affected
+      multiple: true
+      options:
+        - Backend (FastAPI)
+        - Frontend (Next.js)
+        - RAG / Embeddings
+        - Authentication
+        - File Upload
+        - Chat / Streaming
+        - Docker / Deployment
+        - Documentation
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version (if backend issue)
+      placeholder: "e.g. 3.11"
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version (if frontend issue)
+      placeholder: "e.g. 20.x"
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am targeting the `dev` branch, not `main`.
+          required: true

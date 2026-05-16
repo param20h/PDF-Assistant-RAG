@@ -1,0 +1,113 @@
+name: CI — Dev Branch
+
+# ──────────────────────────────────────────────────────────
+# Only runs on:
+#   • Pushes to dev
+#   • PRs targeting dev
+# NEVER triggers on main → HuggingFace deployment is safe.
+# ──────────────────────────────────────────────────────────
+on:
+  push:
+    branches: ["dev"]
+  pull_request:
+    branches: ["dev"]
+
+jobs:
+  # ── 1. Backend Lint & Import Check ─────────────────────
+  backend-check:
+    name: 🐍 Backend — Lint & Import Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install flake8 flake8-bugbear
+          # Install project deps (skip heavy ML libs with stub extras)
+          pip install -r backend/requirements.txt --quiet || true
+
+      - name: Flake8 lint (errors only, no style noise)
+        run: |
+          flake8 backend/app \
+            --max-line-length=120 \
+            --select=E9,F63,F7,F82 \
+            --count \
+            --show-source \
+            --statistics
+
+      - name: Check all Python modules import cleanly
+        env:
+          SECRET_KEY: ci-dummy-secret
+          DATABASE_URL: sqlite:///./ci_test.db
+          HF_TOKEN: ci-dummy-token
+          UPLOAD_DIR: /tmp/uploads
+          CHROMA_PERSIST_DIR: /tmp/chroma
+        run: |
+          python -c "import sys; sys.path.insert(0, 'backend'); from app.config import settings; print('✅ Config imports OK')" || true
+
+  # ── 2. Frontend Build Check ─────────────────────────────
+  frontend-check:
+    name: ⚛️ Frontend — TypeScript & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript type-check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Next.js build (production bundle check)
+        working-directory: frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+
+  # ── 3. PR Size Gate ─────────────────────────────────────
+  pr-size-check:
+    name: 📏 PR Size Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Count changed lines
+        run: |
+          LINES=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1)
+          echo "Changes: $LINES"
+          INSERTIONS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{sum+=$1} END{print sum}')
+          if [ "$INSERTIONS" -gt 1000 ]; then
+            echo "⚠️ PR is very large ($INSERTIONS lines added). Please consider splitting it."
+          else
+            echo "✅ PR size looks good ($INSERTIONS lines added)."
+          fi

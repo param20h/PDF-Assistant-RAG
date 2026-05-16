@@ -1,0 +1,15 @@
+flask
+python-dotenv
+pymupdf
+flask-login
+pymongo
+werkzeug
+flask-dance
+python-docx
+groq
+requests
+requests-oauthlib
+google-genai
+cryptography
+gunicorn
+pinecone
