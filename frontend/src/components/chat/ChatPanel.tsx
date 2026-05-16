@@ -45,14 +45,26 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
   // Load history on doc change
   useEffect(() => {
-    if (!activeDoc || activeDoc.id === prevDocId.current) return;
-    prevDocId.current = activeDoc.id;
+    if (!activeDoc) {
+      prevDocId.current = null;
+      setMessages([]);
+      return;
+    }
+
+    if (activeDoc.id === prevDocId.current) return;
+
+    const documentId = activeDoc.id;
+    prevDocId.current = documentId;
+    setMessages([]);
+    let cancelled = false;
 
     api
       .get<{ messages: Array<{ id: string; role: string; content: string; sources?: SourceChunk[] }> }>(
-        `/api/v1/chat/history/${activeDoc.id}`
+        `/api/v1/chat/history/${documentId}`
       )
       .then((data) => {
+        if (cancelled || prevDocId.current !== documentId) return;
+
         setMessages(
           data.messages.map((m) => ({
             id: m.id,
@@ -62,7 +74,14 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           }))
         );
       })
-      .catch(() => setMessages([]));
+      .catch(() => {
+        if (cancelled || prevDocId.current !== documentId) return;
+        setMessages([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeDoc]);
 
   const handleSend = async () => {
