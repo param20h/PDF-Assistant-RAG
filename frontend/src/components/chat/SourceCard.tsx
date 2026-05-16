@@ -42,9 +42,9 @@ export default function SourceCard({ sources, onPageClick }: Props) {
               key={i}
               variant="secondary"
               className="text-[10px] h-5 cursor-pointer hover:bg-primary/20 transition-colors"
-              onClick={() => onPageClick(src.page)}
+              onClick={() => onPageClick(src.page + 1)}
             >
-              p.{src.page} • {src.confidence}%
+              p.{src.page + 1} • {src.confidence}%
             </Badge>
           ))}
         </div>
@@ -64,7 +64,7 @@ export default function SourceCard({ sources, onPageClick }: Props) {
                     {src.filename}
                   </span>
                   <Badge variant="outline" className="text-[9px] h-4 px-1.5">
-                    Page {src.page}
+                    Page {src.page + 1}
                   </Badge>
                   <Badge
                     variant="secondary"
@@ -83,7 +83,7 @@ export default function SourceCard({ sources, onPageClick }: Props) {
                   variant="ghost"
                   size="sm"
                   className="h-6 px-2 text-[10px]"
-                  onClick={() => onPageClick(src.page)}
+                  onClick={() => onPageClick(src.page + 1)}
                 >
                   <Eye className="w-3 h-3 mr-1" />
                   View
