@@ -108,10 +108,14 @@ async def upload_document(
     content = await file.read()
     file_size = len(content)
 
-    if file_size > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
+    if file_size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        size_mb = file_size / (1024 * 1024)
         raise HTTPException(
             status_code=400,
-            detail=f"File too large. Maximum size: {settings.MAX_FILE_SIZE_MB}MB",
+            detail=(
+                f"Upload rejected: file size ({size_mb:.1f} MB) exceeds the maximum "
+                f"allowed size of {settings.MAX_UPLOAD_SIZE_MB} MB."
+            ),
         )
 
     # ── Save file to disk ────────────────────────────

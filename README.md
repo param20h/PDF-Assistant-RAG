@@ -83,65 +83,6 @@ The system uses **semantic search + cross-encoder reranking** to find the most r
 
 <br/>
 
-## 🏗️ Architecture
-
-```mermaid
-graph TD
-    subgraph Frontend["Frontend (Next.js 16)"]
-        UI["Dashboard UI (React)"]
-        Chat["Chat Panel (SSE)"]
-        Viewer["PDF Viewer (iframe)"]
-    end
-
-    subgraph Backend["Backend (FastAPI v2)"]
-        API["API Router (/api/v1)"]
-        Auth["Auth (JWT/bcrypt)"]
-        DB[(SQLite Metadata)]
-
-        subgraph RAG["RAG Pipeline"]
-            Upload["Ingestion Task (Chunking)"]
-            Embed["Local Embeddings (all-MiniLM-L6-v2)"]
-            Retriever["Two-Stage Retriever"]
-            Rerank["Cross-Encoder Reranker"]
-            Agent["Agent/Generator"]
-        end
-    end
-
-    subgraph Storage["Vector Storage"]
-        Chroma[(ChromaDB)]
-    end
-
-    subgraph External["External Services"]
-        HF["HuggingFace Inference API (Qwen 72B)"]
-    end
-
-    %% Frontend to Backend Connections
-    UI <-->|REST / Auth| API
-    Chat <-->|SSE Streaming| API
-    Viewer -->|Fetch PDF| API
-
-    %% Backend Internals
-    API <--> Auth
-    API <--> DB
-    API --> Upload
-    API <--> Retriever
-    API <--> Agent
-
-    %% RAG Ingestion Flow
-    Upload --> Embed
-    Embed -->|Store Vectors| Chroma
-
-    %% RAG Query Flow
-    Retriever -->|1. Semantic Search| Chroma
-    Retriever -->|2. Score & Sort| Rerank
-    Retriever -->|Context| Agent
-
-    %% External LLM Flow
-    Agent <-->|LLM Generation| HF
-```
-
-<br/>
-
 ## 🛠 Tech Stack
 
 <div align="center">
@@ -452,7 +393,7 @@ docker compose up --build
 | `CHUNK_OVERLAP` | ❌ | `200` | Overlap between chunks |
 | `TOP_K_RETRIEVAL` | ❌ | `10` | Candidates retrieved from vector store |
 | `TOP_K_RERANK` | ❌ | `5` | Final chunks passed to LLM after reranking |
-| `MAX_FILE_SIZE_MB` | ❌ | `50` | Maximum upload file size |
+| `MAX_UPLOAD_SIZE_MB` | ❌ | `20` | Maximum upload file size |
 
 <br/>
 
