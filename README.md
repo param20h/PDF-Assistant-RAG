@@ -69,8 +69,6 @@ Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 
 
 <br/>
 
-> 🌟 **GSSOC Contributors** — This project is open for [GirlScript Summer of Code](https://gssoc.girlscript.tech/). Check out our [CONTRIBUTING.md](CONTRIBUTING.md) to get started and browse [open issues](https://github.com/param20h/PDF-Assistant-RAG/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) tagged `good first issue`.
-
 ---
 
 <br/>
