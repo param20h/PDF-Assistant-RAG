@@ -74,11 +74,14 @@ def generate_answer(
     Full RAG pipeline: retrieve → build context → generate answer.
     Returns dict with 'answer' and 'sources'.
     """
+    # Get HuggingFace InferenceClient singleton (created once, reused)
     client = get_llm_client()
 
     # ── Handle greetings ─────────────────────────────
+    # Short-circuit: if user just says "hello", skip RAG entirely
     if is_greeting(question):
         try:
+            # Send greeting to LLM with a friendly system prompt (no document context)
             messages = _chat_messages(
                 "You are Document AI Analyst, a friendly AI assistant for document analysis.",
                 question,
@@ -96,6 +99,7 @@ def generate_answer(
         return {"answer": answer, "sources": []}
 
     # ── Retrieve relevant chunks ─────────────────────
+    # STAGE 1+2: Semantic search (ChromaDB) + cross-encoder reranking → top 5 chunks
     chunks = retrieve(
         query=question,
         user_id=user_id,
@@ -103,11 +107,13 @@ def generate_answer(
     )
 
     # ── Build prompt ─────────────────────────────────
+    # Format retrieved chunks into a readable context block, then inject into the RAG prompt template
     context = build_context(chunks)
     user_content = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
     messages = _chat_messages(SYSTEM_PROMPT, user_content)
 
     # ── Generate answer ──────────────────────────────
+    # STAGE 3: Send prompt to HuggingFace Inference API and get the generated answer
     try:
         response = client.chat_completion(
             messages=messages,
@@ -124,6 +130,7 @@ def generate_answer(
         answer = f"I encountered an error generating a response. Please try again. Error: {str(e)}"
 
     # ── Format sources ───────────────────────────────
+    # Truncate chunk text to 300 chars and attach metadata (filename, page, score, confidence) for frontend citation display
     sources = [
         {
             "text": chunk["text"][:300] + ("..." if len(chunk["text"]) > 300 else ""),
@@ -147,17 +154,22 @@ def generate_answer_stream(
     Streaming RAG pipeline — yields SSE-formatted chunks.
     First yields sources, then streams answer tokens.
     """
+    # Get HuggingFace InferenceClient singleton (created once, reused)
     client = get_llm_client()
 
     # ── Handle greetings ─────────────────────────────
+    # Short-circuit: if user just says "hello", skip RAG entirely
     if is_greeting(question):
+        # Yield empty sources array first so frontend resets its citation display
         yield f"data: {json.dumps({'type': 'sources', 'data': []})}\n\n"
 
         try:
+            # Send greeting to LLM with a friendly system prompt (no document context)
             messages = _chat_messages(
                 "You are Document AI Analyst, a friendly AI assistant for document analysis.",
                 question,
             )
+            # Stream greeting response token-by-token via SSE
             stream = client.chat_completion(
                 messages=messages,
                 model=settings.LLM_MODEL,
@@ -173,10 +185,12 @@ def generate_answer_stream(
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
 
+        # Signal end of stream, then exit early (no RAG)
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
 
     # ── Retrieve relevant chunks ─────────────────────
+    # STAGE 1+2: Semantic search (ChromaDB) + cross-encoder reranking → top 5 chunks
     chunks = retrieve(
         query=question,
         user_id=user_id,
@@ -184,6 +198,7 @@ def generate_answer_stream(
     )
 
     # ── Yield sources first ──────────────────────────
+    # Yield all sources first — frontend needs them to render citation cards before the answer starts appearing
     sources = [
         {
             "text": chunk["text"][:300] + ("..." if len(chunk["text"]) > 300 else ""),
@@ -197,11 +212,13 @@ def generate_answer_stream(
     yield f"data: {json.dumps({'type': 'sources', 'data': sources})}\n\n"
 
     # ── Build prompt ─────────────────────────────────
+    # Format retrieved chunks into a readable context block, then inject into the RAG prompt template
     context = build_context(chunks)
     user_content = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
     messages = _chat_messages(SYSTEM_PROMPT, user_content)
 
     # ── Stream answer tokens ─────────────────────────
+    # STAGE 3: Stream tokens from HuggingFace Inference API → forward each as an SSE 'token' event
     try:
         stream = client.chat_completion(
             messages=messages,
@@ -216,8 +233,10 @@ def generate_answer_stream(
                 if delta:
                     yield f"data: {json.dumps({'type': 'token', 'data': delta})}\n\n"
 
+    # If LLM fails mid-stream, yield an error event so frontend can display the message
     except Exception as e:
         logger.error(f"LLM streaming error: {e}")
         yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
 
+    # Signal end of stream to frontend (stops the streaming indicator)
     yield f"data: {json.dumps({'type': 'done'})}\n\n"
