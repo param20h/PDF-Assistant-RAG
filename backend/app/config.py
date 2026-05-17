@@ -20,7 +20,8 @@ class Settings(BaseSettings):
 
     # ── Auth ─────────────────────────────────────────────
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRY_HOURS: int = 72
+    JWT_ACCESS_EXPIRY_MINUTES: int = 15
+    JWT_REFRESH_EXPIRY_DAYS: int = 7
 
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"
