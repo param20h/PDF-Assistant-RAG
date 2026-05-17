@@ -35,8 +35,26 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    const computedMaxHeight = Number.parseFloat(
+      window.getComputedStyle(textarea).maxHeight
+    );
+    const maxHeight = Number.isFinite(computedMaxHeight)
+      ? computedMaxHeight
+      : textarea.scrollHeight;
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [input]);
 
   // Auto-scroll to bottom whenever messages change
   useEffect(() => {
@@ -224,6 +242,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto flex gap-2 items-end">
           <Textarea
+            ref={textareaRef}
             id="chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
