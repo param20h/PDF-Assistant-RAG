@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
-from app.schemas import UserRegister, UserLogin, TokenResponse, UserResponse
-from app.auth import hash_password, verify_password, create_token, get_current_user
+from app.schemas import UserRegister, UserLogin, TokenResponse, UserResponse, RefreshRequest
+from app.auth import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, decode_token
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -40,10 +40,12 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     db.refresh(user)
 
     # Generate token
-    token = create_token(user.id)
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
 
     return TokenResponse(
-        access_token=token,
+        access_token=access_token,
+        refresh_token=refresh_token,
         user=UserResponse.model_validate(user),
     )
 
@@ -59,10 +61,39 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
 
-    token = create_token(user.id)
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
 
     return TokenResponse(
-        access_token=token,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.model_validate(user),
+    )
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_token(payload: RefreshRequest, db: Session = Depends(get_db)):
+    """Refresh access token."""
+    user_id = decode_token(payload.refresh_token, token_type="refresh")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+        
+    new_access_token = create_access_token(user.id)
+    new_refresh_token = create_refresh_token(user.id)
+
+    return TokenResponse(
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
         user=UserResponse.model_validate(user),
     )
 

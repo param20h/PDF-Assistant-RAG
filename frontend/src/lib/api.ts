@@ -4,6 +4,8 @@
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const CONNECTION_ERROR_MESSAGE = "Could not connect to the server. Please try again later.";
+const CONNECTION_ERROR_BANNER_MESSAGE = `⚠️ ${CONNECTION_ERROR_MESSAGE}`;
 
 interface FetchOptions extends RequestInit {
   token?: string;
@@ -34,23 +36,71 @@ class ApiClient {
     return headers;
   }
 
+  private async fetchWithConnectionError(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error(CONNECTION_ERROR_MESSAGE);
+      }
+      throw error;
+    }
+  }
+
+  private getPayloadMessage(payload: unknown): string | null {
+    if (typeof payload === "string" && payload.trim()) {
+      return payload;
+    }
+
+    if (Array.isArray(payload)) {
+      const messages = payload
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object" && "msg" in item && typeof item.msg === "string") {
+            return item.msg;
+          }
+          return null;
+        })
+        .filter((message): message is string => Boolean(message));
+
+      return messages.length > 0 ? messages.join(", ") : null;
+    }
+
+    return null;
+  }
+
+  private async getErrorMessage(res: Response, fallback: string): Promise<string> {
+    const payload = await res.json().catch(() => null);
+
+    if (payload && typeof payload === "object") {
+      const errorPayload = payload as { detail?: unknown; error?: unknown; message?: unknown };
+      return (
+        this.getPayloadMessage(errorPayload.detail) ||
+        this.getPayloadMessage(errorPayload.message) ||
+        this.getPayloadMessage(errorPayload.error) ||
+        fallback
+      );
+    }
+
+    return this.getPayloadMessage(payload) || fallback;
+  }
+
   async get<T>(path: string, options?: FetchOptions): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
       method: "GET",
       headers: this.getHeaders(options?.token),
       ...options,
     });
 
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || "Request failed");
+      throw new Error(await this.getErrorMessage(res, res.statusText || "Request failed"));
     }
 
     return res.json();
   }
 
   async post<T>(path: string, body?: unknown, options?: FetchOptions): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: this.getHeaders(options?.token),
       body: body ? JSON.stringify(body) : undefined,
@@ -58,8 +108,7 @@ class ApiClient {
     });
 
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || "Request failed");
+      throw new Error(await this.getErrorMessage(res, res.statusText || "Request failed"));
     }
 
     return res.json();
@@ -73,7 +122,7 @@ class ApiClient {
     }
     // Don't set Content-Type — browser sets multipart boundary automatically
 
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
       method: "POST",
       headers,
       body: formData,
@@ -81,23 +130,21 @@ class ApiClient {
     });
 
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || "Upload failed");
+      throw new Error(await this.getErrorMessage(res, res.statusText || "Upload failed"));
     }
 
     return res.json();
   }
 
   async delete<T>(path: string, options?: FetchOptions): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
       method: "DELETE",
       headers: this.getHeaders(options?.token),
       ...options,
     });
 
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || "Delete failed");
+      throw new Error(await this.getErrorMessage(res, res.statusText || "Delete failed"));
     }
 
     return res.json();
@@ -108,15 +155,14 @@ class ApiClient {
    * Yields parsed SSE data objects.
    */
   async *streamPost(path: string, body: unknown): AsyncGenerator<{ type: string; data?: unknown }> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: this.getHeaders(),
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || "Stream request failed");
+      throw new Error(await this.getErrorMessage(res, res.statusText || "Stream request failed"));
     }
 
     const reader = res.body?.getReader();
@@ -153,4 +199,4 @@ class ApiClient {
 }
 
 export const api = new ApiClient(API_BASE);
-export { API_BASE };
+export { API_BASE, CONNECTION_ERROR_BANNER_MESSAGE, CONNECTION_ERROR_MESSAGE };
