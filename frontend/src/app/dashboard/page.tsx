@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { api } from "@/lib/api";
+import { api, CONNECTION_ERROR_BANNER_MESSAGE, CONNECTION_ERROR_MESSAGE } from "@/lib/api";
 import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
@@ -29,6 +29,7 @@ export default function DashboardPage() {
   const [pdfPage, setPdfPage] = useState(1);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
+  const [connectionError, setConnectionError] = useState("");
 
   // Auth guard
   useEffect(() => {
@@ -40,8 +41,14 @@ export default function DashboardPage() {
     try {
       const data = await api.get<{ documents: DocInfo[] }>("/api/v1/documents/");
       setDocuments(data.documents);
-    } catch {
-      // silently fail
+      setConnectionError("");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : CONNECTION_ERROR_MESSAGE;
+      setConnectionError(
+        message === CONNECTION_ERROR_MESSAGE
+          ? CONNECTION_ERROR_BANNER_MESSAGE
+          : `⚠️ ${message}`
+      );
     }
   }, []);
 
@@ -80,6 +87,15 @@ export default function DashboardPage() {
         viewerOpen={viewerOpen}
         onToggleViewer={() => setViewerOpen(!viewerOpen)}
       />
+
+      {connectionError && (
+        <div
+          role="alert"
+          className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"
+        >
+          {connectionError}
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         {/* ── Left: Document Sidebar ──────────────── */}
