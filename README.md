@@ -93,7 +93,7 @@ graph TD
         Viewer["PDF Viewer (iframe)"]
     end
 
-    subgraph Backend["Backend (FastAPI v2)"]
+    subgraph Backend["Backend (FastAPI 0.115+)"]
         API["API Router (/api/v1)"]
         Auth["Auth (JWT/bcrypt)"]
         DB[(SQLite Metadata)]
