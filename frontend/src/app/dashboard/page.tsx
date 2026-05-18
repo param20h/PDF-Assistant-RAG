@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
   const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
 
   // Auth guard
   useEffect(() => {

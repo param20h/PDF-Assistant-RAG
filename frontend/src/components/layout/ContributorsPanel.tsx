@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Github, Star, GitPullRequest, Users, X, Trophy, ExternalLink } from "lucide-react";
+import { GitBranch, Star, GitPullRequest, Users, X, Trophy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Contributor {
@@ -166,7 +166,7 @@ export default function ContributorsPanel({ onClose }: { onClose: () => void }) 
             rel="noopener noreferrer"
           >
             <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
-              <Github className="w-3.5 h-3.5" />
+              <GitBranch className="w-3.5 h-3.5" />
               View on GitHub
               <ExternalLink className="w-3 h-3" />
             </Button>

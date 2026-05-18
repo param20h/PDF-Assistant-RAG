@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Github, Star, GitFork, Heart, Trophy } from "lucide-react";
+import { GitBranch, Star, GitFork, Heart, Trophy } from "lucide-react";
 
 interface Props {
   onOpenHallOfFame: () => void;
@@ -32,7 +32,7 @@ export default function OpenSourceBadge({ onOpenHallOfFame }: Props) {
           {/* Top section */}
           <div className="px-4 pt-4 pb-3 border-b border-border/40">
             <div className="flex items-center gap-2 mb-1">
-              <Github className="w-4 h-4" />
+              <GitBranch className="w-4 h-4" />
               <span className="text-sm font-semibold">Open Source</span>
               <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 font-medium border border-green-500/20">
                 GSSOC
@@ -99,7 +99,7 @@ export default function OpenSourceBadge({ onOpenHallOfFame }: Props) {
         `}
         title="Open Source — Support this project"
       >
-        <Github className="w-4 h-4 group-hover:text-primary transition-colors" />
+        <GitBranch className="w-4 h-4 group-hover:text-primary transition-colors" />
         <span className="text-xs font-medium hidden sm:inline">Open Source</span>
         {stars !== null && (
           <span className="flex items-center gap-0.5 text-[11px] font-semibold text-yellow-500">
