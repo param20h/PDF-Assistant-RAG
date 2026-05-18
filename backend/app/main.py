@@ -63,12 +63,11 @@ app = FastAPI(
 # ── CORS (allow frontend dev server) ─────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=["http://localhost:3000", "http://localhost:7860", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-logger.info(f"CORS origins: {settings.cors_origins}")
 
 # ── Mount API Routes ─────────────────────────────────
 from app.routes.auth import router as auth_router
