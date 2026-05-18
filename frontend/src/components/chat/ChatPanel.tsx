@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api } from "@/lib/api";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
@@ -205,7 +204,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   return (
     <div className="h-full flex flex-col">
       {/* ── Chat Messages ──────────────────────────── */}
-      <ScrollArea className="flex-1 px-4">
+      <div className="flex-1 px-4 overflow-y-auto custom-scrollbar">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
@@ -234,9 +233,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             ))}
           </div>
         )}
-        {/* Sentinel element – scrolled into view on new messages */}
-        <div ref={bottomRef} />
-      </ScrollArea>
+        <div ref={bottomRef} className="h-4" />
+      </div>
 
       {/* ── Input Area ─────────────────────────────── */}
       <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm">
