@@ -30,20 +30,34 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ── JWT Token ────────────────────────────────────────
 
-def create_token(user_id: str) -> str:
-    """Create a JWT token with user_id as the subject."""
+def create_access_token(user_id: str) -> str:
+    """Create a JWT access token with user_id as the subject."""
     payload = {
         "sub": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRY_HOURS),
+        "type": "access",
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_ACCESS_EXPIRY_MINUTES),
         "iat": datetime.now(timezone.utc),
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def decode_token(token: str) -> Optional[str]:
+def create_refresh_token(user_id: str) -> str:
+    """Create a JWT refresh token with user_id as the subject."""
+    payload = {
+        "sub": user_id,
+        "type": "refresh",
+        "exp": datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_EXPIRY_DAYS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_token(token: str, token_type: str = "access") -> Optional[str]:
     """Decode JWT and return user_id, or None if invalid."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != token_type:
+            return None
         return payload.get("sub")
     except jwt.ExpiredSignatureError:
         return None

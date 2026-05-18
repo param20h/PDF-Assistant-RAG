@@ -3,11 +3,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { api } from "@/lib/api";
+import { api, CONNECTION_ERROR_BANNER_MESSAGE, CONNECTION_ERROR_MESSAGE } from "@/lib/api";
 import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
 import PDFViewer from "@/components/document/PDFViewer";
+import ContributorsPanel from "@/components/layout/ContributorsPanel";
+import OpenSourceBadge from "@/components/layout/OpenSourceBadge";
 
 export interface DocInfo {
   id: string;
@@ -29,6 +31,7 @@ export default function DashboardPage() {
   const [pdfPage, setPdfPage] = useState(1);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
+  const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
 
   // Auth guard
   useEffect(() => {
@@ -40,8 +43,14 @@ export default function DashboardPage() {
     try {
       const data = await api.get<{ documents: DocInfo[] }>("/api/v1/documents/");
       setDocuments(data.documents);
-    } catch {
-      // silently fail
+      setConnectionError("");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : CONNECTION_ERROR_MESSAGE;
+      setConnectionError(
+        message === CONNECTION_ERROR_MESSAGE
+          ? CONNECTION_ERROR_BANNER_MESSAGE
+          : `⚠️ ${message}`
+      );
     }
   }, []);
 
@@ -74,12 +83,27 @@ export default function DashboardPage() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
+      {/* Hall of Fame Modal */}
+      {hallOfFameOpen && (
+        <ContributorsPanel onClose={() => setHallOfFameOpen(false)} />
+      )}
+
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         viewerOpen={viewerOpen}
         onToggleViewer={() => setViewerOpen(!viewerOpen)}
+        onOpenContributors={() => setHallOfFameOpen(true)}
       />
+
+      {connectionError && (
+        <div
+          role="alert"
+          className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive"
+        >
+          {connectionError}
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         {/* ── Left: Document Sidebar ──────────────── */}
@@ -120,6 +144,9 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Open Source floating badge */}
+      <OpenSourceBadge onOpenHallOfFame={() => setHallOfFameOpen(true)} />
     </div>
   );
 }
