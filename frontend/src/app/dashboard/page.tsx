@@ -8,8 +8,6 @@ import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
 import PDFViewer from "@/components/document/PDFViewer";
-import ContributorsPanel from "@/components/layout/ContributorsPanel";
-import OpenSourceBadge from "@/components/layout/OpenSourceBadge";
 
 export interface DocInfo {
   id: string;
@@ -31,7 +29,6 @@ export default function DashboardPage() {
   const [pdfPage, setPdfPage] = useState(1);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
-  const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
   const [connectionError, setConnectionError] = useState("");
 
   // Auth guard
@@ -84,17 +81,11 @@ export default function DashboardPage() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      {/* Hall of Fame Modal */}
-      {hallOfFameOpen && (
-        <ContributorsPanel onClose={() => setHallOfFameOpen(false)} />
-      )}
-
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         viewerOpen={viewerOpen}
         onToggleViewer={() => setViewerOpen(!viewerOpen)}
-        onOpenContributors={() => setHallOfFameOpen(true)}
       />
 
       {connectionError && (
@@ -145,9 +136,6 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
-
-      {/* Open Source floating badge */}
-      <OpenSourceBadge onOpenHallOfFame={() => setHallOfFameOpen(true)} />
     </div>
   );
 }

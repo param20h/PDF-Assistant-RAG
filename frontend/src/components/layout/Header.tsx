@@ -20,7 +20,6 @@ import {
   LogOut,
   Moon,
   Sun,
-  Trophy,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -29,10 +28,9 @@ interface HeaderProps {
   onToggleSidebar: () => void;
   viewerOpen: boolean;
   onToggleViewer: () => void;
-  onOpenContributors: () => void;
 }
 
-export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onToggleViewer, onOpenContributors }: HeaderProps) {
+export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onToggleViewer }: HeaderProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [isDark, setIsDark] = useState(true);
@@ -72,22 +70,6 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
 
       {/* Right */}
       <div className="flex items-center gap-2">
-        {/* Hall of Fame */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 px-2.5 text-xs hidden sm:flex hover:text-primary"
-          onClick={onOpenContributors}
-          title="Hall of Fame — Contributors"
-        >
-          <Trophy className="w-3.5 h-3.5 text-yellow-500" />
-          <span>Hall of Fame</span>
-        </Button>
-        {/* Mobile icon only */}
-        <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden" onClick={onOpenContributors} title="Hall of Fame">
-          <Trophy className="w-4 h-4 text-yellow-500" />
-        </Button>
-
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleViewer} title={viewerOpen ? "Close viewer" : "Open viewer"}>
           {viewerOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
         </Button>

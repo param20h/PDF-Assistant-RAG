@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { FileText, MessageSquare, Brain, Shield, Zap, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import ContributorsPanel from "@/components/layout/ContributorsPanel";
+import OpenSourceBadge from "@/components/layout/OpenSourceBadge";
 
 export default function HomePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && user) {
@@ -116,6 +119,14 @@ export default function HomePage() {
       <footer className="text-center py-6 text-xs text-muted-foreground border-t border-border/50">
         Built with FastAPI • LangChain • ChromaDB • HuggingFace • Next.js
       </footer>
+
+      {/* Hall of Fame Modal */}
+      {hallOfFameOpen && (
+        <ContributorsPanel onClose={() => setHallOfFameOpen(false)} />
+      )}
+
+      {/* Open Source floating badge */}
+      <OpenSourceBadge onOpenHallOfFame={() => setHallOfFameOpen(true)} />
     </div>
   );
 }
