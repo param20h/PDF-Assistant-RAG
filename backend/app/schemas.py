@@ -58,8 +58,10 @@ class DocumentResponse(BaseModel):
 
 
 class DocumentListResponse(BaseModel):
-    documents: List[DocumentResponse]
+    items: List[DocumentResponse]
     total: int
+    page: int
+    pages: int
 
 
 # ── Chat ─────────────────────────────────────────────
