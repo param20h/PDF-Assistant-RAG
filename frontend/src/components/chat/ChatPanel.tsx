@@ -35,6 +35,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
 
@@ -99,17 +100,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    // Add placeholder assistant message
+    
     const assistantId = `assistant-${Date.now()}`;
-    const assistantMsg: ChatMsg = {
-      id: assistantId,
-      role: "assistant",
-      content: "",
-      sources: [],
-      isStreaming: true,
-    };
-    setMessages((prev) => [...prev, assistantMsg]);
+    let assistantCreated = false;
+
     setStreaming(true);
+    setIsTyping(true);
 
     try {
       const stream = api.streamPost("/api/v1/chat/ask/stream", {
@@ -119,13 +115,29 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       for await (const event of stream) {
         if (event.type === "token") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: m.content + (event.data as string) }
-                : m
-            )
-          );
+          // Create assistant message only when first token arrives
+          if (!assistantCreated) {
+            assistantCreated = true;
+            setIsTyping(false);
+
+            const assistantMsg: ChatMsg = {
+              id: assistantId,
+              role: "assistant",
+              content: event.data as string,
+              sources: [],
+              isStreaming: true,
+            };
+
+            setMessages((prev) => [...prev, assistantMsg]);
+          } else {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, content: m.content + (event.data as string) }
+                  : m
+              )
+            );
+          }
         } else if (event.type === "sources") {
           setMessages((prev) =>
             prev.map((m) =>
@@ -135,6 +147,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             )
           );
         } else if (event.type === "error") {
+          setIsTyping(false);
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
@@ -151,6 +164,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         }
       }
     } catch (err) {
+      setIsTyping(false);
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId
@@ -164,6 +178,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       );
     } finally {
       setStreaming(false);
+      setIsTyping(false);
     }
   };
 
@@ -173,7 +188,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       await api.delete(`/api/v1/chat/history/${activeDoc.id}`);
       setMessages([]);
     } catch {
-      // silently fail
+        //silent fail
     }
   };
 
@@ -188,7 +203,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     <div className="h-full flex flex-col">
       {/* ── Chat Messages ──────────────────────────── */}
       <ScrollArea className="flex-1 px-4">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !isTyping ? (
           <div className="h-full flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
               <MessageSquare className="w-8 h-8 text-primary/60" />
@@ -214,6 +229,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 )}
               </div>
             ))}
+            {isTyping && (
+              <div className="flex items-center gap-1 ml-10 py-2">
+                <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-2 h-2 rounded-full bg-muted-foreground animate-bounce" />
+              </div>
+            )}
           </div>
         )}
         {/* Sentinel element – scrolled into view on new messages */}
