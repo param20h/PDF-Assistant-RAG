@@ -6,6 +6,9 @@ import os
 import uuid
 import logging
 from typing import Optional
+from pathlib import Path
+import shutil
+import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, status, Query
 from fastapi.responses import FileResponse
@@ -23,6 +26,73 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+
+
+ALLOWED_MIME_TYPES = settings.ALLOWED_MIME_TYPES
+
+
+async def validate_upload(file: UploadFile):
+    """Validate an incoming UploadFile. Returns path to a temporary saved file.
+
+    Checks extension, size (against settings.MAX_UPLOAD_SIZE_MB), MIME signature
+    using libmagic, and attempts to parse the file for deep validation.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    ext = Path(file.filename).suffix.lower()
+
+    # extension without leading dot in settings
+    if ext.lstrip(".") not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are allowed")
+
+    # save to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        # UploadFile.file is a file-like object
+        shutil.copyfileobj(file.file, tmp)
+        temp_path = tmp.name
+
+    try:
+        size = Path(temp_path).stat().st_size
+
+        if size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File too large")
+
+        # libmagic may not be installed in all environments — import lazily
+        try:
+            import magic
+            # make sure you have installed libmagic in your system, otherwise it will not work
+        except Exception:
+            Path(temp_path).unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail="Server missing 'python-magic' dependency")
+
+        mime = magic.from_file(temp_path, mime=True)
+
+        if mime not in ALLOWED_MIME_TYPES.get(ext, []):
+            Path(temp_path).unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail=f"Invalid file type: {mime}")
+
+        # Deep validation: try to parse the file — import parsers lazily
+        try:
+            if ext == ".pdf":
+                from pypdf import PdfReader
+
+                PdfReader(temp_path)
+            elif ext == ".docx":
+                from docx import Document as DocxDocument
+
+                DocxDocument(temp_path)
+        except Exception:
+            Path(temp_path).unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="Corrupted or invalid file")
+
+        return temp_path
+
+    finally:
+        """If an exception was raised above it will propagate; caller should
+        remove the temp file when appropriate. We don't unlink here because
+        caller will move the file on success."""
+        pass
 
 
 def _ingest_document(document_id: str, filepath: str, original_name: str, user_id: str):
@@ -104,29 +174,19 @@ async def upload_document(
             detail=f"File type '.{ext}' not supported. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}",
         )
 
-    # ── Read and validate size ───────────────────────
-    content = await file.read()
-    file_size = len(content)
+    # ── Validate and save file to disk ───────────────
+    temp_path = await validate_upload(file)
 
-    if file_size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        size_mb = file_size / (1024 * 1024)
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Upload rejected: file size ({size_mb:.1f} MB) exceeds the maximum "
-                f"allowed size of {settings.MAX_UPLOAD_SIZE_MB} MB."
-            ),
-        )
-
-    # ── Save file to disk ────────────────────────────
     user_dir = os.path.join(settings.UPLOAD_DIR, user.id)
     os.makedirs(user_dir, exist_ok=True)
 
     stored_filename = f"{uuid.uuid4().hex}.{ext}"
     filepath = os.path.join(user_dir, stored_filename)
 
-    with open(filepath, "wb") as f:
-        f.write(content)
+    # Move temp file to final destination
+    shutil.move(temp_path, filepath)
+
+    file_size = Path(filepath).stat().st_size
 
     # ── Create database record ───────────────────────
     document = Document(
