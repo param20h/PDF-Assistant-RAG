@@ -4,7 +4,6 @@ name: CI — Dev Branch
 # Only runs on:
 #   • Pushes to dev
 #   • PRs targeting dev
-# NEVER triggers on main → HuggingFace deployment is safe.
 # ──────────────────────────────────────────────────────────
 on:
   push:
