@@ -292,7 +292,7 @@ PDF-Assistant-RAG/
 │
 ├── Dockerfile                        # Multi-stage: Node build → Python serve
 ├── docker-compose.yml                # Local Docker stack
-├── CONTRIBUTING.md                   # GSSOC contributor guide
+├── CONTRIBUTING.md                   # contributor guide
 └── .env.example                      # Template for environment variables
 ```
 
@@ -514,7 +514,7 @@ docker compose up -d --build
 
 <br/>
 
-## 🤝 Contributing — GSSOC
+## 🤝 Contributing
 
 This project is participating in **GirlScript Summer of Code**! We welcome contributors of all skill levels.
 
@@ -550,7 +550,7 @@ Distributed under the **MIT License**. See [`LICENSE`](license) for more informa
 
 **Built with 💙 as a flagship AI engineering project**
 
-*If you found this project helpful, please give it a ⭐ — it helps GSSOC contributors discover it!*
+*If you found this project helpful, please give it a ⭐ — it helps contributors discover it!*
 
 <br/>
 
