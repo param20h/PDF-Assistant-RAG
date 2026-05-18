@@ -69,8 +69,6 @@ Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 
 
 <br/>
 
-> 🌟 **GSSOC Contributors** — This project is open for [GirlScript Summer of Code](https://gssoc.girlscript.tech/). Check out our [CONTRIBUTING.md](CONTRIBUTING.md) to get started and browse [open issues](https://github.com/param20h/PDF-Assistant-RAG/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) tagged `good first issue`.
-
 ---
 
 <br/>
@@ -80,6 +78,65 @@ Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 
 **PDF-Assistant-RAG** is a complete, production-ready AI document assistant that lets users upload complex PDFs, financial reports, legal contracts, and research papers — then chat with an AI that provides **accurate, cited answers** powered by a multi-stage Retrieval-Augmented Generation pipeline.
 
 The system uses **semantic search + cross-encoder reranking** to find the most relevant document chunks, streams AI-generated answers token-by-token, and highlights exact source citations with page numbers — all inside a sleek Next.js UI with JWT-secured per-user data isolation.
+
+<br/>
+
+## 🏗️ Architecture
+
+```mermaid
+graph TD
+    subgraph Frontend["Frontend (Next.js 16)"]
+        UI["Dashboard UI (React)"]
+        Chat["Chat Panel (SSE)"]
+        Viewer["PDF Viewer (iframe)"]
+    end
+
+    subgraph Backend["Backend (FastAPI 0.115+)"]
+        API["API Router (/api/v1)"]
+        Auth["Auth (JWT/bcrypt)"]
+        DB[(SQLite Metadata)]
+
+        subgraph RAG["RAG Pipeline"]
+            Upload["Ingestion Task (Chunking)"]
+            Embed["Local Embeddings (all-MiniLM-L6-v2)"]
+            Retriever["Two-Stage Retriever"]
+            Rerank["Cross-Encoder Reranker"]
+            Agent["Agent/Generator"]
+        end
+    end
+
+    subgraph Storage["Vector Storage"]
+        Chroma[(ChromaDB)]
+    end
+
+    subgraph External["External Services"]
+        HF["HuggingFace Inference API (Qwen 72B)"]
+    end
+
+    %% Frontend to Backend Connections
+    UI <-->|REST / Auth| API
+    Chat <-->|SSE Streaming| API
+    Viewer -->|Fetch PDF| API
+
+    %% Backend Internals
+    API <--> Auth
+    API <--> DB
+    API --> Upload
+    API <--> Retriever
+    API <--> Agent
+
+    %% RAG Ingestion Flow
+    Upload --> Embed
+    Embed -->|Store Vectors| Chroma
+
+    %% RAG Query Flow
+    Retriever -->|1. Semantic Search| Chroma
+    Retriever -->|2. Score & Sort| Rerank
+    Retriever -->|Context| Agent
+
+    %% External LLM Flow
+    Agent <-->|LLM Generation| HF
+```
 
 <br/>
 
@@ -235,7 +292,7 @@ PDF-Assistant-RAG/
 │
 ├── Dockerfile                        # Multi-stage: Node build → Python serve
 ├── docker-compose.yml                # Local Docker stack
-├── CONTRIBUTING.md                   # GSSOC contributor guide
+├── CONTRIBUTING.md                   # contributor guide
 └── .env.example                      # Template for environment variables
 ```
 
@@ -378,22 +435,30 @@ docker compose up --build
 
 ## 📦 Environment Variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `HF_TOKEN` | ✅ | — | HuggingFace API token for LLM inference |
-| `SECRET_KEY` | ✅ | — | JWT signing secret (use a strong random string) |
-| `DATABASE_URL` | ❌ | `sqlite:///./data/app.db` | SQLAlchemy database URL |
-| `UPLOAD_DIR` | ❌ | `./data/uploads` | Directory for uploaded files |
-| `CHROMA_PERSIST_DIR` | ❌ | `./data/chroma_db` | ChromaDB persistence path |
-| `LLM_MODEL` | ❌ | `Qwen/Qwen2.5-72B-Instruct` | HuggingFace model ID |
-| `LLM_TEMPERATURE` | ❌ | `0.3` | LLM sampling temperature |
-| `LLM_MAX_NEW_TOKENS` | ❌ | `1024` | Max tokens per response |
-| `EMBEDDING_MODEL` | ❌ | `all-MiniLM-L6-v2` | SentenceTransformer model |
-| `CHUNK_SIZE` | ❌ | `1000` | Document chunk size (characters) |
-| `CHUNK_OVERLAP` | ❌ | `200` | Overlap between chunks |
-| `TOP_K_RETRIEVAL` | ❌ | `10` | Candidates retrieved from vector store |
-| `TOP_K_RERANK` | ❌ | `5` | Final chunks passed to LLM after reranking |
-| `MAX_FILE_SIZE_MB` | ❌ | `50` | Maximum upload file size |
+| Variable | Required | Default | Description | Where to Get It |
+|---|---|---|---|---|
+| `SECRET_KEY` | ✅ | — | JWT signing & session secret. Use a strong random string. | Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `HF_TOKEN` | ✅ | — | HuggingFace API token for LLM inference via Inference API. | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (free) |
+| `ENVIRONMENT` | ❌ | `development` | Runtime mode. Set to `production` for deployment to lock CORS. | — |
+| `DEBUG` | ❌ | `False` | Enable debug mode with detailed error pages. Never enable in production. | — |
+| `ALLOWED_ORIGINS` | ❌ | `http://localhost:3000,http://localhost:7860` | Comma-separated CORS origins (only enforced in production). | Your deployed domain(s) |
+| `DATABASE_URL` | ❌ | `sqlite:///./data/app.db` | SQLAlchemy database connection string. | SQLite (default), or your Postgres/MySQL connection string |
+| `JWT_ALGORITHM` | ❌ | `HS256` | JWT signing algorithm. | — |
+| `JWT_EXPIRY_HOURS` | ❌ | `72` | JWT token lifetime in hours before re-login is required. | — |
+| `UPLOAD_DIR` | ❌ | `./data/uploads` | Local directory for storing uploaded documents. | — |
+| `MAX_FILE_SIZE_MB` | ❌ | `50` | Maximum allowed upload file size in MB. | — |
+| `ALLOWED_EXTENSIONS` | ❌ | `pdf,docx,txt,md` | Comma-separated list of permitted file extensions. | — |
+| `CHROMA_PERSIST_DIR` | ❌ | `./data/chroma_db` | Directory where ChromaDB persists its vector index. | — |
+| `LLM_MODEL` | ❌ | `Qwen/Qwen2.5-72B-Instruct` | HuggingFace model ID for answer generation. | [huggingface.co/models](https://huggingface.co/models?inference=warm&sort=trending) |
+| `LLM_TEMPERATURE` | ❌ | `0.3` | LLM sampling temperature (0 = deterministic, 1 = creative). | — |
+| `LLM_MAX_NEW_TOKENS` | ❌ | `1024` | Maximum tokens per LLM response. | — |
+| `EMBEDDING_MODEL` | ❌ | `sentence-transformers/all-MiniLM-L6-v2` | SentenceTransformer model for local embeddings (no external API). | [huggingface.co/sentence-transformers](https://huggingface.co/sentence-transformers) |
+| `EMBEDDING_DIMENSION` | ❌ | `384` | Embedding vector dimension (must match the model). | — |
+| `RERANKER_MODEL` | ❌ | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model for reranking retrieved chunks by relevance. | [huggingface.co/cross-encoder](https://huggingface.co/cross-encoder) |
+| `CHUNK_SIZE` | ❌ | `1000` | Characters per document chunk. Larger = more context, smaller = better precision. | — |
+| `CHUNK_OVERLAP` | ❌ | `200` | Overlap between consecutive chunks to maintain boundary context. | — |
+| `TOP_K_RETRIEVAL` | ❌ | `10` | Candidate chunks retrieved from vector store during semantic search. | — |
+| `TOP_K_RERANK` | ❌ | `5` | Final chunks passed to the LLM after reranking (must be ≤ `TOP_K_RETRIEVAL`). | — |
 
 <br/>
 
@@ -449,7 +514,7 @@ docker compose up -d --build
 
 <br/>
 
-## 🤝 Contributing — GSSOC
+## 🤝 Contributing
 
 This project is participating in **GirlScript Summer of Code**! We welcome contributors of all skill levels.
 
@@ -485,7 +550,7 @@ Distributed under the **MIT License**. See [`LICENSE`](license) for more informa
 
 **Built with 💙 as a flagship AI engineering project**
 
-*If you found this project helpful, please give it a ⭐ — it helps GSSOC contributors discover it!*
+*If you found this project helpful, please give it a ⭐ — it helps contributors discover it!*
 
 <br/>
 
