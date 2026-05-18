@@ -7,7 +7,7 @@ import uuid
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -154,20 +154,38 @@ async def upload_document(
 
 @router.get("/", response_model=DocumentListResponse)
 def list_documents(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all documents for the authenticated user."""
+    """Number of rows to skip"""
+    skip: int = (page - 1) * per_page
+
+    """Total Pages"""
+    totalDocuments = (
+        db.query(Document)
+        .filter(Document.user_id == user.id)
+        .count()
+    )
+    """Total Pages"""
+    pages = (totalDocuments + per_page - 1) // per_page
+    
+    """List all documents for the authenticated user in Paginated form"""
     docs = (
         db.query(Document)
         .filter(Document.user_id == user.id)
         .order_by(Document.uploaded_at.desc())
+        .offset(skip)
+        .limit(per_page)
         .all()
     )
 
     return DocumentListResponse(
-        documents=[DocumentResponse.model_validate(d) for d in docs],
-        total=len(docs),
+        items=[DocumentResponse.model_validate(d) for d in docs],
+        total=totalDocuments,
+        page=page,
+        pages=pages
     )
 
 
