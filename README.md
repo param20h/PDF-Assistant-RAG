@@ -141,7 +141,7 @@ Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 
       <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/akshy-yy">
           <img src="https://avatars.githubusercontent.com/u/220587504?v=4" width="80px;" style="border-radius:50%" alt="akshy-yy"/>
-          <br/><sub><b>blinkerbit</b></sub>
+          <br/><sub><b>akshy-yy</b></sub>
         </a>
         <br/>💻
       </td>
