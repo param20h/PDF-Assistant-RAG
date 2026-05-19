@@ -62,12 +62,87 @@ Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 
 <br/>
 
 <div align="center">
-  <a href="https://github.com/param20h/PDF-Assistant-RAG/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=param20h/PDF-Assistant-RAG" alt="Contributors" />
-  </a>
-</div>
 
-<br/>
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/param20h">
+          <img src="https://avatars.githubusercontent.com/u/140331071?v=4" width="80px;" style="border-radius:50%" alt="param20h"/>
+          <br/><sub><b>param20h</b></sub>
+        </a>
+        <br/>💻 🚇 📖
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/Yuvraj-Sarathe">
+          <img src="https://avatars.githubusercontent.com/u/216678101?v=4" width="80px;" style="border-radius:50%" alt="Yuvraj-Sarathe"/>
+          <br/><sub><b>Yuvraj-Sarathe</b></sub>
+        </a>
+        <br/>💻 🧪 🔒
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/SatyamPrakash09">
+          <img src="https://avatars.githubusercontent.com/u/195105483?v=4" width="80px;" style="border-radius:50%" alt="SatyamPrakash09"/>
+          <br/><sub><b>SatyamPrakash09</b></sub>
+        </a>
+        <br/>💻 🔒 ⚡
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/akmhatey-ai">
+          <img src="https://avatars.githubusercontent.com/u/260399619?v=4" width="80px;" style="border-radius:50%" alt="akmhatey-ai"/>
+          <br/><sub><b>akmhatey-ai</b></sub>
+        </a>
+        <br/>💻 🐛
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/drishtisharma14052007-eng">
+          <img src="https://avatars.githubusercontent.com/u/233135226?v=4" width="80px;" style="border-radius:50%" alt="drishtisharma14052007-eng"/>
+          <br/><sub><b>drishtisharma14052007-eng</b></sub>
+        </a>
+        <br/>💻 🎨
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/Pika-pika06">
+          <img src="https://avatars.githubusercontent.com/u/253691302?v=4" width="80px;" style="border-radius:50%" alt="Pika-pika06"/>
+          <br/><sub><b>Pika-pika06</b></sub>
+        </a>
+        <br/>💻
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/algojogacor">
+          <img src="https://avatars.githubusercontent.com/u/239139125?v=4" width="80px;" style="border-radius:50%" alt="algojogacor"/>
+          <br/><sub><b>algojogacor</b></sub>
+        </a>
+        <br/>💻
+      </td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/HirenGajjar">
+          <img src="https://avatars.githubusercontent.com/u/40492198?v=4" width="80px;" style="border-radius:50%" alt="HirenGajjar"/>
+          <br/><sub><b>HirenGajjar</b></sub>
+        </a>
+        <br/>💻
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/Kaustub26Pvgda">
+          <img src="https://avatars.githubusercontent.com/u/152937301?v=4" width="80px;" style="border-radius:50%" alt="Kaustub26Pvgda"/>
+          <br/><sub><b>Kaustub26Pvgda</b></sub>
+        </a>
+        <br/>💻
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/blinkerbit">
+          <img src="https://avatars.githubusercontent.com/u/9065654?v=4" width="80px;" style="border-radius:50%" alt="blinkerbit"/>
+          <br/><sub><b>blinkerbit</b></sub>
+        </a>
+        <br/>💻
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+</div>
 
 ---
 
