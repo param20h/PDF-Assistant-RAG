@@ -40,3 +40,11 @@ huggingface-hub
 
 # Production
 gunicorn
+
+# File Validation
+#sudo apt-get install libmagic1 // for Debian/Ubuntu
+#brew install libmagic // for OSX
+python-magic-bin==0.4.27 # for windows
+python-magic
+python-docx
+pypdf

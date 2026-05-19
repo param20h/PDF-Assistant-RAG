@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 20
     ALLOWED_EXTENSIONS: set = {"pdf", "docx", "txt", "md"}
+    ALLOWED_MIME_TYPES: dict = {
+        ".pdf": ["application/pdf"],
+        ".docx": [
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/zip",
+        ]
+    }
 
     # ── RAG Pipeline ─────────────────────────────────────
     CHUNK_SIZE: int = 1000
