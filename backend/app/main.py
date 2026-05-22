@@ -10,9 +10,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
-from app.database import init_db
+from app.database import init_db, get_db
+from app.rag.vectorstore import get_chroma_client
 
 # Configure logging
 logging.basicConfig(
@@ -89,6 +92,35 @@ def health_check():
         "version": "2.0.0",
     }
 
+@app.get('/health')
+def db_health():
+    db_status = "down"
+    chroma_status = "down"
+
+    # --- DB check ---
+    try:
+        db = next(get_db())
+        db.execute(select(1))
+        db_status = "up"
+    except SQLAlchemyError:
+        db_status = "down"
+    except Exception:
+        db_status = "down"
+
+    # --- Chroma check ---
+    try:
+        chroma = get_chroma_client()
+        chroma.heartbeat()
+        chroma_status = "up"
+    except Exception:
+        chroma_status = "down"
+
+    overall_status = "ok" if db_status == "up" and chroma_status == "up" else "degraded"
+    return{
+        "status": db_status,
+        "chroma": chroma_status,
+        "db": db_status
+    }
 
 # ── Serve Next.js Frontend (production) ──────────────
 FRONTEND_BUILD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "out")
