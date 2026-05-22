@@ -232,9 +232,13 @@ def list_documents(
     pages = (totalDocuments + per_page - 1) // per_page
     
     """List all documents for the authenticated user in Paginated form"""
-    docs = (
-            db.execute(select(Document).where(Document.user_id == user.id).limit(per_page).offset(skip))
-        ).scalars().all()
+    docs = ((
+            db.execute(select(Document)
+            .where(Document.user_id == user.id)
+            .order_by(Document.uploaded_at.desc())
+            .limit(per_page).offset(skip))
+            )
+            .scalars().all())
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in docs],
