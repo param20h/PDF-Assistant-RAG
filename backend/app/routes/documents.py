@@ -21,7 +21,7 @@ from app.auth import get_current_user
 from app.config import get_settings
 from app.rag.chunker import chunk_document, get_page_count
 from app.rag.vectorstore import store_chunks, delete_document_chunks
-
+from sqlalchemy import select
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
@@ -233,13 +233,8 @@ def list_documents(
     
     """List all documents for the authenticated user in Paginated form"""
     docs = (
-        db.query(Document)
-        .filter(Document.user_id == user.id)
-        .order_by(Document.uploaded_at.desc())
-        .offset(skip)
-        .limit(per_page)
-        .all()
-    )
+            db.execute(select(Document).where(Document.user_id == user.id).limit(per_page).offset(skip))
+        ).scalars().all()
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in docs],
