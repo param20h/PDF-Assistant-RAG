@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models import User
 from app.schemas import UserRegister, UserLogin, TokenResponse, UserResponse, RefreshRequest, UserUpdate, \
-    UserUpdateResponse
+    UserUpdateResponse, UpdatePassword, UpdatePasswordResponse
 from app.auth import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, decode_token
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -138,4 +138,25 @@ def update_user_info(payload:UserUpdate,
 
         raise HTTPException(status_code=400, detail="Database error")
 
-
+@router.put("/password")
+def update_password(payload:UpdatePassword,
+                    user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db))-> UpdatePasswordResponse:
+    """Update user password."""
+    if not payload.password and not payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Password and confirm_password are required")
+    if len(payload.password) == 0 and len(payload.confirm_password) == 0:
+        raise HTTPException(status_code=400, detail="Password and confirm_password are required")
+    if payload.password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Password and confirm_password are different")
+    try:
+        hashed_password = hash_password(payload.password)
+        user.hashed_password = hashed_password
+        db.commit()
+        db.refresh(user)
+        return user
+    except HTTPException:
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Database error")
