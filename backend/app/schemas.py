@@ -26,6 +26,17 @@ class UserUpdateResponse(BaseModel):
     id: str
     username: str
     email: EmailStr
+
+class UpdatePassword(BaseModel):
+    password: str
+    confirm_password: str
+
+class UpdatePasswordResponse(BaseModel):
+    id: str
+    username: str
+    email: EmailStr
+    password_changed:bool = True
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
