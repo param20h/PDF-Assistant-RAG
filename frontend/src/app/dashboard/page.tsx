@@ -40,7 +40,7 @@ export default function DashboardPage() {
   const loadDocuments = useCallback(async () => {
     try {
       const data = await api.get<{ documents: DocInfo[] }>("/api/v1/documents/");
-      setDocuments(data.documents);
+      setDocuments(data?.documents ?? []);
       setConnectionError("");
     } catch (err) {
       const message = err instanceof Error ? err.message : CONNECTION_ERROR_MESSAGE;
@@ -62,7 +62,7 @@ export default function DashboardPage() {
 
   // Poll for processing status
   useEffect(() => {
-    const hasPending = documents.some(
+    const hasPending = (documents || []).some(
       (d) => d.status === "pending" || d.status === "processing"
     );
     if (!hasPending) return;

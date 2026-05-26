@@ -11,7 +11,7 @@ interface Props {
   onPageClick: (page: number) => void;
 }
 
-export default function SourceCard({ sources, onPageClick }: Props) {
+export default function SourceCard({ sources = [], onPageClick }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   if (sources.length === 0) return null;
