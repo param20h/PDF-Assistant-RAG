@@ -19,7 +19,7 @@ interface Props {
   onDocumentsChange: () => void;
 }
 
-export default function DocumentSidebar({ documents, activeDoc, onSelectDoc, onDocumentsChange }: Props) {
+export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc, onDocumentsChange }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");

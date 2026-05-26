@@ -2,12 +2,12 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { DocInfo } from "@/app/dashboard/page";
-import { api } from "@/lib/api";
+import { api, API_BASE } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import { Send, Loader2, Trash2, MessageSquare } from "lucide-react";
+import { Send, Loader2, Trash2, MessageSquare, Download } from "lucide-react";
 
 export interface SourceChunk {
   text: string;
@@ -35,9 +35,11 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -209,6 +211,32 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     }
   };
 
+  const handleExport = (format: "md" | "txt") => {
+    if (!activeDoc) return;
+    setShowExportMenu(false);
+    const token = localStorage.getItem("token");
+    const url = `${API_BASE}/api/v1/chat/export/${activeDoc.id}?format=${format}&token=${token}`;
+    // Trigger download via a temporary anchor
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showExportMenu]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -291,14 +319,50 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               )}
             </Button>
             {messages.length > 0 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleClear}
-                className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
+              <>
+                {/* Export dropdown */}
+                <div className="relative" ref={exportMenuRef}>
+                  <Button
+                    id="export-chat-btn"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowExportMenu((v) => !v)}
+                    className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
+                    title="Export chat history"
+                  >
+                    <Download className="w-4 h-4" />
+                  </Button>
+                  {showExportMenu && (
+                    <div className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50">
+                      <button
+                        id="export-md-btn"
+                        onClick={() => handleExport("md")}
+                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                      >
+                        <span className="text-base">📝</span>
+                        Markdown (.md)
+                      </button>
+                      <button
+                        id="export-txt-btn"
+                        onClick={() => handleExport("txt")}
+                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                      >
+                        <span className="text-base">📄</span>
+                        Plain Text (.txt)
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* Clear history */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleClear}
+                  className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </>
             )}
           </div>
         </div>
