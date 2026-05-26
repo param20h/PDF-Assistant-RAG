@@ -166,6 +166,79 @@ def get_chat_history(
     return ChatHistoryResponse(messages=formatted, document_id=document_id)
 
 
+@router.get("/export/{document_id}")
+def export_chat_history(
+    document_id: str,
+    format: str = "md",
+    token: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Export chat history for a document as a downloadable .md or .txt file.
+    
+    Accepts auth via either:
+    - Authorization: Bearer <token> header (standard)
+    - ?token=<jwt> query parameter (for browser downloads)
+    """
+    from fastapi import Request
+    from app.auth import decode_token as _decode
+
+    # Resolve user from query-param token (browser download links can't set headers)
+    resolved_user = None
+    if token:
+        user_id = _decode(token)
+        if user_id:
+            resolved_user = db.query(User).filter(User.id == user_id).first()
+    
+    if resolved_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    if format not in ("md", "txt"):
+        raise HTTPException(status_code=400, detail="Format must be 'md' or 'txt'")
+
+    # Verify document exists and belongs to user
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == resolved_user.id,
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    messages = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.user_id == resolved_user.id,
+            ChatMessage.document_id == document_id,
+        )
+        .order_by(ChatMessage.created_at.asc())
+        .all()
+    )
+
+    if not messages:
+        raise HTTPException(status_code=404, detail="No chat history found for this document")
+
+    if format == "md":
+        content = _format_markdown(doc, messages)
+        media_type = "text/markdown"
+        extension = "md"
+    else:
+        content = _format_plaintext(doc, messages)
+        media_type = "text/plain"
+        extension = "txt"
+
+    safe_name = doc.original_name.rsplit(".", 1)[0]
+    filename = f"{safe_name}_chat_history.{extension}"
+
+    from fastapi.responses import Response
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
 @router.delete("/history/{document_id}")
 def clear_chat_history(
     document_id: str,
@@ -200,3 +273,89 @@ def _save_message(
     )
     db.add(msg)
     db.commit()
+
+
+def _format_markdown(doc, messages) -> str:
+    """Format chat history as a Markdown document."""
+    lines = [
+        f"# Chat History — {doc.original_name}",
+        "",
+        f"**Document:** {doc.original_name}  ",
+        f"**Exported at:** {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  ",
+        f"**Total messages:** {len(messages)}",
+        "",
+        "---",
+        "",
+    ]
+
+    for msg in messages:
+        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else ""
+        role_label = "**You**" if msg.role == "user" else "**Assistant**"
+
+        lines.append(f"### {role_label}")
+        lines.append(f"*{timestamp}*")
+        lines.append("")
+        lines.append(msg.content)
+        lines.append("")
+
+        # Include source citations for assistant messages
+        if msg.role == "assistant" and msg.sources_json:
+            try:
+                sources = json.loads(msg.sources_json)
+                if sources:
+                    lines.append("**Sources:**")
+                    lines.append("")
+                    for i, src in enumerate(sources, 1):
+                        lines.append(f"> **[{i}]** {src.get('filename', 'Unknown')}, "
+                                     f"Page {src.get('page', '?')} "
+                                     f"(Confidence: {src.get('confidence', 0)}%)")
+                        text_preview = src.get("text", "")[:150]
+                        if text_preview:
+                            lines.append(f"> {text_preview}...")
+                        lines.append(">")
+                    lines.append("")
+            except Exception:
+                pass
+
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_plaintext(doc, messages) -> str:
+    """Format chat history as plain text."""
+    lines = [
+        f"Chat History — {doc.original_name}",
+        f"Exported at: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Total messages: {len(messages)}",
+        "=" * 60,
+        "",
+    ]
+
+    for msg in messages:
+        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else ""
+        role_label = "You" if msg.role == "user" else "Assistant"
+
+        lines.append(f"[{role_label}] ({timestamp})")
+        lines.append(msg.content)
+
+        # Include source citations for assistant messages
+        if msg.role == "assistant" and msg.sources_json:
+            try:
+                sources = json.loads(msg.sources_json)
+                if sources:
+                    lines.append("")
+                    lines.append("Sources:")
+                    for i, src in enumerate(sources, 1):
+                        lines.append(f"  [{i}] {src.get('filename', 'Unknown')}, "
+                                     f"Page {src.get('page', '?')} "
+                                     f"(Confidence: {src.get('confidence', 0)}%)")
+            except Exception:
+                pass
+
+        lines.append("-" * 60)
+        lines.append("")
+
+    return "\n".join(lines)
+

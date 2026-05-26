@@ -1,6 +1,7 @@
 /**
  * API client for the FastAPI backend.
- * Handles authentication headers and base URL configuration.
+ * Handles authentication headers, base URL configuration,
+ * and automatic token refresh on 401 responses.
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -9,10 +10,14 @@ const CONNECTION_ERROR_BANNER_MESSAGE = `⚠️ ${CONNECTION_ERROR_MESSAGE}`;
 
 interface FetchOptions extends RequestInit {
   token?: string;
+  /** Skip auto-refresh for this request (used internally for the refresh call itself) */
+  _skipRefresh?: boolean;
 }
 
 class ApiClient {
   private baseUrl: string;
+  /** Guards against multiple concurrent refresh attempts */
+  private refreshPromise: Promise<string | null> | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -21,6 +26,11 @@ class ApiClient {
   private getToken(): string | null {
     if (typeof window === "undefined") return null;
     return localStorage.getItem("token");
+  }
+
+  private getRefreshToken(): string | null {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("refresh_token");
   }
 
   private getHeaders(token?: string): HeadersInit {
@@ -45,6 +55,67 @@ class ApiClient {
       }
       throw error;
     }
+  }
+
+  /**
+   * Attempt to refresh the access token using the stored refresh token.
+   * Uses a mutex so only one refresh happens at a time — concurrent
+   * 401s all wait on the same promise.
+   */
+  private async tryRefreshToken(): Promise<string | null> {
+    // If a refresh is already in-flight, wait for it
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) return null;
+
+    this.refreshPromise = (async () => {
+      try {
+        const res = await this.fetchWithConnectionError(`${this.baseUrl}/api/v1/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+
+        if (!res.ok) {
+          // Refresh token is also expired/invalid — force logout
+          this.clearTokens();
+          return null;
+        }
+
+        const data = await res.json();
+        // Store the new tokens
+        localStorage.setItem("token", data.access_token);
+        if (data.refresh_token) {
+          localStorage.setItem("refresh_token", data.refresh_token);
+        }
+
+        // Dispatch a custom event so AuthProvider can update its state
+        window.dispatchEvent(
+          new CustomEvent("auth:tokens-refreshed", {
+            detail: { accessToken: data.access_token, refreshToken: data.refresh_token, user: data.user },
+          })
+        );
+
+        return data.access_token as string;
+      } catch {
+        this.clearTokens();
+        return null;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
+  }
+
+  private clearTokens(): void {
+    localStorage.removeItem("token");
+    localStorage.removeItem("refresh_token");
+    // Notify AuthProvider to update state
+    window.dispatchEvent(new CustomEvent("auth:logged-out"));
   }
 
   private getPayloadMessage(payload: unknown): string | null {
@@ -92,6 +163,14 @@ class ApiClient {
       ...options,
     });
 
+    // Auto-refresh on 401
+    if (res.status === 401 && !options?._skipRefresh) {
+      const newToken = await this.tryRefreshToken();
+      if (newToken) {
+        return this.get<T>(path, { ...options, token: newToken, _skipRefresh: true });
+      }
+    }
+
     if (!res.ok) {
       throw new Error(await this.getErrorMessage(res, res.statusText || "Request failed"));
     }
@@ -106,6 +185,14 @@ class ApiClient {
       body: body ? JSON.stringify(body) : undefined,
       ...options,
     });
+
+    // Auto-refresh on 401
+    if (res.status === 401 && !options?._skipRefresh) {
+      const newToken = await this.tryRefreshToken();
+      if (newToken) {
+        return this.post<T>(path, body, { ...options, token: newToken, _skipRefresh: true });
+      }
+    }
 
     if (!res.ok) {
       throw new Error(await this.getErrorMessage(res, res.statusText || "Request failed"));
@@ -129,6 +216,14 @@ class ApiClient {
       ...options,
     });
 
+    // Auto-refresh on 401
+    if (res.status === 401 && !options?._skipRefresh) {
+      const newToken = await this.tryRefreshToken();
+      if (newToken) {
+        return this.postForm<T>(path, formData, { ...options, token: newToken, _skipRefresh: true });
+      }
+    }
+
     if (!res.ok) {
       throw new Error(await this.getErrorMessage(res, res.statusText || "Upload failed"));
     }
@@ -143,6 +238,14 @@ class ApiClient {
       ...options,
     });
 
+    // Auto-refresh on 401
+    if (res.status === 401 && !options?._skipRefresh) {
+      const newToken = await this.tryRefreshToken();
+      if (newToken) {
+        return this.delete<T>(path, { ...options, token: newToken, _skipRefresh: true });
+      }
+    }
+
     if (!res.ok) {
       throw new Error(await this.getErrorMessage(res, res.statusText || "Delete failed"));
     }
@@ -155,11 +258,23 @@ class ApiClient {
    * Yields parsed SSE data objects.
    */
   async *streamPost(path: string, body: unknown): AsyncGenerator<{ type: string; data?: unknown }> {
-    const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
+    let res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: this.getHeaders(),
       body: JSON.stringify(body),
     });
+
+    // Auto-refresh on 401
+    if (res.status === 401) {
+      const newToken = await this.tryRefreshToken();
+      if (newToken) {
+        res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
+          method: "POST",
+          headers: this.getHeaders(newToken),
+          body: JSON.stringify(body),
+        });
+      }
+    }
 
     if (!res.ok) {
       throw new Error(await this.getErrorMessage(res, res.statusText || "Stream request failed"));
