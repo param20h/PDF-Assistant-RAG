@@ -39,8 +39,10 @@ export default function DashboardPage() {
   // Load documents
   const loadDocuments = useCallback(async () => {
     try {
-      const data = await api.get<{ documents: DocInfo[] }>("/api/v1/documents/");
-      setDocuments(data?.documents ?? []);
+      const data = await api.get<{ documents?: DocInfo[]; items?: DocInfo[] }>(
+        "/api/v1/documents/"
+      );
+      setDocuments(data?.documents ?? data?.items ?? []);
       setConnectionError("");
     } catch (err) {
       const message = err instanceof Error ? err.message : CONNECTION_ERROR_MESSAGE;
