@@ -1,12 +1,19 @@
 """
 Chat routes — ask questions with RAG, stream responses via SSE, manage history.
 """
+import html
 import json
+from datetime import datetime
+from io import BytesIO
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -253,32 +260,31 @@ def export_chat_history(
 ):
     """Export the chat history for a document as a downloadable file.
 
-    Supports Markdown (.md) or plain text (.txt) export. The function accepts
+    Supports Markdown (.md), plain text (.txt), or PDF (.pdf) export. The function accepts
     authentication via either the standard `Authorization: Bearer <token>`
     header (handled by the dependency chain) or a `token` query parameter to
     facilitate browser-initiated downloads that cannot set custom headers.
 
     Args:
         document_id: The unique identifier of the document whose chat history is to be exported.
-        format: Output format, either "md" (Markdown) or "txt" (plain text). Defaults to "md".
+        format: Output format, either "md" (Markdown), "txt" (plain text), or "pdf". Defaults to "md".
         token: Optional JWT token passed as a query parameter. Used for browser
             downloads when the `Authorization` header is not available.
         db: SQLAlchemy database session, obtained from the dependency.
 
     Returns:
         Response: A FastAPI `Response` object with:
-            - `content`: Formatted chat history as a string.
-            - `media_type`: `text/markdown` or `text/plain`.
+            - `content`: Formatted chat history as a string or PDF bytes.
+            - `media_type`: `text/markdown`, `text/plain`, or `application/pdf`.
             - `headers`: `Content-Disposition` attachment header with a generated filename.
 
     Raises:
         HTTPException: 401 if neither the token query parameter nor a valid
             bearer token provides an authenticated user.
-        HTTPException: 400 if the `format` parameter is not "md" or "txt".
+        HTTPException: 400 if the `format` parameter is not "md", "txt", or "pdf".
         HTTPException: 404 if the document does not exist or does not belong
             to the user, or if no chat messages are found for the document.
     """
-    from fastapi import Request
     from app.auth import decode_token as _decode
 
     # Resolve user from query-param token (browser download links can't set headers)
@@ -291,8 +297,8 @@ def export_chat_history(
     if resolved_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    if format not in ("md", "txt"):
-        raise HTTPException(status_code=400, detail="Format must be 'md' or 'txt'")
+    if format not in ("md", "txt", "pdf"):
+        raise HTTPException(status_code=400, detail="Format must be 'md', 'txt', or 'pdf'")
 
     # Verify document exists and belongs to user
     doc = db.query(Document).filter(
@@ -320,15 +326,18 @@ def export_chat_history(
         content = _format_markdown(doc, messages)
         media_type = "text/markdown"
         extension = "md"
-    else:
+    elif format == "txt":
         content = _format_plaintext(doc, messages)
         media_type = "text/plain"
         extension = "txt"
+    else:
+        content = _format_pdf(doc, messages)
+        media_type = "application/pdf"
+        extension = "pdf"
 
     safe_name = doc.original_name.rsplit(".", 1)[0]
     filename = f"{safe_name}_chat_history.{extension}"
 
-    from fastapi.responses import Response
     return Response(
         content=content,
         media_type=media_type,
@@ -527,3 +536,80 @@ def _format_plaintext(doc, messages) -> str:
 
     return "\n".join(lines)
 
+
+def _format_pdf(doc, messages) -> bytes:
+    """Format chat history as a PDF document."""
+    buffer = BytesIO()
+    pdf = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=0.75 * inch,
+        rightMargin=0.75 * inch,
+        topMargin=0.75 * inch,
+        bottomMargin=0.75 * inch,
+    )
+
+    styles = getSampleStyleSheet()
+    metadata_style = styles["Normal"]
+    metadata_style.spaceAfter = 6
+    content_style = ParagraphStyle(
+        "ChatContent",
+        parent=styles["BodyText"],
+        leading=14,
+        spaceAfter=10,
+    )
+    source_style = ParagraphStyle(
+        "ChatSource",
+        parent=styles["BodyText"],
+        leftIndent=14,
+        leading=12,
+        spaceAfter=4,
+    )
+
+    story = [
+        Paragraph(f"Chat History - {html.escape(doc.original_name)}", styles["Title"]),
+        Spacer(1, 0.15 * inch),
+        Paragraph(f"Document: {html.escape(doc.original_name)}", metadata_style),
+        Paragraph(f"Exported at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", metadata_style),
+        Paragraph(f"Total messages: {len(messages)}", metadata_style),
+        Spacer(1, 0.2 * inch),
+    ]
+
+    for msg in messages:
+        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else ""
+        role_label = "You" if msg.role == "user" else "Assistant"
+
+        story.append(Paragraph(f"<b>{html.escape(role_label)}</b>", styles["Heading3"]))
+        story.append(Paragraph(html.escape(timestamp), styles["Italic"]))
+        story.append(Paragraph(_pdf_text(msg.content), content_style))
+
+        if msg.role == "assistant" and msg.sources_json:
+            try:
+                sources = json.loads(msg.sources_json)
+                if sources:
+                    story.append(Paragraph("<b>Sources:</b>", metadata_style))
+                    for i, src in enumerate(sources, 1):
+                        filename = html.escape(str(src.get("filename", "Unknown")))
+                        page = html.escape(str(src.get("page", "?")))
+                        confidence = html.escape(str(src.get("confidence", 0)))
+                        story.append(
+                            Paragraph(
+                                f"[{i}] {filename}, Page {page} (Confidence: {confidence}%)",
+                                source_style,
+                            )
+                        )
+                        text_preview = str(src.get("text", "")).strip()
+                        if text_preview:
+                            story.append(Paragraph(_pdf_text(text_preview), source_style))
+            except Exception:
+                pass
+
+        story.append(Spacer(1, 0.15 * inch))
+
+    pdf.build(story)
+    return buffer.getvalue()
+
+
+def _pdf_text(text: str) -> str:
+    """Escape text for ReportLab paragraphs while preserving line breaks."""
+    return html.escape(text or "").replace("\n", "<br/>")

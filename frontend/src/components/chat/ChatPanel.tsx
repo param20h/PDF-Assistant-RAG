@@ -211,7 +211,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     }
   };
 
-  const handleExport = (format: "md" | "txt") => {
+  const handleExport = (format: "md" | "txt" | "pdf") => {
     if (!activeDoc) return;
     setShowExportMenu(false);
     const token = localStorage.getItem("token");
@@ -349,6 +349,14 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                       >
                         <span className="text-base">📄</span>
                         Plain Text (.txt)
+                      </button>
+                      <button
+                        id="export-pdf-btn"
+                        onClick={() => handleExport("pdf")}
+                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                      >
+                        <span className="text-base">📕</span>
+                        PDF (.pdf)
                       </button>
                     </div>
                   )}
