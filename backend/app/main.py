@@ -77,10 +77,12 @@ logger.info(f"CORS origins: {settings.cors_origins}")
 from app.routes.auth import router as auth_router
 from app.routes.documents import router as documents_router
 from app.routes.chat import router as chat_router
+from app.routes.github import router as github_router
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(documents_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
+app.include_router(github_router, prefix="/api/v1")
 
 
 # ── Health Check ─────────────────────────────────────

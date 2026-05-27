@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { GitBranch, Star, GitPullRequest, Users, X, Trophy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api";
 
 interface Contributor {
   login: string;
@@ -25,13 +26,10 @@ export default function ContributorsPanel({ onClose }: { onClose: () => void }) 
   const REPO = "param20h/PDF-Assistant-RAG";
 
   useEffect(() => {
-    Promise.all([
-      fetch(`https://api.github.com/repos/${REPO}/contributors?per_page=30`).then((r) => r.json()),
-      fetch(`https://api.github.com/repos/${REPO}`).then((r) => r.json()),
-    ])
-      .then(([contribs, repo]) => {
-        setContributors(Array.isArray(contribs) ? contribs : []);
-        setStats(repo);
+    api.get<{ contributors: Contributor[], stats: RepoStats }>("/api/v1/github/stats")
+      .then((data) => {
+        setContributors(Array.isArray(data.contributors) ? data.contributors : []);
+        setStats(data.stats);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -58,7 +56,7 @@ export default function ContributorsPanel({ onClose }: { onClose: () => void }) 
             </div>
             <div>
               <h2 className="font-bold text-base">Hall of Fame</h2>
-              <p className="text-xs text-muted-foreground">GSSOC Contributors — thank you! 🎉</p>
+              <p className="text-xs text-muted-foreground">Contributors — thank you! 🎉</p>
             </div>
           </div>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
