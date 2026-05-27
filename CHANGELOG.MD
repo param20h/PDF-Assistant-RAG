@@ -9,14 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2026-05-16
 ### Added
-- Configured GSSOC contributor workflow on the `dev` branch.
+- Configured contributor workflow on the `dev` branch.
 
 ### Fixed
 - Resolved React Hook linting errors (`react-hooks/set-state-in-effect`) in CI pipelines by lazy-initializing the loading state to prevent `setLoading(false)` execution inside the effect body.
 - Fixed chat scroll component tracking using a `bottomRef` sentinel and `scrollIntoView` mechanism to replace the broken `scrollRef` on the ScrollArea wrapper.
 
 ### Documentation
-- Extensively overhauled `README.md` to add full project documentation, an explicit RAG pipeline architectural diagram, comprehensive API reference, and GSSOC contribution guides.
+- Extensively overhauled `README.md` to add full project documentation, an explicit RAG pipeline architectural diagram, comprehensive API reference, and contribution guides.
 
 ## [0.3.0] - 2026-04-15
 ### Added

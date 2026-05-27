@@ -16,7 +16,7 @@ export default function OpenSourceBadge({ onOpenHallOfFame }: Props) {
     fetch("https://api.github.com/repos/param20h/PDF-Assistant-RAG")
       .then((r) => r.json())
       .then((d) => setStars(d.stargazers_count ?? null))
-      .catch(() => {});
+      .catch(() => { });
 
     // Pulse animation once on mount to draw attention
     const t = setTimeout(() => setHasAnimated(true), 2000);
@@ -35,7 +35,7 @@ export default function OpenSourceBadge({ onOpenHallOfFame }: Props) {
               <GitBranch className="w-4 h-4" />
               <span className="text-sm font-semibold">Open Source</span>
               <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 font-medium border border-green-500/20">
-                GSSOC
+                Contributors
               </span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
