@@ -32,10 +32,28 @@ ALLOWED_MIME_TYPES = settings.ALLOWED_MIME_TYPES
 
 
 async def validate_upload(file: UploadFile):
-    """Validate an incoming UploadFile. Returns path to a temporary saved file.
+    """Validate an uploaded file and save it to a temporary file.
 
-    Checks extension, size (against settings.MAX_UPLOAD_SIZE_MB), MIME signature
-    using libmagic, and attempts to parse the file for deep validation.
+    Checks the file extension, size (against `settings.MAX_UPLOAD_SIZE_MB`),
+    MIME type via libmagic, and performs deep validation by attempting to
+    parse the file (PDF with pypdf, DOCX with python-docx). On success,
+    returns the path to a temporary saved file. 
+
+    Args:
+        file: The FastAPI UploadFile object to validate.
+
+    Returns:
+        str: Path to the temporary saved file that passed all validations.
+    
+    Raises:
+        HTTPException: With status code 400 if:
+            - No filename is provided.
+            - The file extension is not allowed. (only .pdf or .docx)
+            - The file size exceeds the maximum limit.
+            - The MIME type does not match allowed types for the extension.
+            - The file is corrupted or cannot be parsed. (invalid PDF/DOCX)
+        HTTPException: With status code 500 if:
+            - 'python-magic' dependency is missing on the server.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
@@ -97,8 +115,26 @@ async def validate_upload(file: UploadFile):
 
 def _ingest_document(document_id: str, filepath: str, original_name: str, user_id: str):
     """
-    Background task: chunk document, generate embeddings, store in ChromaDB.
-    Updates document status in the database.
+    Process a document in the background: chunk document, generate embeddings, and store in ChromaDB.
+
+    This function is intended to be run as a background task. 
+    It creates its own database session, updates the
+    document status, extracts text, splits into chunks, generates embeddings,
+    stores everything in ChromaDB, and marks the document as 'ready'. On
+    failure, it sets status to 'failed' and records the error message.
+
+    Args:
+        document_id: Unique identifier of the document in the database.
+        filepath: Absolute or relative path to the uploaded file on disk.
+        original_name: original filename provided by the user (for logging and metadata).
+        user_id: Identifier of the user who owns the document.
+    
+    Returns:
+        None
+
+    Note:
+        This function does not raise exceptions to the caller;
+        all errors are logged and the database record is updated accordingly. 
     """
     from app.database import SessionLocal
 
@@ -162,7 +198,31 @@ async def upload_document(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Upload a document for RAG processing."""
+    """
+    Upload a document for RAG processing.
+    
+    Validates the uploaded file (extension, size, MIME type, integrity),
+    saves it to the user's directory, creates a database record with status
+    'pending', and schedules a background task for chunking and embedding.
+
+    Args:
+        background_tasks: FastAPI BackgroundTasks instance to run the ingestion process asynchronously.
+        file: The uploaded file, provided as a multipart/form-data field in the request.
+        user: The currently authenticated user, injected by the `get_current_user` dependency.
+        db: Database session, injected by the `get_db` dependency.
+
+    Returns:
+        DocumentResponse: The created document record, validated against the
+        response model (includes id, filename, original_name, file_size, status, etc.).
+
+    Raises:
+        HTTPException: With status code 400 if:
+            - No filename is provided.
+            - The file extension is not allowed. (only .pdf or .docx)
+            - The file fails validation checks (size, MIME type, integrity).
+        HTTPException: With status code 500 if:
+            - The server lacks the 'python-magic' dependency. 
+    """
     # ── Validate file type ───────────────────────────
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
@@ -219,6 +279,26 @@ def list_documents(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    List all documents for the authenticated user with pagination.
+
+    Returns a paginated list of documents belonging to the current user,
+    ordered by upload date (newest first).
+
+    Args:
+        page: The page number to retrieve (1: indexed). Defaults to 1.
+        per_page: The number of documents to return per page. Defaults to 20.
+        user: The currently authenticated user, injected by the `get_current_user` dependency.
+        db: Database session, injected by the `get_db` dependency.
+        
+    Returns:
+        DocumentListResponse: A response model containing:
+            - items: A list of DocumentResponse objects for the current page.
+            - total: The total number of documents for the user.
+            - page: The current page number.
+            - pages: The total number of pages available.
+    """
+
     """Number of rows to skip"""
     skip: int = (page - 1) * per_page
 
@@ -254,7 +334,24 @@ def get_document(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get a specific document's details."""
+    """
+    Retrieve a specific document by its ID for the authenticated user.
+
+    Fetches the document that matches both the provided `document_id` and
+    the current user's ID. If no such document exists, a 404 error is raised.
+
+    Args:
+        document_id: The unique identifier of the document to retrieve.
+        user: The currently authenticated user, injected by the `get_current_user` dependency.
+        db: Database session, injected by the `get_db` dependency.
+
+    Returns:
+        DocumentResponse: The document record that matches the criteria, validated against the response model
+        (includes id, filename, original_name, file_size, status, etc.).
+
+    Raises:
+        HTTPException: With status code 404 if the document is not found or does not belong to the authenticated user.
+    """
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
@@ -272,7 +369,25 @@ def serve_pdf(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Serve the PDF file for the document viewer."""
+    """
+    Serve the PDF file for the document viewer.
+
+    Retrieves the document from the database to verify ownership, then
+    returns the actual PDF file from disk as a downloadable response.
+
+    Args:
+        document_id: The unique identifier of the document whose PDF is to be served.
+        user: The currently authenticated user, injected by the `get_current_user` dependency.
+        db: Database session, injected by the `get_db` dependency.
+
+    Returns:
+        FileResponse: A FastAPI FileResponse object that streams the PDF
+        file to the client with the correct media type and original filename.
+    
+    Raises:
+        HTTPException: 404 if the document does not exist or does not belong
+            to the authenticated user, or if the file is missing on disk.
+    """
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
@@ -299,7 +414,30 @@ def delete_document(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a document and its vector embeddings."""
+    """
+    Delete a document and its associated vector embeddings.
+
+    Removes the document from the database, deletes the physical file from
+    disk, and attempts to delete all corresponding vector chunks from ChromaDB.
+    If ChromaDB deletion fails, the error is logged but does not block the
+    overall operation.
+
+    Args:
+        document_id: The unique identifier of the document to delete.
+        user: The currently authenticated user, injected by the `get_current_user` dependency.
+        db: Database session, injected by the `get_db` dependency.
+
+    Returns:
+        dict: A JSON response containing a success message confirming the deletion of the document.
+
+    Raises:
+        HTTPException: With status code 404 if the document is not found or does not belong to the authenticated user.
+
+    Note:
+        ChromaDB deletion errors are caught and logged only; they do not
+        raise an HTTP exception because the main document record is already
+        removed from the database.
+    """
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
