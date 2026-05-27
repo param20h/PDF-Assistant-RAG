@@ -1,0 +1,52 @@
+name: GSSoC Welcome & Triage
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Welcome New Contributor
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const creator = context.payload.sender.login;
+            // Prevent the bot from replying to itself if it ever opens issues/PRs
+            if (creator.includes('[bot]')) return;
+            
+            if (context.eventName === 'issues') {
+              const issueBody = `Hi @${creator}! 👋\n\nThanks for opening this issue! We are thrilled to have you contribute to **PDF-Assistant-RAG** for **GSSoC 2026**.\n\n📌 **Before you start:**\n- Make sure you have read our [Contributing Guidelines](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/dev/CONTRIBUTING.md).\n- Wait for a project admin to assign this issue to you before working on it.\n- Remember to branch off \`dev\` and not \`main\`.\n\nHappy Coding! 🚀`;
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: issueBody
+              });
+              
+              // Automatically label all new issues with 'gssoc'
+              await github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['gssoc']
+              });
+              
+            } else if (context.eventName === 'pull_request') {
+              const prBody = `Hi @${creator}! 🎉\n\nThank you for submitting this Pull Request to **PDF-Assistant-RAG** for **GSSoC 2026**!\n\nA project admin or mentor will review your code shortly. Please make sure your PR description clearly explains the changes and references the issue number it fixes (e.g., \`Closes #123\`).\n\n🎯 **GSSoC Points Reminder:** Points will be awarded based on labels (\`difficulty\`, \`quality\`, and \`type\`) applied by the reviewers **after** the PR is successfully merged.\n\nKeep up the great work!`;
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: prBody
+              });
+            }
