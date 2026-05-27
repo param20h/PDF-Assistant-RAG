@@ -1,3 +1,15 @@
+---
+title: Document AI Analyst
+emoji: 🧠
+colorFrom: indigo
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: true
+license: mit
+short_description: Enterprise Agentic RAG — upload PDFs and chat with AI
+---
+
 <div align="center">
 
 <br/>
