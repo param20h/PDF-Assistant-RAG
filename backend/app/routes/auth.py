@@ -1,6 +1,7 @@
 """
 Auth API routes — register, login, and user profile.
 """
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from langsmith import expect
 from sqlalchemy.exc import SQLAlchemyError
@@ -104,6 +105,10 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
 
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
