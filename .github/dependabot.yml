@@ -55,6 +55,9 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: "eslint"
+        versions: [">= 10.0.0"]
 
   - package-ecosystem: github-actions
     directory: /
