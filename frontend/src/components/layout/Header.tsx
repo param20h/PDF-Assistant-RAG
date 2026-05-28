@@ -37,7 +37,9 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+useEffect(() => {
+  setMounted(true);
+}, []);
 
   const isDark = theme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
