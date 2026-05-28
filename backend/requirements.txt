@@ -48,3 +48,4 @@ python-magic-bin==0.4.27; sys_platform == "win32" # for windows
 python-magic; sys_platform != "win32"
 python-docx
 pypdf
+reportlab
