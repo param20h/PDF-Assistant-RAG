@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_EXPIRY_MINUTES: int = 15
     JWT_REFRESH_EXPIRY_DAYS: int = 7
+    GOOGLE_CLIENT_ID: str = ""
 
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"

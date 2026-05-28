@@ -17,6 +17,7 @@ interface AuthStore {
   loading: boolean;
   initialized: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   initializeAuth: () => Promise<void>;
@@ -43,6 +44,22 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const data = await api.post<{ access_token: string; refresh_token: string; user: AuthUser }>(
       "/api/v1/auth/login",
       { email, password }
+    );
+
+    localStorage.setItem("token", data.access_token);
+    localStorage.setItem("refresh_token", data.refresh_token);
+    set({
+      token: data.access_token,
+      user: data.user,
+      loading: false,
+      initialized: true,
+    });
+  },
+
+  async loginWithGoogle(idToken) {
+    const data = await api.post<{ access_token: string; refresh_token: string; user: AuthUser }>(
+      "/api/v1/auth/google",
+      { id_token: idToken }
     );
 
     localStorage.setItem("token", data.access_token);

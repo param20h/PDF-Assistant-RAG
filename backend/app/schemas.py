@@ -18,6 +18,11 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+
+class GoogleLoginRequest(BaseModel):
+    id_token: str = Field(..., min_length=10)
+
+
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username:Optional[str] = None
