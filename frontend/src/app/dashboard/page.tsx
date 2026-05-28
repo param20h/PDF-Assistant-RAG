@@ -1,13 +1,44 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { api, CONNECTION_ERROR_BANNER_MESSAGE, CONNECTION_ERROR_MESSAGE } from "@/lib/api";
 import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
-import PDFViewer from "@/components/document/PDFViewer";
+
+function PDFViewerSkeleton() {
+  return (
+    <div
+      className="h-full flex flex-col bg-background"
+      aria-busy="true"
+      aria-label="Loading PDF viewer"
+    >
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 bg-card/50 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 rounded-md bg-muted/70 animate-pulse" />
+          <div className="h-7 w-20 rounded-md bg-muted/70 animate-pulse" />
+          <div className="h-7 w-7 rounded-md bg-muted/70 animate-pulse" />
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 rounded-md bg-muted/70 animate-pulse" />
+          <div className="h-4 w-10 rounded bg-muted/70 animate-pulse" />
+          <div className="h-7 w-7 rounded-md bg-muted/70 animate-pulse" />
+        </div>
+      </div>
+      <div className="flex-1 p-4">
+        <div className="h-full rounded-lg border border-border/50 bg-muted/40 animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
+const PDFViewer = dynamic(() => import("@/components/document/PDFViewer"), {
+  ssr: false,
+  loading: () => <PDFViewerSkeleton />,
+});
 
 export interface DocInfo {
   id: string;
