@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User, Document
-from app.schemas import DocumentResponse, DocumentListResponse
+from app.schemas import DocumentResponse, DocumentListResponse, DocumentStatusResponse
 from app.auth import get_current_user
 from app.config import get_settings
 from app.rag.chunker import chunk_document, get_page_count
@@ -191,7 +191,7 @@ def _ingest_document(document_id: str, filepath: str, original_name: str, user_i
         db.close()
 
 
-@router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -199,11 +199,13 @@ async def upload_document(
     db: Session = Depends(get_db),
 ):
     """
-    Upload a document for RAG processing.
+    Upload a document and enqueue RAG processing.
     
     Validates the uploaded file (extension, size, MIME type, integrity),
     saves it to the user's directory, creates a database record with status
-    'pending', and schedules a background task for chunking and embedding.
+    'pending', schedules a background task for chunking and embedding, and
+    returns 202 Accepted immediately so large documents do not block the API
+    request while embeddings are generated.
 
     Args:
         background_tasks: FastAPI BackgroundTasks instance to run the ingestion process asynchronously.
@@ -270,6 +272,30 @@ async def upload_document(
     )
 
     return DocumentResponse.model_validate(document)
+
+
+@router.get("/{document_id}/status", response_model=DocumentStatusResponse)
+def get_document_status(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Poll processing status for a single uploaded document.
+
+    This endpoint lets clients refresh the upload lifecycle without fetching
+    the entire document list. The returned status is one of the existing
+    document states: pending, processing, ready, or failed.
+    """
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user.id,
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return DocumentStatusResponse.model_validate(doc)
 
 
 @router.get("/", response_model=DocumentListResponse)
