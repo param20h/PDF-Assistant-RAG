@@ -156,6 +156,19 @@ graph TD
 
 <br/>
 
+### 🔄 System Flow Overview
+
+1. The user interacts with the Next.js frontend to upload documents and ask questions.
+2. FastAPI handles authentication, document ingestion, and chat APIs.
+3. Uploaded documents are parsed, chunked, and converted into vector embeddings.
+4. Embeddings are stored in ChromaDB for semantic retrieval.
+5. During querying, the retriever fetches relevant chunks from ChromaDB.
+6. A reranker improves retrieval quality before sending context to the LLM.
+7. Hugging Face Inference API generates the final response.
+8. Responses are streamed back to the frontend using SSE.
+
+<br/>
+
 ## 🛠 Tech Stack
 
 <div align="center">
@@ -437,8 +450,9 @@ docker compose up --build
 | `POST` | `/api/v1/auth/register` | ❌ | Create a new user account |
 | `POST` | `/api/v1/auth/login` | ❌ | Login and receive JWT token |
 | `GET` | `/api/v1/auth/me` | ✅ | Get current user profile |
-| `POST` | `/api/v1/documents/upload` | ✅ | Upload PDF/DOCX and trigger indexing |
+| `POST` | `/api/v1/documents/upload` | ✅ | Upload PDF/DOCX and enqueue background indexing (`202 Accepted`) |
 | `GET` | `/api/v1/documents` | ✅ | List all documents for current user |
+| `GET` | `/api/v1/documents/{id}/status` | ✅ | Poll background document processing status |
 | `DELETE` | `/api/v1/documents/{id}` | ✅ | Delete a document and its vector data |
 | `POST` | `/api/v1/chat/ask/stream` | ✅ | Ask a question (SSE streaming response) |
 | `GET` | `/api/v1/chat/history/{doc_id}` | ✅ | Get chat history for a document |
@@ -461,6 +475,8 @@ docker compose up --build
 | `DATABASE_URL` | ❌ | `sqlite:///./data/app.db` | SQLAlchemy database connection string. | SQLite (default), or your Postgres/MySQL connection string |
 | `JWT_ALGORITHM` | ❌ | `HS256` | JWT signing algorithm. | — |
 | `JWT_EXPIRY_HOURS` | ❌ | `72` | JWT token lifetime in hours before re-login is required. | — |
+| `GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID used by FastAPI to verify ID tokens. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID exposed to the Next.js Google sign-in button. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `UPLOAD_DIR` | ❌ | `./data/uploads` | Local directory for storing uploaded documents. | — |
 | `MAX_FILE_SIZE_MB` | ❌ | `50` | Maximum allowed upload file size in MB. | — |
 | `ALLOWED_EXTENSIONS` | ❌ | `pdf,docx,txt,md` | Comma-separated list of permitted file extensions. | — |
@@ -494,6 +510,7 @@ docker compose up --build
 | `npm run dev` | Start **Next.js** dev server |
 | `npm run build` | Production build → `out/` (static export) |
 | `npm run lint` | Run ESLint |
+| `npm run test:e2e` | Run Playwright end-to-end tests |
 
 ### Docker
 

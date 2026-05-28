@@ -13,6 +13,7 @@ aiosqlite
 pyjwt
 passlib[bcrypt]
 python-dotenv
+google-auth
 
 # Config
 pydantic-settings
@@ -40,6 +41,7 @@ huggingface-hub
 
 # Production
 gunicorn
+slowapi
 
 # File Validation
 #sudo apt-get install libmagic1 // for Debian/Ubuntu

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_EXPIRY_MINUTES: int = 15
     JWT_REFRESH_EXPIRY_DAYS: int = 7
+    GOOGLE_CLIENT_ID: str = ""
 
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"
@@ -49,10 +50,11 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "./data/chroma_db"
 
     # ── LLM (HuggingFace Inference API) ──────────────────
-    HF_TOKEN: str = ""
+    HF_TOKEN: str = os.getenv("HF_TOKEN", "")  # HuggingFace API token (set in .env)
     LLM_MODEL: str = "Qwen/Qwen2.5-72B-Instruct"
     LLM_MAX_NEW_TOKENS: int = 1024
     LLM_TEMPERATURE: float = 0.3
+    SUMMARY_MAX_TOKENS: int = 512
 
     # ── Reranker ─────────────────────────────────────────
     RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"

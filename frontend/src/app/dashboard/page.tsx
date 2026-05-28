@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import {
@@ -16,6 +17,7 @@ import PDFViewer from "@/components/document/PDFViewer";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export interface DocInfo {
+  summary: string;
   id: string;
   original_name: string;
   file_size: number;
