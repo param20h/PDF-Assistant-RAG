@@ -18,6 +18,11 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+
+class GoogleLoginRequest(BaseModel):
+    id_token: str = Field(..., min_length=10)
+
+
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username:Optional[str] = None
@@ -70,6 +75,7 @@ class DocumentResponse(BaseModel):
     status: str
     error_message: Optional[str] = None
     uploaded_at: datetime
+    summary: Optional[str] = None # New field for document summary
 
     class Config:
         from_attributes = True

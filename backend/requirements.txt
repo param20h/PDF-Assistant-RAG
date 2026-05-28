@@ -13,6 +13,7 @@ aiosqlite
 pyjwt
 passlib[bcrypt]
 python-dotenv
+google-auth
 
 # Config
 pydantic-settings
