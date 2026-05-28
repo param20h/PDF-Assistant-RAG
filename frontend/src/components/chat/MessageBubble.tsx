@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMsg } from "./ChatPanel";
+import type { ChatMsg } from "@/store/chat-store";
 import { Brain, User, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 

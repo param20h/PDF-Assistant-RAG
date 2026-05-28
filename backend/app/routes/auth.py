@@ -3,7 +3,7 @@ Auth API routes — register, login, and user profile.
 """
 import re
 import secrets
-
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from langsmith import expect
 from sqlalchemy.exc import SQLAlchemyError
@@ -176,6 +176,10 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
 
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
     return _create_token_response(user)
 
 
@@ -201,6 +205,10 @@ def login_with_google(payload: GoogleLoginRequest, db: Session = Depends(get_db)
         db.add(user)
         db.commit()
         db.refresh(user)
+
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
 
     return _create_token_response(user)
 
