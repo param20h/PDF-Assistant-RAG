@@ -40,6 +40,7 @@ huggingface-hub
 
 # Production
 gunicorn
+slowapi
 
 # File Validation
 #sudo apt-get install libmagic1 // for Debian/Ubuntu
