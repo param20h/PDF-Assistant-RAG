@@ -3,27 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api, API_BASE } from "@/lib/api";
+import { useChatStore, type ChatMsg, type SourceChunk } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import { Send, Loader2, Trash2, MessageSquare, Download } from "lucide-react";
-
-export interface SourceChunk {
-  text: string;
-  filename: string;
-  page: number;
-  score: number;
-  confidence: number;
-}
-
-export interface ChatMsg {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  sources: SourceChunk[];
-  isStreaming?: boolean;
-}
 
 interface Props {
   activeDoc: DocInfo | null;
@@ -31,10 +16,15 @@ interface Props {
 }
 
 export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
+  const messages = useChatStore((state) => state.messages);
+  const input = useChatStore((state) => state.input);
+  const streaming = useChatStore((state) => state.streaming);
+  const isTyping = useChatStore((state) => state.isTyping);
+  const setMessages = useChatStore((state) => state.setMessages);
+  const setInput = useChatStore((state) => state.setInput);
+  const setStreaming = useChatStore((state) => state.setStreaming);
+  const setIsTyping = useChatStore((state) => state.setIsTyping);
+  const resetChat = useChatStore((state) => state.resetChat);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -62,6 +52,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      resetChat();
+    };
+  }, [resetChat]);
 
   // Load history on doc change
   useEffect(() => {
@@ -102,7 +98,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activeDoc]);
+  }, [activeDoc, resetChat, setMessages]);
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
@@ -211,7 +207,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     }
   };
 
-  const handleExport = (format: "md" | "txt") => {
+  const handleExport = (format: "md" | "txt" | "pdf") => {
     if (!activeDoc) return;
     setShowExportMenu(false);
     const token = localStorage.getItem("token");
@@ -349,6 +345,14 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                       >
                         <span className="text-base">📄</span>
                         Plain Text (.txt)
+                      </button>
+                      <button
+                        id="export-pdf-btn"
+                        onClick={() => handleExport("pdf")}
+                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                      >
+                        <span className="text-base">📕</span>
+                        PDF (.pdf)
                       </button>
                     </div>
                   )}

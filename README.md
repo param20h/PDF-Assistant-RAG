@@ -437,8 +437,9 @@ docker compose up --build
 | `POST` | `/api/v1/auth/register` | ❌ | Create a new user account |
 | `POST` | `/api/v1/auth/login` | ❌ | Login and receive JWT token |
 | `GET` | `/api/v1/auth/me` | ✅ | Get current user profile |
-| `POST` | `/api/v1/documents/upload` | ✅ | Upload PDF/DOCX and trigger indexing |
+| `POST` | `/api/v1/documents/upload` | ✅ | Upload PDF/DOCX and enqueue background indexing (`202 Accepted`) |
 | `GET` | `/api/v1/documents` | ✅ | List all documents for current user |
+| `GET` | `/api/v1/documents/{id}/status` | ✅ | Poll background document processing status |
 | `DELETE` | `/api/v1/documents/{id}` | ✅ | Delete a document and its vector data |
 | `POST` | `/api/v1/chat/ask/stream` | ✅ | Ask a question (SSE streaming response) |
 | `GET` | `/api/v1/chat/history/{doc_id}` | ✅ | Get chat history for a document |
