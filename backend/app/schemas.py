@@ -75,6 +75,17 @@ class DocumentResponse(BaseModel):
         from_attributes = True
 
 
+class DocumentStatusResponse(BaseModel):
+    id: str
+    status: str
+    page_count: int
+    chunk_count: int
+    error_message: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class DocumentListResponse(BaseModel):
     items: List[DocumentResponse]
     total: int
