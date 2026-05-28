@@ -156,6 +156,19 @@ graph TD
 
 <br/>
 
+### 🔄 System Flow Overview
+
+1. The user interacts with the Next.js frontend to upload documents and ask questions.
+2. FastAPI handles authentication, document ingestion, and chat APIs.
+3. Uploaded documents are parsed, chunked, and converted into vector embeddings.
+4. Embeddings are stored in ChromaDB for semantic retrieval.
+5. During querying, the retriever fetches relevant chunks from ChromaDB.
+6. A reranker improves retrieval quality before sending context to the LLM.
+7. Hugging Face Inference API generates the final response.
+8. Responses are streamed back to the frontend using SSE.
+
+<br/>
+
 ## 🛠 Tech Stack
 
 <div align="center">
