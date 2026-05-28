@@ -81,6 +81,17 @@ test("creates an account from the signup form", async ({ page }) => {
 
 test("uploads a document and chats with it", async ({ page }) => {
   const documents: typeof uploadedDocument[] = [];
+  const markdownAnswer = [
+    "A short summary.",
+    "",
+    "| Field | Value |",
+    "| --- | --- |",
+    "| Pages | 1 |",
+    "",
+    "```ts",
+    "const answer = 42;",
+    "```",
+  ].join("\n");
 
   await page.addInitScript(() => {
     localStorage.setItem("token", "access-token");
@@ -103,10 +114,9 @@ test("uploads a document and chats with it", async ({ page }) => {
       status: 200,
       headers: { "content-type": "text/event-stream" },
       body: [
-        'data: {"type":"token","data":"A short"}\n\n',
-        'data: {"type":"token","data":" summary."}\n\n',
-        'data: {"type":"sources","data":[]}\n\n',
-        'data: {"type":"done"}\n\n',
+        `data: ${JSON.stringify({ type: "token", data: markdownAnswer })}\n\n`,
+        `data: ${JSON.stringify({ type: "sources", data: [] })}\n\n`,
+        `data: ${JSON.stringify({ type: "done" })}\n\n`,
       ].join(""),
     });
   });
@@ -127,4 +137,7 @@ test("uploads a document and chats with it", async ({ page }) => {
 
   await expect(page.getByText("Summarize this document")).toBeVisible();
   await expect(page.getByText("A short summary.")).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Field" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Pages" })).toBeVisible();
+  await expect(page.getByText("const answer = 42;")).toBeVisible();
 });
