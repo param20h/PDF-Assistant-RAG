@@ -70,6 +70,7 @@ class DocumentResponse(BaseModel):
     status: str
     error_message: Optional[str] = None
     uploaded_at: datetime
+    summary: Optional[str] = None # New field for document summary
 
     class Config:
         from_attributes = True

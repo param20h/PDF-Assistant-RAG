@@ -10,6 +10,7 @@ import ChatPanel from "@/components/chat/ChatPanel";
 import PDFViewer from "@/components/document/PDFViewer";
 
 export interface DocInfo {
+  summary: string;
   id: string;
   original_name: string;
   file_size: number;
