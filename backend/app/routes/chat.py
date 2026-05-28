@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from app.models import User, ChatMessage, Document
 from app.schemas import ChatRequest, ChatResponse, ChatMessageResponse, ChatHistoryResponse, SourceChunk
 from app.auth import get_current_user
 from app.rag.agent import generate_answer, generate_answer_stream
+from app.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,9 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 @router.post("/ask", response_model=ChatResponse)
+@limiter.limit("10/minute")
 def ask_question(
+    request: Request,
     payload: ChatRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -88,7 +91,9 @@ def ask_question(
 
 
 @router.post("/ask/stream")
+@limiter.limit("10/minute")
 def ask_question_stream(
+    request: Request,
     payload: ChatRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
