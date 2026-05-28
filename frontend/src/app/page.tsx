@@ -54,17 +54,29 @@ export default function HomePage() {
             accurate, cited insights powered by advanced AI retrieval.
           </p>
 
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-4 justify-center flex-wrap">
             <Link href="/register">
               <Button size="lg" className="px-8 text-base h-12">
                 Get Started Free
               </Button>
             </Link>
+
             <Link href="/login">
               <Button size="lg" variant="outline" className="px-8 text-base h-12">
                 Sign In
               </Button>
             </Link>
+
+            <a
+              href="/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open Developer API Swagger documentation"
+            >
+              <Button size="lg" variant="secondary" className="px-8 text-base h-12">
+                Developer API
+              </Button>
+            </a>
           </div>
         </div>
 
