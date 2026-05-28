@@ -71,6 +71,7 @@ export default function HomePage() {
               href="/docs"
               target="_blank"
               rel="noopener noreferrer"
+              aria-label="Open Developer API Swagger documentation"
             >
               <Button size="lg" variant="secondary" className="px-8 text-base h-12">
                 Developer API
