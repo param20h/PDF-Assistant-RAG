@@ -494,6 +494,7 @@ docker compose up --build
 | `npm run dev` | Start **Next.js** dev server |
 | `npm run build` | Production build → `out/` (static export) |
 | `npm run lint` | Run ESLint |
+| `npm run test:e2e` | Run Playwright end-to-end tests |
 
 ### Docker
 
