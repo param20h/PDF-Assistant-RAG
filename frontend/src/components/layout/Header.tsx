@@ -21,7 +21,7 @@ import {
   Moon,
   Sun,
 } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import ApiKeyManager from "@/components/auth/ApiKeyManager";
 
@@ -80,14 +80,19 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
         )}
 
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
-            <Avatar className="w-6 h-6">
-              <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
-                {user?.username?.slice(0, 2).toUpperCase() || "U"}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-sm hidden sm:inline">{user?.username}</span>
-          </DropdownMenuTrigger>
+          <DropdownMenuTrigger
+            render={
+              <button className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
+                <Avatar className="w-6 h-6">
+                  <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
+                    {user?.username?.slice(0, 2).toUpperCase() || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm hidden sm:inline">{user?.username}</span>
+              </button>
+            }
+          />
+
           <DropdownMenuContent align="end" className="w-56">
             <div className="px-3 py-2">
               <p className="text-sm font-medium">{user?.username}</p>

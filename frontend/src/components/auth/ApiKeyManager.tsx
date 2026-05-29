@@ -32,7 +32,10 @@ export default function ApiKeyManager() {
   };
 
   useEffect(() => {
-    fetchKeys();
+    const timer = setTimeout(() => {
+      fetchKeys();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const generateKey = async () => {
@@ -69,11 +72,16 @@ export default function ApiKeyManager() {
 
   return (
     <Dialog onOpenChange={(open) => { if (!open) setNewKey(null); }}>
-      <DialogTrigger className="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground">
-        <Key className="mr-2 h-4 w-4" />
-        <span>API Keys</span>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <button className="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground">
+            <Key className="mr-2 h-4 w-4" />
+            <span>API Keys</span>
+          </button>
+        }
+      />
       <DialogContent className="max-w-2xl sm:rounded-2xl border-border/40 p-6 md:p-8 bg-background/95 backdrop-blur-xl shadow-2xl">
+
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold tracking-tight">API Keys</DialogTitle>
           <p className="text-sm text-muted-foreground mt-1.5">
