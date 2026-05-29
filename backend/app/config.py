@@ -58,6 +58,10 @@ class Settings(BaseSettings):
 
     # ── Reranker ─────────────────────────────────────────
     RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    # ── Vision / Image captioning ─────────────────────
+    VISION_PROVIDER: str | None = None  # e.g. 'openai'
+    VISION_MODEL: str | None = None
+    OPENAI_API_KEY: str = ""
 
 
     @property
