@@ -62,3 +62,15 @@ class ChatMessage(Base):
     # Relationships
     user = relationship("User", back_populates="messages")
     document = relationship("Document", back_populates="messages")
+    shared_message = relationship("SharedMessage", back_populates="message", uselist=False, cascade="all, delete-orphan")
+
+
+class SharedMessage(Base):
+    __tablename__ = "shared_messages"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    message_id = Column(String, ForeignKey("chat_messages.id"), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    message = relationship("ChatMessage", back_populates="shared_message")

@@ -136,5 +136,17 @@ class ChatHistoryResponse(BaseModel):
     document_id: Optional[str] = None
 
 
+class ShareAnswerResponse(BaseModel):
+    id: str
+    content: str
+    sources: List[SourceChunk] = []
+    created_at: datetime
+
+
+class ShareLinkResponse(BaseModel):
+    message_id: str
+    share_url: str
+
+
 # Rebuild models for forward references
 TokenResponse.model_rebuild()
