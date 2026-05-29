@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     LLM_MAX_NEW_TOKENS: int = 1024
     LLM_TEMPERATURE: float = 0.3
 
+    # ── LangSmith Tracing (optional) ─────────────────────
+    LANGSMITH_TRACING: bool = False
+    LANGSMITH_API_KEY: str = ""
+    LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGSMITH_PROJECT: str = "pdf-assistant-rag"
+
     # ── Reranker ─────────────────────────────────────────
     RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 

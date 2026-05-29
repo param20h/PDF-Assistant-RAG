@@ -10,6 +10,7 @@ from huggingface_hub import InferenceClient
 from app.config import get_settings
 from app.rag.retriever import retrieve
 from app.rag.prompts import SYSTEM_PROMPT, RAG_PROMPT_TEMPLATE, GREETING_PROMPT
+from app.rag.tracing import trace_function
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -65,6 +66,14 @@ def _chat_messages(system: str, user_content: str) -> list:
     ]
 
 
+@trace_function(
+    "generate_answer",
+    metadata_factory=lambda question, user_id, document_id=None: {
+        "user_id": user_id,
+        "document_id": document_id,
+        "llm_model": settings.LLM_MODEL,
+    },
+)
 def generate_answer(
     question: str,
     user_id: str,
@@ -145,6 +154,14 @@ def generate_answer(
     return {"answer": answer, "sources": sources}
 
 
+@trace_function(
+    "generate_answer_stream",
+    metadata_factory=lambda question, user_id, document_id=None: {
+        "user_id": user_id,
+        "document_id": document_id,
+        "llm_model": settings.LLM_MODEL,
+    },
+)
 def generate_answer_stream(
     question: str,
     user_id: str,
