@@ -48,16 +48,18 @@ jobs:
         env:
           SECRET_KEY: ci-dummy-secret
           DATABASE_URL: sqlite:///./ci_test.db
+          DEBUG: "false"
           HF_TOKEN: ci-dummy-token
           UPLOAD_DIR: /tmp/uploads
           CHROMA_PERSIST_DIR: /tmp/chroma
         run: |
-          python -c "import sys; sys.path.insert(0, 'backend'); from app.config import settings; print('✅ Config imports OK')" || true
+          python -c "import sys; sys.path.insert(0, 'backend'); from app.config import get_settings; get_settings(); print('Config imports OK')"
 
       - name: Run backend pytest suite
         env:
           SECRET_KEY: ci-dummy-secret
           DATABASE_URL: sqlite:///./ci_test.db
+          DEBUG: "false"
           HF_TOKEN: ci-dummy-token
           UPLOAD_DIR: /tmp/uploads
           CHROMA_PERSIST_DIR: /tmp/chroma
