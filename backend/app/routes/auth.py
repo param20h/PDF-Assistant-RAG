@@ -382,3 +382,10 @@ def update_password(payload:UpdatePassword,
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Database error")
+
+@router.get("/config")
+def get_auth_config():
+    """Return public configuration for auth providers"""
+    return {
+        "google_client_id": settings.GOOGLE_CLIENT_ID
+    }
