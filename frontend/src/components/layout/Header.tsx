@@ -20,6 +20,7 @@ import {
   PanelRightOpen,
   LogOut,
   Moon,
+  Shield,
   Sun,
 } from "lucide-react";
 import { useSyncExternalStore } from "react";
@@ -126,8 +127,13 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
             <DropdownMenuSeparator />
-            <ApiKeyManager />
-            <DropdownMenuSeparator />
+            {user?.is_admin && (
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin")}>
+                <Shield className="w-4 h-4 mr-2" />
+                Admin metrics
+              </DropdownMenuItem>
+            )}
+            {user?.is_admin && <DropdownMenuSeparator />}
             <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />
               {t("header.signOut")}

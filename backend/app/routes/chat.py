@@ -3,6 +3,7 @@ Chat routes — ask questions with RAG, stream responses via SSE, manage history
 """
 import html
 import json
+import time
 from datetime import datetime
 from io import BytesIO
 import logging
@@ -18,14 +19,36 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User, ChatMessage, Document
+from app.metrics import record_query_response_time
 from app.schemas import ChatRequest, ChatResponse, ChatMessageResponse, ChatHistoryResponse, SourceChunk
 from app.auth import get_current_user
-from app.rag.agent import generate_answer, generate_answer_stream
 from app.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+
+
+def generate_answer(question: str, user_id: str, document_id: Optional[str] = None):
+    """Import the RAG agent lazily so route tests can patch this boundary."""
+    from app.rag.agent import generate_answer as _generate_answer
+
+    return _generate_answer(
+        question=question,
+        user_id=user_id,
+        document_id=document_id,
+    )
+
+
+def generate_answer_stream(question: str, user_id: str, document_id: Optional[str] = None):
+    """Import the streaming RAG agent lazily so route tests can patch this boundary."""
+    from app.rag.agent import generate_answer_stream as _generate_answer_stream
+
+    return _generate_answer_stream(
+        question=question,
+        user_id=user_id,
+        document_id=document_id,
+    )
 
 
 @router.post("/ask", response_model=ChatResponse)
@@ -63,38 +86,41 @@ def ask_question(
         HTTPException: 400 if the document exists but its status is not
             "ready" (e.g., still processing or failed).
     """
-    # Validate document exists if specified
-    if payload.document_id:
-        doc = db.query(Document).filter(
-            Document.id == payload.document_id,
-            Document.user_id == user.id,
-        ).first()
+    started_at = time.perf_counter()
+    try:
+        # Validate document exists if specified
+        if payload.document_id:
+            doc = db.query(Document).filter(
+                Document.id == payload.document_id,
+                Document.user_id == user.id,
+            ).first()
 
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+            if not doc:
+                raise HTTPException(status_code=404, detail="Document not found")
 
-        if doc.status != "ready":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Document is still {doc.status}. Please wait for processing to complete.",
-            )
+            if doc.status != "ready":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Document is still {doc.status}. Please wait for processing to complete.",
+                )
 
-    # Generate answer
-    result = generate_answer(
-        question=payload.question,
-        user_id=user.id,
-        document_id=payload.document_id,
-    )
+        result = generate_answer(
+            question=payload.question,
+            user_id=user.id,
+            document_id=payload.document_id,
+        )
 
-    # Save to chat history
-    _save_message(db, user.id, payload.document_id, "user", payload.question)
-    _save_message(db, user.id, payload.document_id, "assistant", result["answer"], result["sources"])
+        # Save to chat history
+        _save_message(db, user.id, payload.document_id, "user", payload.question)
+        _save_message(db, user.id, payload.document_id, "assistant", result["answer"], result["sources"])
 
-    return ChatResponse(
-        answer=result["answer"],
-        sources=[SourceChunk(**s) for s in result["sources"]],
-        document_id=payload.document_id,
-    )
+        return ChatResponse(
+            answer=result["answer"],
+            sources=[SourceChunk(**s) for s in result["sources"]],
+            document_id=payload.document_id,
+        )
+    finally:
+        record_query_response_time(time.perf_counter() - started_at)
 
 
 @router.post("/ask/stream")
@@ -156,6 +182,8 @@ def ask_question_stream(
                 detail=f"Document is still {doc.status}. Please wait for processing to complete.",
             )
 
+    started_at = time.perf_counter()
+
     # Save user message immediately
     _save_message(db, user.id, payload.document_id, "user", payload.question)
 
@@ -164,31 +192,34 @@ def ask_question_stream(
         full_answer = ""
         sources = []
 
-        for chunk in generate_answer_stream(
-            question=payload.question,
-            user_id=user.id,
-            document_id=payload.document_id,
-        ):
-            yield chunk
-
-            # Parse to accumulate full answer for history
-            try:
-                if chunk.startswith("data: "):
-                    data = json.loads(chunk[6:].strip())
-                    if data.get("type") == "token":
-                        full_answer += data.get("data", "")
-                    elif data.get("type") == "sources":
-                        sources = data.get("data", [])
-            except Exception:
-                pass
-
-        # Save assistant response to history
-        from app.database import SessionLocal
-        save_db = SessionLocal()
         try:
-            _save_message(save_db, user.id, payload.document_id, "assistant", full_answer, sources)
+            for chunk in generate_answer_stream(
+                question=payload.question,
+                user_id=user.id,
+                document_id=payload.document_id,
+            ):
+                yield chunk
+
+                # Parse to accumulate full answer for history
+                try:
+                    if chunk.startswith("data: "):
+                        data = json.loads(chunk[6:].strip())
+                        if data.get("type") == "token":
+                            full_answer += data.get("data", "")
+                        elif data.get("type") == "sources":
+                            sources = data.get("data", [])
+                except Exception:
+                    pass
+
+            # Save assistant response to history
+            from app.database import SessionLocal
+            save_db = SessionLocal()
+            try:
+                _save_message(save_db, user.id, payload.document_id, "assistant", full_answer, sources)
+            finally:
+                save_db.close()
         finally:
-            save_db.close()
+            record_query_response_time(time.perf_counter() - started_at)
 
     return StreamingResponse(
         event_stream(),

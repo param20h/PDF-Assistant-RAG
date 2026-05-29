@@ -16,11 +16,12 @@ BACKEND_DIR = ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bootstrap.db")
-os.environ.setdefault("HF_TOKEN", "test-hf-token")
-os.environ.setdefault("UPLOAD_DIR", str(ROOT / "backend" / "test_uploads"))
-os.environ.setdefault("CHROMA_PERSIST_DIR", str(ROOT / "backend" / "test_chroma"))
+os.environ["SECRET_KEY"] = "test-secret-key"
+os.environ["DATABASE_URL"] = "sqlite:///./test_bootstrap.db"
+os.environ["DEBUG"] = "false"
+os.environ["HF_TOKEN"] = "test-hf-token"
+os.environ["UPLOAD_DIR"] = str(ROOT / "backend" / "test_uploads")
+os.environ["CHROMA_PERSIST_DIR"] = str(ROOT / "backend" / "test_chroma")
 
 
 fake_embeddings = types.ModuleType("app.rag.embeddings")
