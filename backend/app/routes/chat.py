@@ -22,7 +22,6 @@ from app.models import User, ChatMessage, Document
 from app.metrics import record_query_response_time
 from app.schemas import ChatRequest, ChatResponse, ChatMessageResponse, ChatHistoryResponse, SourceChunk
 from app.auth import get_current_user
-from app.rag.agent import generate_answer, generate_answer_stream
 from app.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
@@ -84,6 +83,8 @@ def ask_question(
                 )
 
         # Generate answer
+        from app.rag.agent import generate_answer
+
         result = generate_answer(
             question=payload.question,
             user_id=user.id,
@@ -173,6 +174,8 @@ def ask_question_stream(
         sources = []
 
         try:
+            from app.rag.agent import generate_answer_stream
+
             for chunk in generate_answer_stream(
                 question=payload.question,
                 user_id=user.id,
