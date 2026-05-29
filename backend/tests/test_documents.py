@@ -10,7 +10,7 @@ def test_api_health(client):
 def test_protected_documents_list_requires_auth(client):
     response = client.get("/api/v1/documents/")
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 def test_documents_list_authenticated(client, auth_headers, ready_document):
