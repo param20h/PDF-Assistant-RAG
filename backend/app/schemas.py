@@ -136,5 +136,22 @@ class ChatHistoryResponse(BaseModel):
     document_id: Optional[str] = None
 
 
+# ── ApiKeys ─────────────────────────────────────────────
+
+class ApiKeyResponse(BaseModel):
+    id: str
+    key_prefix: str
+    created_at: datetime
+    last_used: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ApiKeyCreateResponse(BaseModel):
+    key: str
+    api_key: ApiKeyResponse
+
+
 # Rebuild models for forward references
 TokenResponse.model_rebuild()
