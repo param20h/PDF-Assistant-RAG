@@ -14,6 +14,7 @@ from app.database import get_db
 from app.models import User, ApiKey
 from app.schemas import (
     GoogleLoginRequest,
+    HFTokenUpdate,
     RefreshRequest,
     TokenResponse,
     UpdatePassword,
@@ -278,6 +279,34 @@ def get_me(user: User = Depends(get_current_user)):
         itself does not need to raise any HTTP exceptions.
     """
     return UserResponse.model_validate(user)
+
+@router.put("/hf-token", response_model=UserResponse)
+def update_hf_token(
+    payload: HFTokenUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update the HuggingFace token for the authenticated user.
+
+    Stores the provided HF token in the user's profile so it can be used
+    for HuggingFace API calls (e.g. InferenceClient) in place of the
+    globally configured ``HF_TOKEN`` environment variable.
+
+    Args:
+        payload: HFTokenUpdate object containing the new ``hf_token`` value.
+        user: The currently authenticated user, obtained from the
+            ``get_current_user`` dependency.
+        db: SQLAlchemy database session, obtained from the dependency.
+
+    Returns:
+        UserResponse: The updated user profile including the new ``hf_token``
+        field.
+    """
+    user.hf_token = payload.hf_token
+    db.commit()
+    db.refresh(user)
+    return UserResponse.model_validate(user)
+
 
 @router.put("/update")
 def update_user_info(payload:UserUpdate,
