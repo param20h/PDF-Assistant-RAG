@@ -6,6 +6,7 @@ import logging
 from typing import List
 from langchain_huggingface import HuggingFaceEmbeddings
 from app.config import get_settings
+from app.rag.tracing import trace_call
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -36,10 +37,26 @@ def get_embedding_model() -> HuggingFaceEmbeddings:
 def embed_texts(texts: List[str]) -> List[List[float]]:
     """Embed a batch of texts into vectors."""
     model = get_embedding_model()
-    return model.embed_documents(texts)
+    return trace_call(
+        "embed_texts",
+        lambda: model.embed_documents(texts),
+        run_type="embedding",
+        metadata={
+            "embedding_model": settings.EMBEDDING_MODEL,
+            "text_count": len(texts),
+        },
+    )
 
 
 def embed_query(query: str) -> List[float]:
     """Embed a single query string."""
     model = get_embedding_model()
-    return model.embed_query(query)
+    return trace_call(
+        "embed_query",
+        lambda: model.embed_query(query),
+        run_type="embedding",
+        metadata={
+            "embedding_model": settings.EMBEDDING_MODEL,
+            "query_length": len(query),
+        },
+    )
