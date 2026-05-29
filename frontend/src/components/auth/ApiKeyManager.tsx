@@ -19,10 +19,6 @@ export default function ApiKeyManager() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    fetchKeys();
-  }, []);
-
   const fetchKeys = async () => {
     try {
       setLoading(true);
@@ -34,6 +30,10 @@ export default function ApiKeyManager() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchKeys();
+  }, []);
 
   const generateKey = async () => {
     try {
@@ -114,7 +114,7 @@ export default function ApiKeyManager() {
             {keys.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted-foreground bg-muted/20">
                 <Key className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                You don't have any API keys yet.
+                You don&apos;t have any API keys yet.
               </div>
             ) : (
               <div className="divide-y divide-border/50">
