@@ -19,8 +19,8 @@ jobs:
         with:
           script: |
             const creator = context.payload.sender.login;
-            // Prevent the bot from replying to itself if it ever opens issues/PRs
-            if (creator.includes('[bot]')) return;
+            // Prevent the bot from replying to itself or the repo owner
+            if (creator.includes('[bot]') || creator === context.repo.owner) return;
             
             if (context.eventName === 'issues') {
               const issueBody = `Hi @${creator}! 👋\n\nThanks for opening this issue! We are thrilled to have you contribute to **PDF-Assistant-RAG** for **GSSoC 2026**.\n\n📌 **Before you start:**\n- Make sure you have read our [Contributing Guidelines](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/dev/CONTRIBUTING.md).\n- Wait for a project admin to assign this issue to you before working on it.\n- Remember to branch off \`dev\` and not \`main\`.\n\nHappy Coding! 🚀`;

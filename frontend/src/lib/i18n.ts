@@ -58,6 +58,7 @@ const resources = {
         exportTitle: "Export chat history",
         markdown: "Markdown (.md)",
         plainText: "Plain Text (.txt)",
+        pdf: "PDF (.pdf)",
       },
       documents: {
         uploadFailed: "Upload failed",
@@ -129,6 +130,7 @@ const resources = {
         exportTitle: "चैट इतिहास निर्यात करें",
         markdown: "मार्कडाउन (.md)",
         plainText: "सादा पाठ (.txt)",
+        pdf: "पीडीएफ (.pdf)",
       },
       documents: {
         uploadFailed: "अपलोड विफल",
@@ -200,6 +202,7 @@ const resources = {
         exportTitle: "Exportar historial del chat",
         markdown: "Markdown (.md)",
         plainText: "Texto plano (.txt)",
+        pdf: "PDF (.pdf)",
       },
       documents: {
         uploadFailed: "Error de carga",
@@ -271,6 +274,7 @@ const resources = {
         exportTitle: "Exporter l'historique du chat",
         markdown: "Markdown (.md)",
         plainText: "Texte brut (.txt)",
+        pdf: "PDF (.pdf)",
       },
       documents: {
         uploadFailed: "Échec de l'envoi",

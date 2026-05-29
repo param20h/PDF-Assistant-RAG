@@ -145,7 +145,7 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
         </h3>
       </div>
 
-      <ScrollArea className="flex-1 px-3">
+      <ScrollArea className="flex-1 px-3 overflow-auto">
         {documents.length === 0 ? (
           <div className="text-center py-12">
             <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
@@ -169,6 +169,9 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate leading-tight">
                       {doc.original_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {doc.summary || "📄 No summary available"}
                     </p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] text-muted-foreground">

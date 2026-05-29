@@ -1,18 +1,97 @@
 """
 Auth API routes — register, login, and user profile.
 """
+import re
+import secrets
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from langsmith import expect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from app.config import get_settings
 from app.database import get_db
 from app.models import User
-from app.schemas import UserRegister, UserLogin, TokenResponse, UserResponse, RefreshRequest, UserUpdate, \
-    UserUpdateResponse, UpdatePassword, UpdatePasswordResponse
+from app.schemas import (
+    GoogleLoginRequest,
+    RefreshRequest,
+    TokenResponse,
+    UpdatePassword,
+    UpdatePasswordResponse,
+    UserLogin,
+    UserRegister,
+    UserResponse,
+    UserUpdate,
+    UserUpdateResponse,
+)
 from app.auth import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, decode_token
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+settings = get_settings()
+
+
+def _create_token_response(user: User) -> TokenResponse:
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.model_validate(user),
+    )
+
+
+def _verify_google_token(id_token_value: str) -> dict:
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google sign-in is not configured",
+        )
+
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2 import id_token
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google authentication dependency is not installed",
+        ) from exc
+
+    try:
+        google_payload = id_token.verify_oauth2_token(
+            id_token_value,
+            Request(),
+            settings.GOOGLE_CLIENT_ID,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google credential",
+        ) from exc
+
+    email = google_payload.get("email")
+    if not email or not google_payload.get("email_verified"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google account email is not verified",
+        )
+
+    return google_payload
+
+
+def _unique_google_username(email: str, db: Session) -> str:
+    local_part = email.split("@", 1)[0]
+    base = re.sub(r"[^a-zA-Z0-9_-]+", "-", local_part).strip("-_").lower() or "google-user"
+    base = base[:70]
+    candidate = base
+    suffix = 1
+
+    while db.query(User).filter(User.username == candidate).first():
+        suffix += 1
+        suffix_text = f"-{suffix}"
+        candidate = f"{base[:80 - len(suffix_text)]}{suffix_text}"
+
+    return candidate
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -63,15 +142,7 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    # Generate token
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
-
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        user=UserResponse.model_validate(user),
-    )
+    return _create_token_response(user)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -105,14 +176,41 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
 
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
 
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        user=UserResponse.model_validate(user),
-    )
+    return _create_token_response(user)
+
+
+@router.post("/google", response_model=TokenResponse)
+def login_with_google(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate with a Google Identity Services ID token.
+
+    Existing users are matched by verified email. New Google users get an
+    internal username derived from the email prefix and an unusable random
+    password hash so password login remains opt-in through the normal flow.
+    """
+    google_payload = _verify_google_token(payload.id_token)
+    email = str(google_payload["email"]).lower()
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        user = User(
+            username=_unique_google_username(email, db),
+            email=email,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
+    return _create_token_response(user)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -153,14 +251,7 @@ def refresh_token(payload: RefreshRequest, db: Session = Depends(get_db)):
             detail="User not found",
         )
         
-    new_access_token = create_access_token(user.id)
-    new_refresh_token = create_refresh_token(user.id)
-
-    return TokenResponse(
-        access_token=new_access_token,
-        refresh_token=new_refresh_token,
-        user=UserResponse.model_validate(user),
-    )
+    return _create_token_response(user)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -291,3 +382,10 @@ def update_password(payload:UpdatePassword,
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Database error")
+
+@router.get("/config")
+def get_auth_config():
+    """Return public configuration for auth providers"""
+    return {
+        "google_client_id": settings.GOOGLE_CLIENT_ID
+    }

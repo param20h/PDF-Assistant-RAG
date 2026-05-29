@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { SourceChunk } from "./ChatPanel";
+import type { SourceChunk } from "@/store/chat-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, FileText, Eye } from "lucide-react";
