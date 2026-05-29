@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
+import { useTranslation } from "react-i18next";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -32,6 +33,7 @@ interface HeaderProps {
 
 export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onToggleViewer }: HeaderProps) {
   const { user, logout } = useAuth();
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const [isDark, setIsDark] = useState(true);
 
@@ -52,11 +54,24 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
     router.replace("/login");
   };
 
+  const languageLabel = (language: string) => {
+    switch (language) {
+      case "hi":
+        return t("common.hindi");
+      case "es":
+        return t("common.spanish");
+      case "fr":
+        return t("common.french");
+      default:
+        return t("common.english");
+    }
+  };
+
   return (
     <header className="h-14 flex items-center justify-between px-4 border-b border-border/50 bg-card/50 backdrop-blur-md flex-shrink-0 z-50">
       {/* Left */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleSidebar} title={sidebarOpen ? "Close sidebar" : "Open sidebar"}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleSidebar} title={sidebarOpen ? t("header.closeSidebar") : t("header.openSidebar")}>
           {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
         </Button>
 
@@ -64,19 +79,31 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
           <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
             <Brain className="w-4 h-4 text-primary" />
           </div>
-          <span className="font-semibold text-sm hidden sm:inline">Document AI Analyst</span>
+          <span className="font-semibold text-sm hidden sm:inline">{t("common.appName")}</span>
         </div>
       </div>
 
       {/* Right */}
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleViewer} title={viewerOpen ? "Close viewer" : "Open viewer"}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleViewer} title={viewerOpen ? t("header.closeViewer") : t("header.openViewer")}>
           {viewerOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
         </Button>
 
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme} title={isDark ? "Light mode" : "Dark mode"}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme} title={isDark ? t("header.lightMode") : t("header.darkMode")}>
           {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
+
+        <select
+          aria-label={t("common.language")}
+          value={i18n.resolvedLanguage || "en"}
+          onChange={(e) => void i18n.changeLanguage(e.target.value)}
+          className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+        >
+          <option value="en">{languageLabel("en")}</option>
+          <option value="hi">{languageLabel("hi")}</option>
+          <option value="es">{languageLabel("es")}</option>
+          <option value="fr">{languageLabel("fr")}</option>
+        </select>
 
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
@@ -95,7 +122,7 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />
-              Sign out
+              {t("header.signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

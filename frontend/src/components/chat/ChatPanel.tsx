@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api, API_BASE } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ interface Props {
 }
 
 export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -189,7 +191,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           m.id === assistantId
             ? {
                 ...m,
-                content: `Failed to get response: ${err instanceof Error ? err.message : "Unknown error"}`,
+                content: t("chat.fallbackError", {
+                  message: err instanceof Error ? err.message : "Unknown error",
+                }),
                 isStreaming: false,
               }
             : m
@@ -202,7 +206,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   };
 
   const handleClear = async () => {
-    if (!activeDoc || !confirm("Clear all chat history for this document?")) return;
+    if (!activeDoc || !confirm(t("chat.clearConfirm"))) return;
     try {
       await api.delete(`/api/v1/chat/history/${activeDoc.id}`);
       setMessages([]);
@@ -254,12 +258,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               <MessageSquare className="w-8 h-8 text-primary/60" />
             </div>
             <h3 className="text-lg font-semibold mb-1">
-              {activeDoc ? "Ask about your document" : "Select a document"}
+              {activeDoc ? t("chat.askAboutDocument") : t("chat.selectDocument")}
             </h3>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               {activeDoc
-                ? `"${activeDoc.original_name}" is ready. Ask any question and get cited answers.`
-                : "Upload and select a document from the sidebar to start chatting."}
+                ? t("chat.readyPrompt", { name: activeDoc.original_name })
+                : t("chat.uploadPrompt")}
             </p>
           </div>
         ) : (
@@ -297,8 +301,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             onKeyDown={handleKeyDown}
             placeholder={
               activeDoc
-                ? `Ask about "${activeDoc.original_name}"...`
-                : "Select a document first..."
+                ? t("chat.askPlaceholder", { name: activeDoc.original_name })
+                : t("chat.selectPlaceholder")
             }
             disabled={streaming}
             className="min-h-[44px] max-h-32 resize-none bg-background/50 border-border/50"
@@ -328,7 +332,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     size="icon"
                     onClick={() => setShowExportMenu((v) => !v)}
                     className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
-                    title="Export chat history"
+                    title={t("chat.exportTitle")}
                   >
                     <Download className="w-4 h-4" />
                   </Button>
@@ -340,7 +344,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
                       >
                         <span className="text-base">📝</span>
-                        Markdown (.md)
+                        {t("chat.markdown")}
                       </button>
                       <button
                         id="export-txt-btn"
@@ -348,7 +352,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
                       >
                         <span className="text-base">📄</span>
-                        Plain Text (.txt)
+                        {t("chat.plainText")}
                       </button>
                     </div>
                   )}

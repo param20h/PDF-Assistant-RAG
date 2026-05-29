@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc, onDocumentsChange }: Props) {
+  const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
@@ -43,7 +45,7 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
           }
           onDocumentsChange();
         } catch (err) {
-          const message = err instanceof Error ? err.message : "Upload failed";
+          const message = err instanceof Error ? err.message : t("documents.uploadFailed");
           setUploadError(message);
         } finally {
           setUploading(false);
@@ -51,7 +53,7 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
         }
       })();
     },
-    [onDocumentsChange]
+    [onDocumentsChange, t]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -67,7 +69,7 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
 
   const handleDelete = async (docId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Delete this document and all its data?")) return;
+    if (!confirm(t("documents.deleteConfirm"))) return;
     setDeleting(docId);
     try {
       await api.delete(`/api/v1/documents/${docId}`);
@@ -119,17 +121,17 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
           {uploading ? (
             <div className="space-y-2">
               <Loader2 className="w-5 h-5 mx-auto animate-spin text-primary" />
-              <p className="text-xs text-muted-foreground">Uploading...</p>
+              <p className="text-xs text-muted-foreground">{t("documents.uploading")}</p>
               <Progress value={uploadProgress} className="h-1" />
             </div>
           ) : (
             <>
               <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
               <p className="text-xs text-muted-foreground">
-                {isDragActive ? "Drop files here" : "Drop files or click to upload"}
+                {isDragActive ? t("documents.dropHere") : t("documents.dropOrClick")}
               </p>
               <p className="text-[10px] text-muted-foreground/60 mt-1">
-                PDF, DOCX, TXT, MD (max 50MB)
+                {t("documents.uploadFormats")}
               </p>
             </>
           )}
@@ -139,7 +141,7 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
       {/* ── Documents List ──────────────────────────── */}
       <div className="px-3 pt-3 pb-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          Documents ({documents.length})
+          {t("documents.documentsTitle", { count: documents.length })}
         </h3>
       </div>
 
@@ -147,8 +149,8 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
         {documents.length === 0 ? (
           <div className="text-center py-12">
             <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="text-sm text-muted-foreground">No documents yet</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Upload a file to get started</p>
+            <p className="text-sm text-muted-foreground">{t("documents.noDocuments")}</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">{t("documents.getStarted")}</p>
           </div>
         ) : (
           <div className="space-y-1 pb-3">
@@ -176,22 +178,22 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
                         <>
                           <span className="text-[10px] text-muted-foreground">•</span>
                           <span className="text-[10px] text-muted-foreground">
-                            {doc.page_count} pg
+                            {t("documents.pagesShort", { count: doc.page_count })}
                           </span>
                           <span className="text-[10px] text-muted-foreground">•</span>
                           <span className="text-[10px] text-muted-foreground">
-                            {doc.chunk_count} chunks
+                            {t("documents.chunks", { count: doc.chunk_count })}
                           </span>
                         </>
                       )}
                       {doc.status === "processing" && (
                         <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
-                          Processing
+                          {t("documents.processing")}
                         </Badge>
                       )}
                       {doc.status === "failed" && (
                         <Badge variant="destructive" className="text-[9px] h-4 px-1.5">
-                          Failed
+                          {t("documents.failed")}
                         </Badge>
                       )}
                     </div>
