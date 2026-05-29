@@ -53,11 +53,30 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class HFTokenUpdate(BaseModel):
+    """Request schema for updating the user's HuggingFace token."""
+    hf_token: str
+
+
+class ApiKeyResponse(BaseModel):
+    id: str
+    key_preview: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ApiKeyCreateResponse(ApiKeyResponse):
+    raw_key: str
+
+
 class UserResponse(BaseModel):
     id: str
     username: str
     email: str
     is_admin: bool
+    hf_token: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -99,6 +118,24 @@ class DocumentListResponse(BaseModel):
     pages: int
 
 
+# Admin
+
+class DiskUsageResponse(BaseModel):
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
+    usage_percent: float
+    upload_dir_bytes: int
+
+
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    total_pdfs_uploaded: int
+    average_query_response_time_ms: float
+    query_count: int
+    disk_space_usage: DiskUsageResponse
+
+
 # ── Chat ─────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
@@ -134,6 +171,18 @@ class ChatMessageResponse(BaseModel):
 class ChatHistoryResponse(BaseModel):
     messages: List[ChatMessageResponse]
     document_id: Optional[str] = None
+
+
+class ShareAnswerResponse(BaseModel):
+    id: str
+    content: str
+    sources: List[SourceChunk] = []
+    created_at: datetime
+
+
+class ShareLinkResponse(BaseModel):
+    message_id: str
+    share_url: str
 
 
 # Rebuild models for forward references

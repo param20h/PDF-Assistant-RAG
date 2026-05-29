@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { useTranslation } from "react-i18next";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -20,6 +21,7 @@ import {
   PanelRightOpen,
   LogOut,
   Moon,
+  Shield,
   Sun,
   Menu,
   X,
@@ -48,6 +50,7 @@ export default function Header({
   mobileSheetContent,
 }: HeaderProps) {
   const { user, logout } = useAuth();
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
@@ -59,6 +62,19 @@ export default function Header({
   const handleLogout = () => {
     logout();
     router.replace("/login");
+  };
+
+  const languageLabel = (language: string) => {
+    switch (language) {
+      case "hi":
+        return t("common.hindi");
+      case "es":
+        return t("common.spanish");
+      case "fr":
+        return t("common.french");
+      default:
+        return t("common.english");
+    }
   };
 
   return (

@@ -63,10 +63,22 @@ export default function DashboardPage() {
   const [viewerOpen, setViewerOpen] = useState(true);
   const [connectionError, setConnectionError] = useState("");
 
-  // Auth guard
+    // Auth guard
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [user, loading, router]);
+
+  // Intercept dashboard if Hugging Face token configuration is missing
+  useEffect(() => {
+    if (user) {
+      const existingHfToken = localStorage.getItem("hf_token");
+
+      if (!existingHfToken) {
+        console.warn("Hugging Face API configuration key missing.");
+      }
+    }
+  }, [user]);
+
 
   // Load documents
   const loadDocuments = useCallback(async () => {

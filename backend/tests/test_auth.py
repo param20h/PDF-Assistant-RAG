@@ -79,3 +79,39 @@ def test_refresh_token_success(client, refresh_token):
     assert payload["access_token"]
     assert payload["refresh_token"]
     assert payload["token_type"] == "bearer"
+
+
+def test_update_hf_token_success(client, auth_headers):
+    response = client.put(
+        "/api/v1/auth/hf-token",
+        json={"hf_token": "hf_new_token_value"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["hf_token"] == "hf_new_token_value"
+
+
+def test_update_hf_token_requires_auth(client):
+    response = client.put(
+        "/api/v1/auth/hf-token",
+        json={"hf_token": "hf_unauth"},
+    )
+
+    assert response.status_code in (401, 403)
+
+
+def test_hf_token_appears_in_user_response(client, auth_headers, user, db_session):
+    # First update the token
+    put_resp = client.put(
+        "/api/v1/auth/hf-token",
+        json={"hf_token": "hf_persist_token"},
+        headers=auth_headers,
+    )
+    assert put_resp.status_code == 200
+
+    # Then verify it shows up in GET /me
+    me_resp = client.get("/api/v1/auth/me", headers=auth_headers)
+    assert me_resp.status_code == 200
+    assert me_resp.json()["hf_token"] == "hf_persist_token"
