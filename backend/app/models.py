@@ -22,10 +22,26 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, nullable=True, index=True)
+    hf_token = Column(String(255), nullable=True)
 
     # Relationships
     documents = relationship("Document", back_populates="owner", cascade="all, delete-orphan")
     messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")
+    api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    key_prefix = Column(String(10), nullable=False)
+    hashed_key = Column(String(255), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_used = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", back_populates="api_keys")
 
 
 class Document(Base):

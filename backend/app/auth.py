@@ -67,12 +67,39 @@ def decode_token(token: str, token_type: str = "access") -> Optional[str]:
 
 # ── FastAPI Dependencies ─────────────────────────────
 
+import hashlib
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
-    """Dependency: extract and validate user from JWT bearer token."""
+    """Dependency: extract and validate user from JWT bearer token or API key."""
     token = credentials.credentials
+
+    # Check if token is an API key
+    if token.startswith("rag_"):
+        hashed = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        from app.models import ApiKey
+        api_key = db.query(ApiKey).filter(ApiKey.hashed_key == hashed).first()
+        if not api_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid API key",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        api_key.last_used = datetime.now(timezone.utc)
+        db.commit()
+
+        user = api_key.user
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found for this API key",
+            )
+        return user
+
+    # Otherwise, process as JWT
     user_id = decode_token(token)
 
     if not user_id:

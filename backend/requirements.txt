@@ -18,6 +18,9 @@ google-auth
 # Config
 pydantic-settings
 pydantic[email]
+pytest
+pytest-cov
+httpx
 
 # Document Processing
 PyMuPDF
@@ -28,6 +31,7 @@ langchain
 langchain-community
 langchain-huggingface
 langchain-text-splitters
+langsmith
 
 # Embeddings & ML
 sentence-transformers

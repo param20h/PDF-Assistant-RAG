@@ -5,6 +5,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from app.config import get_settings
 from app.rag.embeddings import embed_query
+from app.rag.tracing import trace_function
 from app.rag.vectorstore import query_chunks
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,17 @@ def get_reranker():
     return _reranker if _reranker != "disabled" else None
 
 
+@trace_function(
+    "retrieve",
+    metadata_factory=lambda query, user_id, document_id=None: {
+        "user_id": user_id,
+        "document_id": document_id,
+        "embedding_model": settings.EMBEDDING_MODEL,
+        "reranker_model": settings.RERANKER_MODEL,
+        "top_k_retrieval": settings.TOP_K_RETRIEVAL,
+        "top_k_rerank": settings.TOP_K_RERANK,
+    },
+)
 def retrieve(
     query: str,
     user_id: str,
