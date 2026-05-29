@@ -13,10 +13,14 @@ aiosqlite
 pyjwt
 passlib[bcrypt]
 python-dotenv
+google-auth
 
 # Config
 pydantic-settings
 pydantic[email]
+pytest
+pytest-cov
+httpx
 
 # Document Processing
 PyMuPDF
@@ -40,3 +44,13 @@ huggingface-hub
 
 # Production
 gunicorn
+slowapi
+
+# File Validation
+#sudo apt-get install libmagic1 // for Debian/Ubuntu
+#brew install libmagic // for OSX
+python-magic-bin==0.4.27; sys_platform == "win32" # for windows
+python-magic; sys_platform != "win32"
+python-docx
+pypdf
+reportlab

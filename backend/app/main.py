@@ -9,10 +9,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import get_settings
-from app.database import init_db
+from app.rate_limit import limiter
+from app.database import init_db, get_db
+from app.rag.vectorstore import get_chroma_client
 
 # Configure logging
 logging.basicConfig(
@@ -60,23 +67,36 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(
+    RateLimitExceeded,
+    lambda request, exc: JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded. Please try again later."},
+    ),
+)
+app.add_middleware(SlowAPIMiddleware)
+
 # ── CORS (allow frontend dev server) ─────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:7860", "*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+logger.info(f"CORS origins: {settings.cors_origins}")
 
 # ── Mount API Routes ─────────────────────────────────
 from app.routes.auth import router as auth_router
 from app.routes.documents import router as documents_router
 from app.routes.chat import router as chat_router
+from app.routes.github import router as github_router
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(documents_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
+app.include_router(github_router, prefix="/api/v1")
 
 
 # ── Health Check ─────────────────────────────────────
@@ -88,6 +108,35 @@ def health_check():
         "version": "2.0.0",
     }
 
+@app.get('/health')
+def db_health():
+    db_status = "down"
+    chroma_status = "down"
+
+    # --- DB check ---
+    try:
+        db = next(get_db())
+        db.execute(select(1))
+        db_status = "up"
+    except SQLAlchemyError:
+        db_status = "down"
+    except Exception:
+        db_status = "down"
+
+    # --- Chroma check ---
+    try:
+        chroma = get_chroma_client()
+        chroma.heartbeat()
+        chroma_status = "up"
+    except Exception:
+        chroma_status = "down"
+
+    overall_status = "ok" if db_status == "up" and chroma_status == "up" else "degraded"
+    return{
+        "status": db_status,
+        "chroma": chroma_status,
+        "db": db_status
+    }
 
 # ── Serve Next.js Frontend (production) ──────────────
 FRONTEND_BUILD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "out")

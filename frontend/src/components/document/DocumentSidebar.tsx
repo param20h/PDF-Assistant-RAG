@@ -19,31 +19,37 @@ interface Props {
   onDocumentsChange: () => void;
 }
 
-export default function DocumentSidebar({ documents, activeDoc, onSelectDoc, onDocumentsChange }: Props) {
+export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc, onDocumentsChange }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
+    (acceptedFiles: File[]) => {
       if (acceptedFiles.length === 0) return;
-      setUploading(true);
-      setUploadProgress(0);
 
-      try {
-        for (let i = 0; i < acceptedFiles.length; i++) {
-          const formData = new FormData();
-          formData.append("file", acceptedFiles[i]);
-          await api.postForm("/api/v1/documents/upload", formData);
-          setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
-        }
-        onDocumentsChange();
-      } catch (err) {
-        console.error("Upload failed:", err);
-      } finally {
-        setUploading(false);
+      void (async () => {
+        setUploadError("");
+        setUploading(true);
         setUploadProgress(0);
-      }
+
+        try {
+          for (let i = 0; i < acceptedFiles.length; i++) {
+            const formData = new FormData();
+            formData.append("file", acceptedFiles[i]);
+            await api.postForm("/api/v1/documents/upload", formData);
+            setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
+          }
+          onDocumentsChange();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Upload failed";
+          setUploadError(message);
+        } finally {
+          setUploading(false);
+          setUploadProgress(0);
+        }
+      })();
     },
     [onDocumentsChange]
   );
@@ -97,7 +103,12 @@ export default function DocumentSidebar({ documents, activeDoc, onSelectDoc, onD
   return (
     <div className="h-full flex flex-col bg-sidebar">
       {/* ── Upload Zone ─────────────────────────────── */}
-      <div className="p-3 border-b border-sidebar-border">
+      <div className="p-3 border-b border-sidebar-border space-y-2">
+        {uploadError && (
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
+            {uploadError}
+          </div>
+        )}
         <div
           {...getRootProps()}
           className={`relative rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-all duration-200
@@ -132,7 +143,7 @@ export default function DocumentSidebar({ documents, activeDoc, onSelectDoc, onD
         </h3>
       </div>
 
-      <ScrollArea className="flex-1 px-3">
+      <ScrollArea className="flex-1 px-3 overflow-auto">
         {documents.length === 0 ? (
           <div className="text-center py-12">
             <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
@@ -156,6 +167,9 @@ export default function DocumentSidebar({ documents, activeDoc, onSelectDoc, onD
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate leading-tight">
                       {doc.original_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {doc.summary || "📄 No summary available"}
                     </p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] text-muted-foreground">

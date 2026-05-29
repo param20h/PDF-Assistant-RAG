@@ -19,10 +19,38 @@ class UserLogin(BaseModel):
     password: str
 
 
+class GoogleLoginRequest(BaseModel):
+    id_token: str = Field(..., min_length=10)
+
+
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    username:Optional[str] = None
+
+class UserUpdateResponse(BaseModel):
+    id: str
+    username: str
+    email: EmailStr
+
+class UpdatePassword(BaseModel):
+    password: str
+    confirm_password: str
+
+class UpdatePasswordResponse(BaseModel):
+    id: str
+    username: str
+    email: EmailStr
+    password_changed:bool = True
+
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     user: "UserResponse"
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 class UserResponse(BaseModel):
@@ -47,14 +75,28 @@ class DocumentResponse(BaseModel):
     status: str
     error_message: Optional[str] = None
     uploaded_at: datetime
+    summary: Optional[str] = None # New field for document summary
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentStatusResponse(BaseModel):
+    id: str
+    status: str
+    page_count: int
+    chunk_count: int
+    error_message: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 
 class DocumentListResponse(BaseModel):
-    documents: List[DocumentResponse]
+    items: List[DocumentResponse]
     total: int
+    page: int
+    pages: int
 
 
 # ── Chat ─────────────────────────────────────────────

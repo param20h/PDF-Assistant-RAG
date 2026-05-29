@@ -59,17 +59,31 @@ short_description: Enterprise Agentic RAG — upload PDFs and chat with AI
 
 Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 🎉
 
-<br/>
+
+### 📋 Contributions
 
 <div align="center">
-  <a href="https://github.com/param20h/PDF-Assistant-RAG/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=param20h/PDF-Assistant-RAG" alt="Contributors" />
-  </a>
+
+| Avatar | Contributor | Role | Key Contributions |
+|:------:|:-----------:|:----:|:-----------------|
+| <img src="https://github.com/param20h.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@param20h**](https://github.com/param20h) — Paramjit Singh | 🧭 **Project Lead** | Founded the project; core RAG architecture (FastAPI + ChromaDB + Next.js); Docker multi-stage & HuggingFace Spaces deployment; GitHub Actions CI/CD; JWT auth & Google OAuth; documentation with pipeline diagrams; project governance |
+| <img src="https://github.com/Yuvraj-Sarathe.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@Yuvraj-Sarathe**](https://github.com/Yuvraj-Sarathe) — Yuvraj Sarathe | 📐 **Docs & Build** | Added Mermaid architecture diagram; inline RAG pipeline comments; `.env.example` docs; created `Makefile` with concurrent dev commands & `CHANGELOG.md` |
+| <img src="https://github.com/SatyamPrakash09.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@SatyamPrakash09**](https://github.com/SatyamPrakash09) — Satyam Prakash | ⚙️ **Backend Engineer** | Chat history export & auto-refresh auth; user profile endpoints; `/health` endpoint (Vector DB + SQL DB monitoring); document pagination; MIME file validation; JWT access + refresh token system |
+| <img src="https://github.com/akmhatey-ai.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@akmhatey-ai**](https://github.com/akmhatey-ai) | 🎨 **UI/UX** | Chat textarea auto-resize; clear messages on document switch |
+| <img src="https://github.com/drishtisharma14052007-eng.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@drishtisharma14052007-eng**](https://github.com/drishtisharma14052007-eng) — Drishti Sharma | 📝 **Documentation** | GSSOC contributor FAQ content |
+| <img src="https://github.com/Pika-pika06.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@Pika-pika06**](https://github.com/Pika-pika06) — Pika | 📝 **Documentation** | Changelog tracking historical commits through v0.4.0 |
+| <img src="https://github.com/blinkerbit.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@blinkerbit**](https://github.com/blinkerbit) / [@algojogacor](https://github.com/algojogacor) — Arya Rizky | 🐛 **Bug Buster** | Fixed 0-indexed page number display in source cards |
+| <img src="https://github.com/HirenGajjar.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@HirenGajjar**](https://github.com/HirenGajjar) | 🔒 **DevOps** | Restricted CORS origins via `ALLOWED_ORIGINS` environment variable |
+| <img src="https://github.com/Kaustub26Pvgda.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@Kaustub26Pvgda**](https://github.com/Kaustub26Pvgda) — Kaustub Pavagada | ⚡ **Frontend Engineer** | Copy LLM response capability; increased max file upload size to 20 MB |
+| <img src="https://github.com/akshy-yy.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@akshy-yy**](https://github.com/akshy-yy) — Akshaya | 🎨 **Frontend Engineer** | Typing indicator animation while AI responds |
+| <img src="https://github.com/GHX5T-SOL.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@GHX5T-SOL**](https://github.com/GHX5T-SOL) — Bruce Wayne | 🐛 **Bug Buster** | Backend offline error message display |
+| <img src="https://github.com/viswanatha.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@viswanatha**](https://github.com/viswanatha) | 📊 **Observability** | Health check endpoint |
+
 </div>
 
 <br/>
 
-> 🌟 **GSSOC Contributors** — This project is open for [GirlScript Summer of Code](https://gssoc.girlscript.tech/). Check out our [CONTRIBUTING.md](CONTRIBUTING.md) to get started and browse [open issues](https://github.com/param20h/PDF-Assistant-RAG/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) tagged `good first issue`.
+> 🌟 **Want to join them?** Check out [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and look for [good first issues](https://github.com/Yuvraj-Sarathe/PDF-Assistant-RAG/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) to get started!
 
 ---
 
@@ -80,6 +94,78 @@ Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 
 **PDF-Assistant-RAG** is a complete, production-ready AI document assistant that lets users upload complex PDFs, financial reports, legal contracts, and research papers — then chat with an AI that provides **accurate, cited answers** powered by a multi-stage Retrieval-Augmented Generation pipeline.
 
 The system uses **semantic search + cross-encoder reranking** to find the most relevant document chunks, streams AI-generated answers token-by-token, and highlights exact source citations with page numbers — all inside a sleek Next.js UI with JWT-secured per-user data isolation.
+
+<br/>
+
+## 🏗️ Architecture
+
+```mermaid
+graph TD
+    subgraph Frontend["Frontend (Next.js 16)"]
+        UI["Dashboard UI (React)"]
+        Chat["Chat Panel (SSE)"]
+        Viewer["PDF Viewer (iframe)"]
+    end
+
+    subgraph Backend["Backend (FastAPI 0.115+)"]
+        API["API Router (/api/v1)"]
+        Auth["Auth (JWT/bcrypt)"]
+        DB[(SQLite Metadata)]
+
+        subgraph RAG["RAG Pipeline"]
+            Upload["Ingestion Task (Chunking)"]
+            Embed["Local Embeddings (all-MiniLM-L6-v2)"]
+            Retriever["Two-Stage Retriever"]
+            Rerank["Cross-Encoder Reranker"]
+            Agent["Agent/Generator"]
+        end
+    end
+
+    subgraph Storage["Vector Storage"]
+        Chroma[(ChromaDB)]
+    end
+
+    subgraph External["External Services"]
+        HF["HuggingFace Inference API (Qwen 72B)"]
+    end
+
+    %% Frontend to Backend Connections
+    UI <-->|REST / Auth| API
+    Chat <-->|SSE Streaming| API
+    Viewer -->|Fetch PDF| API
+
+    %% Backend Internals
+    API <--> Auth
+    API <--> DB
+    API --> Upload
+    API <--> Retriever
+    API <--> Agent
+
+    %% RAG Ingestion Flow
+    Upload --> Embed
+    Embed -->|Store Vectors| Chroma
+
+    %% RAG Query Flow
+    Retriever -->|1. Semantic Search| Chroma
+    Retriever -->|2. Score & Sort| Rerank
+    Retriever -->|Context| Agent
+
+    %% External LLM Flow
+    Agent <-->|LLM Generation| HF
+```
+
+<br/>
+
+### 🔄 System Flow Overview
+
+1. The user interacts with the Next.js frontend to upload documents and ask questions.
+2. FastAPI handles authentication, document ingestion, and chat APIs.
+3. Uploaded documents are parsed, chunked, and converted into vector embeddings.
+4. Embeddings are stored in ChromaDB for semantic retrieval.
+5. During querying, the retriever fetches relevant chunks from ChromaDB.
+6. A reranker improves retrieval quality before sending context to the LLM.
+7. Hugging Face Inference API generates the final response.
+8. Responses are streamed back to the frontend using SSE.
 
 <br/>
 
@@ -235,7 +321,7 @@ PDF-Assistant-RAG/
 │
 ├── Dockerfile                        # Multi-stage: Node build → Python serve
 ├── docker-compose.yml                # Local Docker stack
-├── CONTRIBUTING.md                   # GSSOC contributor guide
+├── CONTRIBUTING.md                   # contributor guide
 └── .env.example                      # Template for environment variables
 ```
 
@@ -364,8 +450,9 @@ docker compose up --build
 | `POST` | `/api/v1/auth/register` | ❌ | Create a new user account |
 | `POST` | `/api/v1/auth/login` | ❌ | Login and receive JWT token |
 | `GET` | `/api/v1/auth/me` | ✅ | Get current user profile |
-| `POST` | `/api/v1/documents/upload` | ✅ | Upload PDF/DOCX and trigger indexing |
+| `POST` | `/api/v1/documents/upload` | ✅ | Upload PDF/DOCX and enqueue background indexing (`202 Accepted`) |
 | `GET` | `/api/v1/documents` | ✅ | List all documents for current user |
+| `GET` | `/api/v1/documents/{id}/status` | ✅ | Poll background document processing status |
 | `DELETE` | `/api/v1/documents/{id}` | ✅ | Delete a document and its vector data |
 | `POST` | `/api/v1/chat/ask/stream` | ✅ | Ask a question (SSE streaming response) |
 | `GET` | `/api/v1/chat/history/{doc_id}` | ✅ | Get chat history for a document |
@@ -378,22 +465,32 @@ docker compose up --build
 
 ## 📦 Environment Variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `HF_TOKEN` | ✅ | — | HuggingFace API token for LLM inference |
-| `SECRET_KEY` | ✅ | — | JWT signing secret (use a strong random string) |
-| `DATABASE_URL` | ❌ | `sqlite:///./data/app.db` | SQLAlchemy database URL |
-| `UPLOAD_DIR` | ❌ | `./data/uploads` | Directory for uploaded files |
-| `CHROMA_PERSIST_DIR` | ❌ | `./data/chroma_db` | ChromaDB persistence path |
-| `LLM_MODEL` | ❌ | `Qwen/Qwen2.5-72B-Instruct` | HuggingFace model ID |
-| `LLM_TEMPERATURE` | ❌ | `0.3` | LLM sampling temperature |
-| `LLM_MAX_NEW_TOKENS` | ❌ | `1024` | Max tokens per response |
-| `EMBEDDING_MODEL` | ❌ | `all-MiniLM-L6-v2` | SentenceTransformer model |
-| `CHUNK_SIZE` | ❌ | `1000` | Document chunk size (characters) |
-| `CHUNK_OVERLAP` | ❌ | `200` | Overlap between chunks |
-| `TOP_K_RETRIEVAL` | ❌ | `10` | Candidates retrieved from vector store |
-| `TOP_K_RERANK` | ❌ | `5` | Final chunks passed to LLM after reranking |
-| `MAX_FILE_SIZE_MB` | ❌ | `50` | Maximum upload file size |
+| Variable | Required | Default | Description | Where to Get It |
+|---|---|---|---|---|
+| `SECRET_KEY` | ✅ | — | JWT signing & session secret. Use a strong random string. | Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `HF_TOKEN` | ✅ | — | HuggingFace API token for LLM inference via Inference API. | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (free) |
+| `ENVIRONMENT` | ❌ | `development` | Runtime mode. Set to `production` for deployment to lock CORS. | — |
+| `DEBUG` | ❌ | `False` | Enable debug mode with detailed error pages. Never enable in production. | — |
+| `ALLOWED_ORIGINS` | ❌ | `http://localhost:3000,http://localhost:7860` | Comma-separated CORS origins (only enforced in production). | Your deployed domain(s) |
+| `DATABASE_URL` | ❌ | `sqlite:///./data/app.db` | SQLAlchemy database connection string. | SQLite (default), or your Postgres/MySQL connection string |
+| `JWT_ALGORITHM` | ❌ | `HS256` | JWT signing algorithm. | — |
+| `JWT_EXPIRY_HOURS` | ❌ | `72` | JWT token lifetime in hours before re-login is required. | — |
+| `GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID used by FastAPI to verify ID tokens. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID exposed to the Next.js Google sign-in button. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `UPLOAD_DIR` | ❌ | `./data/uploads` | Local directory for storing uploaded documents. | — |
+| `MAX_FILE_SIZE_MB` | ❌ | `50` | Maximum allowed upload file size in MB. | — |
+| `ALLOWED_EXTENSIONS` | ❌ | `pdf,docx,txt,md` | Comma-separated list of permitted file extensions. | — |
+| `CHROMA_PERSIST_DIR` | ❌ | `./data/chroma_db` | Directory where ChromaDB persists its vector index. | — |
+| `LLM_MODEL` | ❌ | `Qwen/Qwen2.5-72B-Instruct` | HuggingFace model ID for answer generation. | [huggingface.co/models](https://huggingface.co/models?inference=warm&sort=trending) |
+| `LLM_TEMPERATURE` | ❌ | `0.3` | LLM sampling temperature (0 = deterministic, 1 = creative). | — |
+| `LLM_MAX_NEW_TOKENS` | ❌ | `1024` | Maximum tokens per LLM response. | — |
+| `EMBEDDING_MODEL` | ❌ | `sentence-transformers/all-MiniLM-L6-v2` | SentenceTransformer model for local embeddings (no external API). | [huggingface.co/sentence-transformers](https://huggingface.co/sentence-transformers) |
+| `EMBEDDING_DIMENSION` | ❌ | `384` | Embedding vector dimension (must match the model). | — |
+| `RERANKER_MODEL` | ❌ | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model for reranking retrieved chunks by relevance. | [huggingface.co/cross-encoder](https://huggingface.co/cross-encoder) |
+| `CHUNK_SIZE` | ❌ | `1000` | Characters per document chunk. Larger = more context, smaller = better precision. | — |
+| `CHUNK_OVERLAP` | ❌ | `200` | Overlap between consecutive chunks to maintain boundary context. | — |
+| `TOP_K_RETRIEVAL` | ❌ | `10` | Candidate chunks retrieved from vector store during semantic search. | — |
+| `TOP_K_RERANK` | ❌ | `5` | Final chunks passed to the LLM after reranking (must be ≤ `TOP_K_RETRIEVAL`). | — |
 
 <br/>
 
@@ -413,6 +510,7 @@ docker compose up --build
 | `npm run dev` | Start **Next.js** dev server |
 | `npm run build` | Production build → `out/` (static export) |
 | `npm run lint` | Run ESLint |
+| `npm run test:e2e` | Run Playwright end-to-end tests |
 
 ### Docker
 
@@ -449,7 +547,7 @@ docker compose up -d --build
 
 <br/>
 
-## 🤝 Contributing — GSSOC
+## 🤝 Contributing
 
 This project is participating in **GirlScript Summer of Code**! We welcome contributors of all skill levels.
 
@@ -485,7 +583,7 @@ Distributed under the **MIT License**. See [`LICENSE`](license) for more informa
 
 **Built with 💙 as a flagship AI engineering project**
 
-*If you found this project helpful, please give it a ⭐ — it helps GSSOC contributors discover it!*
+*If you found this project helpful, please give it a ⭐ — it helps contributors discover it!*
 
 <br/>
 

@@ -1,6 +1,6 @@
 # Contributing to PDF-Assistant-RAG 🤝
 
-Welcome! This project is open for contributions under **GirlScript Summer of Code (GSSOC)**.  
+Welcome! This project is open for contributions.
 Read this guide fully before opening a PR — it keeps things smooth for everyone.
 
 ---
