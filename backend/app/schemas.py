@@ -53,11 +53,17 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class HFTokenUpdate(BaseModel):
+    """Request schema for updating the user's HuggingFace token."""
+    hf_token: str
+
+
 class UserResponse(BaseModel):
     id: str
     username: str
     email: str
     is_admin: bool
+    hf_token: Optional[str] = None
     created_at: datetime
 
     class Config:
