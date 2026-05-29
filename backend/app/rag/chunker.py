@@ -28,6 +28,34 @@ def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
     return pages
 
 
+def extract_pdf_images(filepath: str) -> List[Dict[str, Any]]:
+    """Extract images from a PDF and return list of dicts with image bytes and page number.
+
+    Each entry: {"image_bytes": b"...", "page": int}
+    """
+    images = []
+    doc = fitz.open(filepath)
+
+    for page_num, page in enumerate(doc):
+        # get_images returns a list of tuples where first item is xref
+        for img in page.get_images(full=True):
+            xref = img[0]
+            try:
+                pix = fitz.Pixmap(doc, xref)
+                # Convert to RGB if it's CMYK or has alpha
+                if pix.n >= 4:
+                    pix = fitz.Pixmap(fitz.csRGB, pix)
+
+                img_bytes = pix.tobytes("png")
+                images.append({"image_bytes": img_bytes, "page": page_num + 1})
+            except Exception:
+                # ignore extracting this image
+                continue
+
+    doc.close()
+    return images
+
+
 def extract_docx(filepath: str) -> List[Dict[str, Any]]:
     """Extract text from DOCX files."""
     doc = docx.Document(filepath)
@@ -50,10 +78,13 @@ def chunk_document(filepath: str) -> List[Dict[str, Any]]:
     Returns list of dicts with 'text', 'page', and 'chunk_index'.
     """
     ext = filepath.rsplit(".", 1)[-1].lower()
+    images = []
 
     # ── Extract text by file type ────────────────────
     if ext == "pdf":
         pages = extract_pdf(filepath)
+        # also extract images for later captioning/embedding
+        images = extract_pdf_images(filepath)
     elif ext == "docx":
         pages = extract_docx(filepath)
     elif ext in ("txt", "md"):
@@ -90,6 +121,16 @@ def chunk_document(filepath: str) -> List[Dict[str, Any]]:
                     "chunk_index": chunk_index,
                 })
                 chunk_index += 1
+
+        # Attach any images that belong to this page after text chunks for the page
+        for img in [i for i in images if i["page"] == page_num]:
+            all_chunks.append({
+                "text": "",
+                "page": page_num,
+                "chunk_index": chunk_index,
+                "image_bytes": img["image_bytes"],
+            })
+            chunk_index += 1
 
     return all_chunks
 

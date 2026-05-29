@@ -56,8 +56,18 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.3
     SUMMARY_MAX_TOKENS: int = 512
 
+    # ── LangSmith Tracing (optional) ─────────────────────
+    LANGSMITH_TRACING: bool = False
+    LANGSMITH_API_KEY: str = ""
+    LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGSMITH_PROJECT: str = "pdf-assistant-rag"
+
     # ── Reranker ─────────────────────────────────────────
     RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    # ── Vision / Image captioning ─────────────────────
+    VISION_PROVIDER: str | None = None  # e.g. 'openai'
+    VISION_MODEL: str | None = None
+    OPENAI_API_KEY: str = ""
 
 
     @property

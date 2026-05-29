@@ -21,7 +21,10 @@ import {
   Moon,
   Sun,
 } from "lucide-react";
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
+import { useTheme } from "next-themes";
+import ApiKeyManager from "@/components/auth/ApiKeyManager";
+
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -30,22 +33,18 @@ interface HeaderProps {
   onToggleViewer: () => void;
 }
 
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onToggleViewer }: HeaderProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [isDark, setIsDark] = useState(true);
+  const { theme, setTheme } = useTheme();
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot); // ← replaces useState + useEffect
 
-  const toggleTheme = () => {
-    const html = document.documentElement;
-    if (isDark) {
-      html.classList.remove("dark");
-      html.classList.add("light");
-    } else {
-      html.classList.remove("light");
-      html.classList.add("dark");
-    }
-    setIsDark(!isDark);
-  };
+  const isDark = theme === "dark";
+  const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
   const handleLogout = () => {
     logout();
@@ -74,24 +73,33 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
           {viewerOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
         </Button>
 
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme} title={isDark ? "Light mode" : "Dark mode"}>
-          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </Button>
+        {mounted && (
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme} title={isDark ? "Light mode" : "Dark mode"}>
+            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </Button>
+        )}
 
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
-            <Avatar className="w-6 h-6">
-              <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
-                {user?.username?.slice(0, 2).toUpperCase() || "U"}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-sm hidden sm:inline">{user?.username}</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuTrigger
+            render={
+              <button className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
+                <Avatar className="w-6 h-6">
+                  <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
+                    {user?.username?.slice(0, 2).toUpperCase() || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm hidden sm:inline">{user?.username}</span>
+              </button>
+            }
+          />
+
+          <DropdownMenuContent align="end" className="w-56">
             <div className="px-3 py-2">
               <p className="text-sm font-medium">{user?.username}</p>
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
+            <DropdownMenuSeparator />
+            <ApiKeyManager />
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />

@@ -8,6 +8,7 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 from app.config import get_settings
 from app.rag.embeddings import get_embedding_model
+from app.rag.vision import generate_captions_for_chunks
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -55,6 +56,12 @@ def store_chunks(
     if not chunks:
         return 0
 
+    # Generate captions for any extracted images before embedding
+    try:
+        generate_captions_for_chunks(chunks)
+    except Exception as e:
+        logger.warning(f"Could not generate image captions: {e}")
+
     client = get_chroma_client()
     embedding_model = get_embedding_model()
 
@@ -74,6 +81,9 @@ def store_chunks(
             "document_id": document_id,
             "page": chunk["page"],
             "chunk_index": chunk["chunk_index"],
+            # Indicate whether this chunk was originally an image and include a short caption
+            **({"is_image": True, "image_caption": chunk.get("image_caption", "")}
+               if chunk.get("is_image") else {}),
         }
         for chunk in chunks
     ]
