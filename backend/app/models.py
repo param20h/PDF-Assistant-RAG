@@ -22,6 +22,7 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, nullable=True, index=True)
+    hf_token = Column(String(255), nullable=True)
 
     # Relationships
     documents = relationship("Document", back_populates="owner", cascade="all, delete-orphan")
