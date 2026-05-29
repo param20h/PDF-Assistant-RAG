@@ -29,6 +29,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
+def generate_answer(question: str, user_id: str, document_id: Optional[str] = None):
+    """Import the RAG agent lazily so route tests can patch this boundary."""
+    from app.rag.agent import generate_answer as _generate_answer
+
+    return _generate_answer(
+        question=question,
+        user_id=user_id,
+        document_id=document_id,
+    )
+
+
+def generate_answer_stream(question: str, user_id: str, document_id: Optional[str] = None):
+    """Import the streaming RAG agent lazily so route tests can patch this boundary."""
+    from app.rag.agent import generate_answer_stream as _generate_answer_stream
+
+    return _generate_answer_stream(
+        question=question,
+        user_id=user_id,
+        document_id=document_id,
+    )
+
+
 @router.post("/ask", response_model=ChatResponse)
 @limiter.limit("10/minute")
 def ask_question(
@@ -81,9 +103,6 @@ def ask_question(
                     status_code=400,
                     detail=f"Document is still {doc.status}. Please wait for processing to complete.",
                 )
-
-        # Generate answer
-        from app.rag.agent import generate_answer
 
         result = generate_answer(
             question=payload.question,
@@ -174,8 +193,6 @@ def ask_question_stream(
         sources = []
 
         try:
-            from app.rag.agent import generate_answer_stream
-
             for chunk in generate_answer_stream(
                 question=payload.question,
                 user_id=user.id,
