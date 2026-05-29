@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND_DIR = ROOT / "backend"
 
@@ -16,10 +17,11 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key-that-is-long-enough")
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test_share_bootstrap.db")
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bootstrap.db")
 os.environ.setdefault("HF_TOKEN", "test-hf-token")
 os.environ.setdefault("UPLOAD_DIR", str(ROOT / "backend" / "test_uploads"))
 os.environ.setdefault("CHROMA_PERSIST_DIR", str(ROOT / "backend" / "test_chroma"))
+
 
 fake_embeddings = types.ModuleType("app.rag.embeddings")
 fake_embeddings.get_embedding_model = lambda: object()
@@ -78,10 +80,10 @@ sys.modules.setdefault("slowapi.errors", slowapi_errors)
 sys.modules.setdefault("slowapi.middleware", slowapi_middleware)
 sys.modules.setdefault("slowapi.util", slowapi_util)
 
-from app.auth import create_access_token, hash_password
+from app.auth import create_access_token, create_refresh_token, hash_password
 from app.database import Base, get_db
 from app.main import app
-from app.models import ChatMessage, User
+from app.models import ChatMessage, Document, User
 
 
 @pytest.fixture()
@@ -155,6 +157,43 @@ def other_user(db_session):
 def auth_headers(user):
     token = create_access_token(user.id)
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def refresh_token(user):
+    return create_refresh_token(user.id)
+
+
+@pytest.fixture()
+def ready_document(db_session, user):
+    instance = Document(
+        user_id=user.id,
+        filename="ready.txt",
+        original_name="ready.txt",
+        file_size=128,
+        page_count=1,
+        chunk_count=2,
+        status="ready",
+    )
+    db_session.add(instance)
+    db_session.commit()
+    db_session.refresh(instance)
+    return instance
+
+
+@pytest.fixture()
+def pending_document(db_session, user):
+    instance = Document(
+        user_id=user.id,
+        filename="pending.txt",
+        original_name="pending.txt",
+        file_size=64,
+        status="pending",
+    )
+    db_session.add(instance)
+    db_session.commit()
+    db_session.refresh(instance)
+    return instance
 
 
 @pytest.fixture()
