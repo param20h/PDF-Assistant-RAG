@@ -99,6 +99,24 @@ class DocumentListResponse(BaseModel):
     pages: int
 
 
+# Admin
+
+class DiskUsageResponse(BaseModel):
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
+    usage_percent: float
+    upload_dir_bytes: int
+
+
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    total_pdfs_uploaded: int
+    average_query_response_time_ms: float
+    query_count: int
+    disk_space_usage: DiskUsageResponse
+
+
 # ── Chat ─────────────────────────────────────────────
 
 class ChatRequest(BaseModel):

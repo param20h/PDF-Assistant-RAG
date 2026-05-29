@@ -4,11 +4,7 @@ Per-user collections for data isolation.
 """
 import logging
 from typing import List, Dict, Any, Optional
-import chromadb
-from chromadb.config import Settings as ChromaSettings
 from app.config import get_settings
-from app.rag.embeddings import get_embedding_model
-from app.rag.vision import generate_captions_for_chunks
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -17,12 +13,15 @@ settings = get_settings()
 _chroma_client = None
 
 
-def get_chroma_client() -> chromadb.ClientAPI:
+def get_chroma_client():
     """Get or create persistent ChromaDB client."""
     global _chroma_client
 
     if _chroma_client is None:
         import os
+        import chromadb
+        from chromadb.config import Settings as ChromaSettings
+
         os.makedirs(settings.CHROMA_PERSIST_DIR, exist_ok=True)
 
         _chroma_client = chromadb.PersistentClient(
@@ -58,11 +57,15 @@ def store_chunks(
 
     # Generate captions for any extracted images before embedding
     try:
+        from app.rag.vision import generate_captions_for_chunks
+
         generate_captions_for_chunks(chunks)
     except Exception as e:
         logger.warning(f"Could not generate image captions: {e}")
 
     client = get_chroma_client()
+    from app.rag.embeddings import get_embedding_model
+
     embedding_model = get_embedding_model()
 
     collection_name = get_collection_name(user_id)
