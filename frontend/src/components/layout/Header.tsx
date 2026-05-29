@@ -21,8 +21,10 @@ import {
   Moon,
   Sun,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { useTheme } from "next-themes";
 import ApiKeyManager from "@/components/auth/ApiKeyManager";
+
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -31,22 +33,18 @@ interface HeaderProps {
   onToggleViewer: () => void;
 }
 
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onToggleViewer }: HeaderProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [isDark, setIsDark] = useState(true);
+  const { theme, setTheme } = useTheme();
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot); // ← replaces useState + useEffect
 
-  const toggleTheme = () => {
-    const html = document.documentElement;
-    if (isDark) {
-      html.classList.remove("dark");
-      html.classList.add("light");
-    } else {
-      html.classList.remove("light");
-      html.classList.add("dark");
-    }
-    setIsDark(!isDark);
-  };
+  const isDark = theme === "dark";
+  const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
   const handleLogout = () => {
     logout();
@@ -75,9 +73,11 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
           {viewerOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
         </Button>
 
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme} title={isDark ? "Light mode" : "Dark mode"}>
-          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </Button>
+        {mounted && (
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme} title={isDark ? "Light mode" : "Dark mode"}>
+            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </Button>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
