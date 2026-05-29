@@ -78,6 +78,7 @@ def chunk_document(filepath: str) -> List[Dict[str, Any]]:
     Returns list of dicts with 'text', 'page', and 'chunk_index'.
     """
     ext = filepath.rsplit(".", 1)[-1].lower()
+    images = []
 
     # ── Extract text by file type ────────────────────
     if ext == "pdf":
