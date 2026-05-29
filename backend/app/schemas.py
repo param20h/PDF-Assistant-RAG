@@ -53,11 +53,17 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class HFTokenUpdate(BaseModel):
+    """Request schema for updating the user's HuggingFace token."""
+    hf_token: str
+
+
 class UserResponse(BaseModel):
     id: str
     username: str
     email: str
     is_admin: bool
+    hf_token: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -152,6 +158,23 @@ class ChatMessageResponse(BaseModel):
 class ChatHistoryResponse(BaseModel):
     messages: List[ChatMessageResponse]
     document_id: Optional[str] = None
+
+
+# ── ApiKeys ─────────────────────────────────────────────
+
+class ApiKeyResponse(BaseModel):
+    id: str
+    key_prefix: str
+    created_at: datetime
+    last_used: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ApiKeyCreateResponse(BaseModel):
+    key: str
+    api_key: ApiKeyResponse
 
 
 # Rebuild models for forward references
