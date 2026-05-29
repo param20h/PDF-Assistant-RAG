@@ -22,6 +22,7 @@ import {
   Sun,
 } from "lucide-react";
 import { useState } from "react";
+import ApiKeyManager from "@/components/auth/ApiKeyManager";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -87,11 +88,13 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
             </Avatar>
             <span className="text-sm hidden sm:inline">{user?.username}</span>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuContent align="end" className="w-56">
             <div className="px-3 py-2">
               <p className="text-sm font-medium">{user?.username}</p>
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
+            <DropdownMenuSeparator />
+            <ApiKeyManager />
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" />
