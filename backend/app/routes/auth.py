@@ -385,7 +385,6 @@ def update_password(payload:UpdatePassword,
         db.rollback()
         raise HTTPException(status_code=400, detail="Database error")
 
-
 from typing import List
 import hashlib
 
@@ -421,3 +420,10 @@ def delete_api_key(key_id: str, user: User = Depends(get_current_user), db: Sess
     db.delete(api_key)
     db.commit()
     return None
+
+@router.get("/config")
+def get_auth_config():
+    """Return public configuration for auth providers"""
+    return {
+        "google_client_id": settings.GOOGLE_CLIENT_ID
+    }

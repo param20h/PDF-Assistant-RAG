@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
 
 type GoogleCredentialResponse = {
   credential?: string;
@@ -36,7 +37,19 @@ const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 export default function GoogleSignInButton({ onError, onSuccess }: GoogleSignInButtonProps) {
   const buttonRef = useRef<HTMLDivElement>(null);
   const { loginWithGoogle } = useAuth();
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const [clientId, setClientId] = useState<string | null>(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null);
+
+  useEffect(() => {
+    if (!clientId) {
+      api.get<{ google_client_id: string }>("/api/v1/auth/config")
+        .then((data) => {
+          if (data.google_client_id) {
+            setClientId(data.google_client_id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [clientId]);
 
   useEffect(() => {
     if (!clientId || !buttonRef.current) return;
