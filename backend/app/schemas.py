@@ -58,6 +58,19 @@ class HFTokenUpdate(BaseModel):
     hf_token: str
 
 
+class ApiKeyResponse(BaseModel):
+    id: str
+    key_preview: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ApiKeyCreateResponse(ApiKeyResponse):
+    raw_key: str
+
+
 class UserResponse(BaseModel):
     id: str
     username: str
@@ -160,21 +173,16 @@ class ChatHistoryResponse(BaseModel):
     document_id: Optional[str] = None
 
 
-# ── ApiKeys ─────────────────────────────────────────────
-
-class ApiKeyResponse(BaseModel):
+class ShareAnswerResponse(BaseModel):
     id: str
-    key_prefix: str
+    content: str
+    sources: List[SourceChunk] = []
     created_at: datetime
-    last_used: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
 
 
-class ApiKeyCreateResponse(BaseModel):
-    key: str
-    api_key: ApiKeyResponse
+class ShareLinkResponse(BaseModel):
+    message_id: str
+    share_url: str
 
 
 # Rebuild models for forward references

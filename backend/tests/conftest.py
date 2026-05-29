@@ -16,7 +16,7 @@ BACKEND_DIR = ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-os.environ["SECRET_KEY"] = "test-secret-key"
+os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough"
 os.environ["DATABASE_URL"] = "sqlite:///./test_bootstrap.db"
 os.environ["DEBUG"] = "false"
 os.environ["HF_TOKEN"] = "test-hf-token"
@@ -84,7 +84,7 @@ sys.modules.setdefault("slowapi.util", slowapi_util)
 from app.auth import create_access_token, create_refresh_token, hash_password
 from app.database import Base, get_db
 from app.main import app
-from app.models import Document, User
+from app.models import ChatMessage, Document, User
 
 
 @pytest.fixture()
@@ -142,6 +142,19 @@ def user(db_session):
 
 
 @pytest.fixture()
+def other_user(db_session):
+    instance = User(
+        username="other",
+        email="other@example.com",
+        hashed_password=hash_password("password123"),
+    )
+    db_session.add(instance)
+    db_session.commit()
+    db_session.refresh(instance)
+    return instance
+
+
+@pytest.fixture()
 def auth_headers(user):
     token = create_access_token(user.id)
     return {"Authorization": f"Bearer {token}"}
@@ -177,6 +190,46 @@ def pending_document(db_session, user):
         original_name="pending.txt",
         file_size=64,
         status="pending",
+    )
+    db_session.add(instance)
+    db_session.commit()
+    db_session.refresh(instance)
+    return instance
+
+
+@pytest.fixture()
+def assistant_message(db_session, user):
+    instance = ChatMessage(
+        user_id=user.id,
+        role="assistant",
+        content="Shared assistant answer",
+        sources_json='[{"text":"Source text","filename":"file.txt","page":1,"score":0.9,"confidence":95.0}]',
+    )
+    db_session.add(instance)
+    db_session.commit()
+    db_session.refresh(instance)
+    return instance
+
+
+@pytest.fixture()
+def user_message(db_session, user):
+    instance = ChatMessage(
+        user_id=user.id,
+        role="user",
+        content="Private user prompt",
+    )
+    db_session.add(instance)
+    db_session.commit()
+    db_session.refresh(instance)
+    return instance
+
+
+@pytest.fixture()
+def other_user_assistant_message(db_session, other_user):
+    instance = ChatMessage(
+        user_id=other_user.id,
+        role="assistant",
+        content="Other user's answer",
     )
     db_session.add(instance)
     db_session.commit()

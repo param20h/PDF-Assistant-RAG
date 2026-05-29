@@ -17,38 +17,81 @@ from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models import User, ChatMessage, Document
-from app.metrics import record_query_response_time
-from app.schemas import ChatRequest, ChatResponse, ChatMessageResponse, ChatHistoryResponse, SourceChunk
 from app.auth import get_current_user
+from app.database import get_db
+from app.metrics import record_query_response_time
+from app.models import User, ChatMessage, Document, SharedMessage
 from app.rate_limit import limiter
+from app.schemas import (
+    ChatRequest,
+    ChatResponse,
+    ChatMessageResponse,
+    ChatHistoryResponse,
+    ShareAnswerResponse,
+    ShareLinkResponse,
+    SourceChunk,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
+@router.get("/share/{message_id}", response_model=ShareAnswerResponse)
+def get_shared_answer(
+    message_id: str,
+    db: Session = Depends(get_db),
+):
+    message = db.query(ChatMessage).filter(
+        ChatMessage.id == message_id,
+        ChatMessage.role == "assistant",
+    ).first()
+
+    if not message or not db.query(SharedMessage).filter(SharedMessage.message_id == message.id).first():
+        raise HTTPException(status_code=404, detail="Shared answer not found")
+
+    return _share_answer_response(message)
+
+
+@router.post("/share/{message_id}", response_model=ShareLinkResponse)
+def create_share_link(
+    message_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    message = db.query(ChatMessage).filter(
+        ChatMessage.id == message_id,
+        ChatMessage.user_id == user.id,
+    ).first()
+
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if message.role != "assistant":
+        raise HTTPException(status_code=400, detail="Only assistant messages can be shared")
+
+    shared_message = db.query(SharedMessage).filter(SharedMessage.message_id == message.id).first()
+    if not shared_message:
+        shared_message = SharedMessage(message_id=message.id)
+        db.add(shared_message)
+        db.commit()
+
+    return ShareLinkResponse(
+        message_id=message.id,
+        share_url=f"/share?message_id={message.id}",
+    )
+
+
 def generate_answer(question: str, user_id: str, document_id: Optional[str] = None):
-    """Import the RAG agent lazily so route tests can patch this boundary."""
     from app.rag.agent import generate_answer as _generate_answer
 
-    return _generate_answer(
-        question=question,
-        user_id=user_id,
-        document_id=document_id,
-    )
+    return _generate_answer(question=question, user_id=user_id, document_id=document_id)
 
 
 def generate_answer_stream(question: str, user_id: str, document_id: Optional[str] = None):
-    """Import the streaming RAG agent lazily so route tests can patch this boundary."""
     from app.rag.agent import generate_answer_stream as _generate_answer_stream
 
-    return _generate_answer_stream(
-        question=question,
-        user_id=user_id,
-        document_id=document_id,
-    )
+    return _generate_answer_stream(question=question, user_id=user_id, document_id=document_id)
 
 
 @router.post("/ask", response_model=ChatResponse)
@@ -454,6 +497,23 @@ def _save_message(
     )
     db.add(msg)
     db.commit()
+
+
+def _share_answer_response(message: ChatMessage) -> ShareAnswerResponse:
+    """Format a shared assistant message with only safe public fields."""
+    sources = []
+    if message.sources_json:
+        try:
+            sources = [SourceChunk(**item) for item in json.loads(message.sources_json)]
+        except Exception:
+            sources = []
+
+    return ShareAnswerResponse(
+        id=message.id,
+        content=message.content,
+        created_at=message.created_at,
+        sources=sources,
+    )
 
 
 def _format_markdown(doc, messages) -> str:
