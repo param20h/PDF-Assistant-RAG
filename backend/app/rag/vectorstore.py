@@ -140,12 +140,22 @@ def query_chunks(
         where_filter = {"document_id": {"$eq": document_id}}
 
     # ── Query ────────────────────────────────────────
+    import time
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    start_prof = time.perf_counter()
+
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=top_k,
         where=where_filter,
         include=["documents", "metadatas", "distances"],
     )
+
+    end_prof = time.perf_counter()
+    logger.info(f"--- ChromaDB Query Latency: {(end_prof - start_prof) * 1000:.2f} ms ---")
+
 
     # ── Format results ───────────────────────────────
     chunks = []
