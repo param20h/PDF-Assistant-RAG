@@ -146,10 +146,6 @@ def ask_question(
                     status_code=400,
                     detail=f"Document is still {doc.status}. Please wait for processing to complete.",
                 )
-            
-            # Update last_accessed_at timestamp
-            doc.last_accessed_at = datetime.now(timezone.utc)
-            db.commit()
 
         result = generate_answer(
             question=payload.question,
@@ -228,10 +224,6 @@ def ask_question_stream(
                 status_code=400,
                 detail=f"Document is still {doc.status}. Please wait for processing to complete.",
             )
-        
-        # Update last_accessed_at timestamp
-        doc.last_accessed_at = datetime.now(timezone.utc)
-        db.commit()
 
     started_at = time.perf_counter()
 

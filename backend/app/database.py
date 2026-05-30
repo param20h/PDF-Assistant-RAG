@@ -71,21 +71,6 @@ def _migrate_schema():
                     "Migration skipped (may already exist): %s.%s", table, column
                 )
 
-    # Migrate documents
-    existing_docs_columns = {c["name"] for c in inspector.get_columns("documents")}
-    docs_migrations = [
-        ("documents", "last_accessed_at", "ALTER TABLE documents ADD COLUMN last_accessed_at TIMESTAMP"),
-    ]
-    for table, column, ddl in docs_migrations:
-        if column not in existing_docs_columns:
-            try:
-                with engine.begin() as conn:
-                    conn.execute(text(ddl))
-                logger.info("Migration: added column %s.%s", table, column)
-            except Exception:
-                logger.warning(
-                    "Migration skipped (may already exist): %s.%s", table, column
-                )
 
 
 def init_db():

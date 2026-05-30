@@ -90,7 +90,6 @@ class Document(Base):
     status = Column(String(20), default="pending")         # pending | processing | ready | failed
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
     summary = Column(Text, nullable=True)  # Optional summary of the document's content
 
     # Relationships
