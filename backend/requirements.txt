@@ -8,6 +8,7 @@ python-multipart
 # Database
 sqlalchemy
 aiosqlite
+psycopg2-binary
 
 # Auth
 pyjwt
