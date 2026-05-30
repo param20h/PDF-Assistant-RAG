@@ -170,13 +170,13 @@ test("deletes a document successfully", async ({ page }) => {
   await page.goto("/dashboard");
   await expect(page.getByText("test.pdf")).toBeVisible();
   
+  // Handle confirm dialog (must be registered BEFORE click)
+  page.on('dialog', dialog => dialog.accept());
+
   // Delete the document
   await page.getByText("test.pdf").hover();
   // Find the button with Trash2 icon
   await page.locator('button:has(svg.lucide-trash2)').click();
-  
-  // Handle confirm dialog
-  page.on('dialog', dialog => dialog.accept());
 
   await expect(page.getByText("No documents yet")).toBeVisible();
 });
@@ -191,7 +191,7 @@ test("logs out successfully", async ({ page }) => {
 
   await page.goto("/dashboard");
   await page.getByRole("button", { name: "tester" }).click();
-  await page.getByRole("menuitem", { name: "Log out" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
 
   await expect(page).toHaveURL(/\/login$/);
   const token = await page.evaluate(() => localStorage.getItem("token"));
