@@ -57,7 +57,7 @@ export default function RootLayout({
                 className="text-muted-foreground hover:text-foreground transition-colors duration-200"
                 aria-label="GitHub Repository"
               >
-                <GitHub className="h-4 w-4" />
+                <Github className="h-4 w-4" />
               </a>
 
               <a 
