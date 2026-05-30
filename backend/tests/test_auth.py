@@ -115,3 +115,10 @@ def test_hf_token_appears_in_user_response(client, auth_headers, user, db_sessio
     me_resp = client.get("/api/v1/auth/me", headers=auth_headers)
     assert me_resp.status_code == 200
     assert me_resp.json()["hf_token"] == "hf_persist_token"
+
+    # Verify encryption at rest in the database directly
+    from sqlalchemy import text
+    row = db_session.execute(text("SELECT hf_token FROM users WHERE id = :id"), {"id": user.id}).fetchone()
+    stored_token = row[0]
+    assert stored_token is not None
+    assert stored_token != "hf_persist_token"
