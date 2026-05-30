@@ -4,7 +4,7 @@ Chat routes — ask questions with RAG, stream responses via SSE, manage history
 import html
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 import logging
 from typing import Optional
