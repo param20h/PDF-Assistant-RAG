@@ -16,7 +16,7 @@ class EncryptedString(TypeDecorator):
     """SQLAlchemy TypeDecorator that encrypts strings before storing in database,
     and decrypts them when reading.
     """
-    impl = String
+    impl = Text
     cache_ok = False
 
     def process_bind_param(self, value, dialect):
@@ -55,7 +55,7 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, nullable=True, index=True)
-    hf_token = Column(EncryptedString(255), nullable=True)
+    hf_token = Column(EncryptedString, nullable=True)
 
     # Relationships
     documents = relationship("Document", back_populates="owner", cascade="all, delete-orphan")
