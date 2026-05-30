@@ -5,7 +5,7 @@ import { AuthProvider } from "@/lib/auth";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import I18nProvider from "@/components/providers/I18nProvider";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
-import { Github, X, MessageSquare } from "lucide-react";
+import { GitHub, X, MessageSquare } from "lucide-react";
 
 
 
@@ -57,7 +57,7 @@ export default function RootLayout({
                 className="text-muted-foreground hover:text-foreground transition-colors duration-200"
                 aria-label="GitHub Repository"
               >
-                <Github className="h-4 w-4" />
+                <GitHub className="h-4 w-4" />
               </a>
 
               <a 
