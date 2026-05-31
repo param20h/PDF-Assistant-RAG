@@ -15,8 +15,6 @@ pyjwt
 passlib[bcrypt]
 python-dotenv
 google-auth
-google-api-python-client
-APScheduler
 
 # Config
 pydantic-settings
