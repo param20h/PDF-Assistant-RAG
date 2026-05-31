@@ -128,8 +128,9 @@ test("uploads a document and chats with it", async ({ page }) => {
     buffer: Buffer.from("hello world"),
   });
 
-  await expect(page.getByText("notes.txt")).toBeVisible();
-  await page.getByText("notes.txt").click();
+  const documentButton = page.getByRole("button", { name: /notes\.txt/ });
+  await expect(documentButton).toBeVisible();
+  await documentButton.click();
   await expect(page.getByText("Ask about your document")).toBeVisible();
 
   await page.locator("#chat-input").fill("Summarize this document");
