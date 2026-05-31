@@ -232,3 +232,4 @@ class SharedMessage(Base):
 
     # Relationships
     message = relationship("ChatMessage", back_populates="shared_message")
+
