@@ -11,20 +11,30 @@ from app.config import get_settings
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# ── Ensure data directory exists ─────────────────────
-db_path = settings.DATABASE_URL.replace("sqlite:///", "")
-os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
-
 # ── Engine & Session ─────────────────────────────────
-engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Required for SQLite
-    echo=settings.DEBUG,
-)
+is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
+if is_sqlite:
+    # ── Ensure data directory exists ─────────────────────
+    db_path = settings.DATABASE_URL.replace("sqlite:///", "")
+    if db_path and os.path.dirname(db_path):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    
+    engine = create_engine(
+        settings.DATABASE_URL,
+        connect_args={"check_same_thread": False},  # Required for SQLite
+        echo=settings.DEBUG,
+    )
+else:
+    engine = create_engine(
+        settings.DATABASE_URL,
+        echo=settings.DEBUG,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
 
 
 def get_db():
@@ -76,6 +86,7 @@ def _migrate_schema():
                 logger.warning(
                     "Migration skipped (may already exist): %s.%s", table, column
                 )
+
 
 
 def init_db():
