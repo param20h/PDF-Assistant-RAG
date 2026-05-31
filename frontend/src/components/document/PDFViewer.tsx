@@ -3,8 +3,16 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertCircle } from "lucide-react";
 import { API_BASE } from "@/lib/api";
+import { Document, Page, pdfjs } from "react-pdf";
+
+// Import styles for react-pdf layers
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
+
+// Configure PDF.js worker using standard unpkg URL
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface Props {
   documentId: string;
@@ -15,15 +23,24 @@ interface Props {
 
 export default function PDFViewer({ documentId, currentPage, onPageChange, totalPages }: Props) {
   const [scale, setScale] = useState(1.0);
-  const [loading, setLoading] = useState(true);
-  // Local editable value — initialized from currentPage prop.
-  // The iframe key={documentId-currentPage} already forces remount on
-  // external page changes, so no useEffect sync is needed.
+  const [, setLoading] = useState(true);
   const [pageInput, setPageInput] = useState(String(currentPage));
-  const pdfUrl = `${API_BASE}/api/v1/documents/${documentId}/pdf`;
+  const [prevCurrentPage, setPrevCurrentPage] = useState(currentPage);
 
-  // Append page fragment for native viewer navigation
-  const iframeSrc = `${pdfUrl}#page=${currentPage}`;
+  // Sync page input state with current page prop updates during render phase
+  if (currentPage !== prevCurrentPage) {
+    setPrevCurrentPage(currentPage);
+    setPageInput(String(currentPage));
+  }
+
+  const pdfUrl = `${API_BASE}/api/v1/documents/${documentId}/pdf`;
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+  // Configure file object with Authorization headers
+  const fileConfig = {
+    url: pdfUrl,
+    httpHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
+  };
 
   const handlePageSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,11 +48,9 @@ export default function PDFViewer({ documentId, currentPage, onPageChange, total
     if (!isNaN(num) && num >= 1 && num <= totalPages) {
       onPageChange(num);
     } else {
-      // Reset to the current valid page without needing a useEffect
       setPageInput(String(currentPage));
     }
   };
-
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -46,7 +61,11 @@ export default function PDFViewer({ documentId, currentPage, onPageChange, total
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+            onClick={() => {
+              const newPage = Math.max(1, currentPage - 1);
+              onPageChange(newPage);
+              setPageInput(String(newPage));
+            }}
             disabled={currentPage <= 1}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -68,7 +87,11 @@ export default function PDFViewer({ documentId, currentPage, onPageChange, total
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+            onClick={() => {
+              const newPage = Math.min(totalPages, currentPage + 1);
+              onPageChange(newPage);
+              setPageInput(String(newPage));
+            }}
             disabled={currentPage >= totalPages}
           >
             <ChevronRight className="w-4 h-4" />
@@ -99,20 +122,50 @@ export default function PDFViewer({ documentId, currentPage, onPageChange, total
       </div>
 
       {/* ── PDF Render ──────────────────────────────── */}
-      <div className="flex-1 overflow-auto relative">
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
-          </div>
-        )}
-        <iframe
-          key={`${documentId}-${currentPage}`}
-          src={iframeSrc}
-          className="w-full h-full border-0"
-          style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: `${100/scale}%`, height: `${100/scale}%` }}
-          onLoad={() => setLoading(false)}
-          title="PDF Viewer"
-        />
+      <div className="flex-1 overflow-auto bg-muted/30 flex justify-center items-start p-4 relative w-full">
+        <Document
+          file={fileConfig}
+          onLoadSuccess={() => setLoading(false)}
+          onLoadError={(err) => {
+            console.error("PDF load error:", err);
+            setLoading(false);
+          }}
+          loading={
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          }
+          error={
+            <div className="flex flex-col items-center justify-center p-8 text-center bg-card border border-destructive/20 rounded-lg max-w-md mx-auto my-12 shadow-sm gap-3">
+              <AlertCircle className="w-8 h-8 text-destructive animate-pulse" />
+              <div>
+                <p className="font-semibold text-sm text-foreground mb-1">Failed to load PDF</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  We encountered an error loading this PDF document. Please verify the document is ready or try refreshing the page.
+                </p>
+              </div>
+            </div>
+          }
+          noData={
+            <div className="flex flex-col items-center justify-center p-8 text-center bg-card border border-border rounded-lg max-w-md mx-auto my-12 shadow-sm gap-2">
+              <p className="font-semibold text-sm text-foreground">No PDF document selected</p>
+              <p className="text-xs text-muted-foreground">Select or upload a document to view it here.</p>
+            </div>
+          }
+          className="shadow-md border border-border bg-card max-w-full"
+        >
+          <Page
+            pageNumber={currentPage}
+            scale={scale}
+            renderAnnotationLayer={false}
+            renderTextLayer={true}
+            loading={
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            }
+          />
+        </Document>
       </div>
     </div>
   );

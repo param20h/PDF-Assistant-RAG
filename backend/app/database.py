@@ -48,6 +48,7 @@ def _migrate_schema():
     existing_users_columns = {c["name"] for c in inspector.get_columns("users")}
     users_migrations = [
         ("users", "hf_token", "ALTER TABLE users ADD COLUMN hf_token VARCHAR(255)"),
+        ("users", "role", "ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'"),
     ]
     for table, column, ddl in users_migrations:
         if column not in existing_users_columns:

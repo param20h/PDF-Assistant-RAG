@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 
 settings = get_settings()
 security = HTTPBearer()
@@ -30,10 +30,10 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ── JWT Token ────────────────────────────────────────
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id) -> str:
     """Create a JWT access token with user_id as the subject."""
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "type": "access",
         "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_ACCESS_EXPIRY_MINUTES),
         "iat": datetime.now(timezone.utc),
@@ -41,10 +41,10 @@ def create_access_token(user_id: str) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id) -> str:
     """Create a JWT refresh token with user_id as the subject."""
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "type": "refresh",
         "exp": datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_EXPIRY_DAYS),
         "iat": datetime.now(timezone.utc),
@@ -120,11 +120,39 @@ def get_current_user(
     return user
 
 
+def _is_admin_user(user: User) -> bool:
+    """
+    Check if a user has administrative privileges.
+    Supports both the modern 'role' field and the legacy 'is_admin' boolean.
+    """
+    if not user:
+        return False
+    
+    # We check the role first (it can be an Enum or a plain string depending on the environment)
+    role_check = (user.role == UserRole.admin) or (str(user.role) == "admin")
+    
+    # Fallback to the legacy is_admin flag
+    return role_check or bool(user.is_admin)
+
+
 def get_admin_user(user: User = Depends(get_current_user)) -> User:
-    """Dependency: require admin privileges."""
-    if not user.is_admin:
+    """
+    FastAPI dependency that restricts access to administrators only.
+    Raises 403 Forbidden if the user lacks sufficient permissions.
+    """
+    if not _is_admin_user(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
     return user
+
+
+async def get_current_admin(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """
+    Alias for get_admin_user to maintain compatibility with existing routes.
+    Ensures the requesting user has administrative rights.
+    """
+    return get_admin_user(current_user)

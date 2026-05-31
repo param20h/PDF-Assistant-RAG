@@ -61,6 +61,36 @@ cp ../.env.example .env            # Fill in your own dev values
 uvicorn app.main:app --reload --port 8000
 ```
 
+### Pre-commit Hooks (Required)
+
+We use [`pre-commit`](https://pre-commit.com/) to enforce code style automatically before every commit. This prevents style-related CI failures.
+
+```bash
+# Install pre-commit (one-time setup)
+pip install pre-commit
+
+# Install the hooks into your local clone (one-time per checkout)
+pre-commit install
+
+# (Optional) Run against all files to verify setup
+pre-commit run --all-files
+```
+
+**What the hooks check:**
+
+| Hook | Tool | Scope |
+|------|------|-------|
+| Python formatting | `black` (line-length 120) | `backend/` |
+| Python linting | `flake8` (errors only) | `backend/` |
+| JS/TS/JSON/CSS/MD formatting | `prettier` | `frontend/` |
+| Trailing whitespace | `pre-commit-hooks` | All files |
+| YAML/JSON validity | `pre-commit-hooks` | All files |
+| Merge-conflict markers | `pre-commit-hooks` | All files |
+| Large file guard (>1 MB) | `pre-commit-hooks` | All files |
+| Secret detection | `detect-secrets` | All files |
+
+> ⚠️ If a hook modifies files, it will block your commit. Just `git add` the auto-fixed files and commit again.
+
 ### Frontend (Next.js)
 
 ```bash
