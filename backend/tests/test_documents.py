@@ -1,3 +1,9 @@
+import types
+
+from app.models import Document
+from app.routes.documents import _ingest_document
+
+
 def test_api_health(client):
     response = client.get("/api/health")
 
@@ -32,3 +38,77 @@ def test_upload_rejects_unsupported_extension_before_deep_validation(client, aut
 
     assert response.status_code == 400
     assert "not supported" in response.json()["detail"]
+
+
+def test_ingest_document_builds_and_saves_graph(db_session, monkeypatch, tmp_path, user):
+    document = Document(
+        user_id=user.id,
+        filename="graph.txt",
+        original_name="graph.txt",
+        file_size=128,
+        status="pending",
+    )
+    db_session.add(document)
+    db_session.commit()
+    db_session.refresh(document)
+    user_id = user.id
+    document_id = document.id
+    chunks = [{"text": "OpenAI works with Microsoft.", "page": 1, "chunk_index": 0}]
+    saved = {}
+
+    monkeypatch.setattr("app.routes.documents.get_page_count", lambda filepath: 1)
+    monkeypatch.setattr("app.routes.documents.chunk_document", lambda filepath: chunks)
+    monkeypatch.setattr("app.routes.documents.store_chunks", lambda **kwargs: len(chunks))
+    monkeypatch.setattr("app.database.SessionLocal", lambda: db_session)
+
+    fake_summary = types.ModuleType("app.rag.summarizer")
+    fake_summary.generate_document_summary = lambda filepath, max_sentences=2: "Summary"
+    monkeypatch.setitem(__import__("sys").modules, "app.rag.summarizer", fake_summary)
+
+    monkeypatch.setattr(
+        "app.rag.graph_builder.build_graph",
+        lambda received_chunks: {"chunks": received_chunks},
+    )
+    monkeypatch.setattr(
+        "app.rag.graph_builder.save_graph",
+        lambda graph, user_id, document_id: saved.update(
+            {"graph": graph, "user_id": user_id, "document_id": document_id}
+        ),
+    )
+
+    _ingest_document(
+        document_id=document_id,
+        filepath=str(tmp_path / "graph.txt"),
+        original_name=document.original_name,
+        user_id=user_id,
+    )
+
+    assert saved == {
+        "graph": {"chunks": chunks},
+        "user_id": user_id,
+        "document_id": document_id,
+    }
+    refreshed = db_session.get(Document, document_id)
+    assert refreshed.status == "ready"
+    assert refreshed.chunk_count == 1
+
+
+def test_delete_document_removes_knowledge_graph(client, auth_headers, ready_document, monkeypatch):
+    deleted = {}
+    doc_id = ready_document.id
+
+    monkeypatch.setattr("app.routes.documents.delete_document_chunks", lambda **kwargs: None)
+    monkeypatch.setattr(
+        "app.rag.graph_builder.delete_graph",
+        lambda user_id, document_id: deleted.update(
+            {"user_id": user_id, "document_id": document_id}
+        ),
+    )
+
+    response = client.delete(
+        f"/api/v1/documents/{doc_id}",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert deleted["document_id"] == doc_id

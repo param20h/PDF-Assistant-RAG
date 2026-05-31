@@ -33,7 +33,8 @@ RUN python -m venv "$VIRTUAL_ENV"
 
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    python -m spacy download en_core_web_sm
 
 # --------------------------------------------------------
 # Stage 3: Runtime image with only app code and artifacts
@@ -68,7 +69,7 @@ COPY backend/__init__.py ./backend/__init__.py
 COPY --from=frontend-builder /app/frontend/out ./frontend/out
 
 # Create data directories with proper permissions
-RUN mkdir -p /app/data/uploads /app/data/chroma_db /app/data/huggingface && \
+RUN mkdir -p /app/data/uploads /app/data/chroma_db /app/data/graphs /app/data/huggingface && \
     chown -R appuser:appuser /app
 
 # Copy entrypoint

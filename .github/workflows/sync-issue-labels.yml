@@ -1,0 +1,164 @@
+name: Sync Labels — Issue to PR
+
+# ──────────────────────────────────────────────────────────
+# Auto-syncs labels from referenced issue(s) to the PR when
+# a PR is opened or updated targeting `dev`.
+#
+# Why pull_request_target:
+#   Label operations need write permissions on the target
+#   repo. pull_request_target runs in the context of the
+#   base repo with access to secrets and write token.
+#   Since we only read issue data and apply labels, there
+#   is no security concern.
+# ──────────────────────────────────────────────────────────
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: ["dev"]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+
+jobs:
+  sync-labels:
+    name: Sync labels from referenced issue
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+
+    steps:
+      - name: Extract issue numbers from PR body
+        id: extract
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Match patterns:
+          #   "Closes #123"
+          #   "Fixes #456, #789"  (comma-separated)
+          #   "Resolves #111, #222, #333"
+          #
+          # Approach: grab lines containing a keyword, then
+          # extract every NNN from those lines.
+          # We place '|| true' at the very end of the pipeline so it doesn't short-circuit.
+          ISSUES=$(
+            echo "${PR_BODY:-}" \
+              | grep -ioE '.*(closes|fixes|resolves).*' \
+              | grep -oE '#[0-9]+' \
+              | grep -oE '[0-9]+' \
+              | sort -un \
+              | xargs \
+            || true
+          )
+          echo "Found issues: [$ISSUES]"
+          echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch and apply labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUES: ${{ steps.extract.outputs.issues }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          ALL_LABELS="gssoc"$'\n'"gssoc:approved"$'\n'"mentor:param20h"$'\n'
+
+          for ISSUE in $ISSUES; do
+            echo "--- Fetching labels for #$ISSUE ---"
+
+            LABELS=$(gh issue view "$ISSUE" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)
+
+            if [ -z "$LABELS" ]; then
+              echo "  → No labels on #$ISSUE, skipping"
+              continue
+            fi
+
+            echo "  → Labels: $(echo "$LABELS" | tr '\n' ' ')"
+
+            # Accumulate labels (newline-separated, deduplicated later)
+            ALL_LABELS="${ALL_LABELS}${LABELS}"$'\n'
+          done
+
+          if [ -z "$ALL_LABELS" ]; then
+            echo "No labels to apply. Exiting."
+            exit 0
+          fi
+
+          # Deduplicate and remove empty lines
+          UNIQUE_LABELS=$(echo "$ALL_LABELS" | sort -u | grep -v '^$')
+
+          echo ""
+          echo "=== Applying labels to PR #$PR_NUMBER ==="
+          echo "$UNIQUE_LABELS"
+
+          # Get labels already on the PR
+          EXISTING=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)
+
+          MISSING=0
+          while IFS= read -r LABEL; do
+            [ -z "$LABEL" ] && continue
+            if echo "$EXISTING" | grep -qxF "$LABEL"; then
+              echo "  ✓ Already present: $LABEL"
+            else
+              echo "  + Adding: $LABEL"
+              gh label create "$LABEL" --repo "$REPO" 2>/dev/null || true  # create if not exists
+              gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "$LABEL"
+              MISSING=$((MISSING + 1))
+            fi
+          done <<< "$UNIQUE_LABELS"
+
+          if [ "$MISSING" -eq 0 ]; then
+            echo "All labels already synced — nothing to add."
+          else
+            echo "Done. Added $MISSING label(s) to PR #$PR_NUMBER."
+          fi
+
+      - name: Calculate GSSoC Points and Comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          echo "Calculating GSSoC points for PR #$PR_NUMBER..."
+          
+          # Fetch all labels currently on the PR (including the ones we just synced)
+          PR_LABELS=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)
+          
+          POINTS=0
+          
+          while IFS= read -r LABEL; do
+            [ -z "$LABEL" ] && continue
+            case "$LABEL" in
+              "level:beginner") POINTS=$((POINTS + 20)) ;;
+              "level:intermediate") POINTS=$((POINTS + 35)) ;;
+              "level:advanced") POINTS=$((POINTS + 55)) ;;
+              "level:critical") POINTS=$((POINTS + 80)) ;;
+              "type:accessibility") POINTS=$((POINTS + 15)) ;;
+              "type:bug") POINTS=$((POINTS + 10)) ;;
+              "type:design") POINTS=$((POINTS + 10)) ;;
+              "type:devops") POINTS=$((POINTS + 15)) ;;
+              "type:docs") POINTS=$((POINTS + 5)) ;;
+              "type:feature") POINTS=$((POINTS + 10)) ;;
+              "type:performance") POINTS=$((POINTS + 15)) ;;
+              "type:refactor") POINTS=$((POINTS + 10)) ;;
+              "type:security") POINTS=$((POINTS + 20)) ;;
+              "type:testing") POINTS=$((POINTS + 10)) ;;
+            esac
+          done <<< "$PR_LABELS"
+          
+          echo "Total Points Calculated: $POINTS"
+          
+          if [ "$POINTS" -gt 0 ]; then
+            printf -v COMMENT "🎉 **Congratulations on getting your Pull Request merged!** 🎉\n\nThank you for contributing to PDF-Assistant-RAG as part of GSSoC '26! 🚀\n\nKeep up the great work! ✨"
+            
+            # Post the comment to the PR
+            echo "Posting comment..."
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$COMMENT"
+          else
+            echo "No scorable labels found. No comment posted."
+          fi
+

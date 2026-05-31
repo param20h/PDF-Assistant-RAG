@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.config import get_settings
 from app.database import get_db
-from app.models import User, ApiKey
+from app.models import User, ApiKey, UserRole
 from app.schemas import (
     GoogleLoginRequest,
     HFTokenUpdate,
@@ -140,6 +140,7 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
         username=payload.username,
         email=payload.email,
         hashed_password=hash_password(payload.password),
+        role=UserRole.user,
     )
     db.add(user)
     db.commit()

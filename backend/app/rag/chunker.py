@@ -2,6 +2,7 @@
 Smart document chunking using LangChain's RecursiveCharacterTextSplitter.
 Supports PDF, DOCX, TXT, and Markdown files with page-level metadata.
 """
+import json
 import fitz  # PyMuPDF
 import docx
 from typing import List, Dict, Any
@@ -11,8 +12,72 @@ from app.config import get_settings
 settings = get_settings()
 
 
+def _is_word_inside_bbox(word: Dict[str, Any], bbox: tuple) -> bool:
+    """Return True when the word center falls inside a pdfplumber bbox."""
+    x0, top, x1, bottom = bbox
+    word_x = (float(word["x0"]) + float(word["x1"])) / 2
+    word_y = (float(word["top"]) + float(word["bottom"])) / 2
+    return x0 <= word_x <= x1 and top <= word_y <= bottom
+
+
+def _words_to_text(words: List[Dict[str, Any]], line_tolerance: float = 3.0) -> str:
+    """Rebuild readable text from positioned pdfplumber words."""
+    if not words:
+        return ""
+
+    sorted_words = sorted(words, key=lambda item: (round(float(item["top"]) / line_tolerance), item["x0"]))
+    lines: List[List[Dict[str, Any]]] = []
+
+    for word in sorted_words:
+        if not lines:
+            lines.append([word])
+            continue
+
+        current_top = sum(float(item["top"]) for item in lines[-1]) / len(lines[-1])
+        if abs(float(word["top"]) - current_top) <= line_tolerance:
+            lines[-1].append(word)
+        else:
+            lines.append([word])
+
+    text_lines = [
+        " ".join(item["text"] for item in sorted(line, key=lambda item: item["x0"]))
+        for line in lines
+    ]
+    return "\n".join(line for line in text_lines if line.strip())
+
+
+def _table_to_markdown(rows: List[List[Any]]) -> str:
+    """Serialize extracted table rows into Markdown for retrieval."""
+    cleaned_rows = [
+        ["" if cell is None else str(cell).replace("\n", " ").strip() for cell in row]
+        for row in rows
+        if row and any(cell is not None and str(cell).strip() for cell in row)
+    ]
+    if not cleaned_rows:
+        return ""
+
+    width = max(len(row) for row in cleaned_rows)
+    normalized = [row + [""] * (width - len(row)) for row in cleaned_rows]
+
+    def fmt(row: List[str]) -> str:
+        return "| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |"
+
+    header = normalized[0]
+    separator = ["---"] * width
+    body = normalized[1:]
+    return "\n".join([fmt(header), fmt(separator), *[fmt(row) for row in body]])
+
+
 def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
-    """Extract text from PDF with page numbers."""
+    """Extract PDF text while preserving tables as separate bbox-aware chunks."""
+    try:
+        return extract_pdf_with_tables(filepath)
+    except ImportError:
+        return extract_pdf_with_pymupdf(filepath)
+
+
+def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
+    """Fallback PDF extraction with page numbers using PyMuPDF."""
     doc = fitz.open(filepath)
     pages = []
 
@@ -22,9 +87,49 @@ def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
             pages.append({
                 "text": text,
                 "page": page_num + 1,
+                "chunk_type": "text",
             })
 
     doc.close()
+    return pages
+
+
+def extract_pdf_with_tables(filepath: str) -> List[Dict[str, Any]]:
+    """Detect tables with pdfplumber, remove table text from paragraphs, and keep table bboxes."""
+    import pdfplumber
+
+    pages: List[Dict[str, Any]] = []
+
+    with pdfplumber.open(filepath) as pdf:
+        for page_num, page in enumerate(pdf.pages, start=1):
+            tables = page.find_tables()
+            table_bboxes = [table.bbox for table in tables]
+
+            words = page.extract_words() or []
+            paragraph_words = [
+                word for word in words
+                if not any(_is_word_inside_bbox(word, bbox) for bbox in table_bboxes)
+            ]
+            paragraph_text = _words_to_text(paragraph_words)
+
+            if paragraph_text.strip():
+                pages.append({
+                    "text": paragraph_text,
+                    "page": page_num,
+                    "chunk_type": "text",
+                })
+
+            for table_index, table in enumerate(tables):
+                table_text = _table_to_markdown(table.extract() or [])
+                if table_text.strip():
+                    pages.append({
+                        "text": table_text,
+                        "page": page_num,
+                        "chunk_type": "table",
+                        "bbox": json.dumps([round(float(value), 2) for value in table.bbox]),
+                        "table_index": table_index,
+                    })
+
     return pages
 
 
@@ -109,6 +214,19 @@ def chunk_document(filepath: str) -> List[Dict[str, Any]]:
     for page_data in pages:
         text = page_data["text"]
         page_num = page_data["page"]
+        chunk_type = page_data.get("chunk_type", "text")
+
+        if chunk_type == "table":
+            all_chunks.append({
+                "text": text.strip(),
+                "page": page_num,
+                "chunk_index": chunk_index,
+                "chunk_type": "table",
+                "bbox": page_data.get("bbox", ""),
+                "table_index": page_data.get("table_index", 0),
+            })
+            chunk_index += 1
+            continue
 
         # Split this page's text
         splits = splitter.split_text(text)
@@ -119,6 +237,7 @@ def chunk_document(filepath: str) -> List[Dict[str, Any]]:
                     "text": split_text.strip(),
                     "page": page_num,
                     "chunk_index": chunk_index,
+                    "chunk_type": chunk_type,
                 })
                 chunk_index += 1
 
