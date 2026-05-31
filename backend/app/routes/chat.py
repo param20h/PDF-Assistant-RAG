@@ -17,7 +17,7 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.metrics import record_query_response_time
 from app.models import User, ChatMessage, Document, SharedMessage, ChatSession
-from app.rate_limit import limiter
+from app.rate_limit import CHAT_QUERY_RATE_LIMIT, limiter
 from app.schemas import (
     ChatRequest,
     ChatResponse,
@@ -221,7 +221,7 @@ def generate_answer_stream(question: str, user_id: str, document_id: Optional[st
 
 
 @router.post("/ask", response_model=ChatResponse)
-@limiter.limit("10/minute")
+@limiter.limit(CHAT_QUERY_RATE_LIMIT)
 def ask_question(
     request: Request,
     payload: ChatRequest,
@@ -283,7 +283,7 @@ def ask_question(
 
 
 @router.post("/ask/stream")
-@limiter.limit("10/minute")
+@limiter.limit(CHAT_QUERY_RATE_LIMIT)
 def ask_question_stream(
     request: Request,
     payload: ChatRequest,
