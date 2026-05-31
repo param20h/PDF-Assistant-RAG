@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User, Document
-from app.schemas import DocumentResponse, DocumentListResponse, DocumentStatusResponse
+from app.schemas import DocumentResponse, DocumentListResponse, DocumentStatusResponse, ChunkSettings
 from app.auth import get_current_user
 from app.config import get_settings
 from app.rag.chunker import chunk_document, get_page_count
@@ -155,8 +155,10 @@ def _ingest_document(document_id: str, filepath: str, original_name: str, user_i
         page_count = get_page_count(filepath)
         doc.page_count = page_count
 
-        # Chunk the document
-        chunks = chunk_document(filepath)
+        # Chunk document with optional chunk size and overlap parameters from the document record, falling back to global defaults if not set
+        chunk_size = doc.chunk_size
+        chunk_overlap = doc.chunk_overlap
+        chunks = chunk_document(filepath, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
         if not chunks:
             doc.status = "failed"
@@ -502,3 +504,70 @@ def delete_document(
     db.commit()
 
     return {"message": f"Document '{doc.original_name}' deleted successfully"}
+
+
+@router.post("/{document_id}/chunk_settings", response_model=DocumentResponse)
+def update_chunk_settings(
+    document_id: str,
+    settings_update: ChunkSettings,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update chunking settings for a specific document.
+
+    This endpoint allows users to update the chunk size and overlap for a document and calls _injest_document fucntion in the background to re-chunk the document with new chunk parameters.
+
+    Args:
+        document_id: The unique identifier of the document to update.
+        settings_update: A ChunkSettings object containing the chunk_size and chunk_overlap values.
+        background_tasks: FastAPI BackgroundTasks instance to run the ingestion process asynchronously.
+        user: The currently authenticated user, injected by the `get_current_user` dependency.
+        db: Database session, injected by the `get_db` dependency.
+
+    Returns:
+        DocumentResponse: The updated document record, validated against the response model.
+
+    Raises:
+        HTTPException: With status code 404 if the document is not found or does not belong to the authenticated user.
+        HTTPException: With status code 400 if the provided chunk size or overlap values are invalid (e.g., chunk size less than 100, or overlap greater than or equal to chunk size).
+    """
+    # Validate if the document exists and belongs to the user
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user.id,
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if settings_update.chunk_size is not None:
+        if settings_update.chunk_size < 100:
+            raise HTTPException(400, "Chunk size must be at least 100")
+        doc.chunk_size = settings_update.chunk_size
+    if settings_update.chunk_overlap is not None:
+        if settings_update.chunk_overlap >= settings_update.chunk_size:
+            raise HTTPException(400, "Chunk overlap cannot be greater than or equal to chunk size")
+        doc.chunk_overlap = settings_update.chunk_overlap    
+
+    # Refresh the document record to update the chunk settings before re-ingestion
+    db.commit()
+    db.refresh(doc)
+
+    # Reset document status, chunk/page counts, summary to trigger re-ingestion with new chunk settings.
+    doc.status = "pending"
+    doc.chunk_count = 0
+    doc.page_count = 0
+    doc.summary = None
+    db.commit()
+
+    # Trigger background ingestion with updated chunk settings. The _ingest_document function will read the new chunk settings from the document record and re-chunk the document accordingly.
+    background_tasks.add_task(
+        _ingest_document,
+        document_id=doc.id,
+        filepath=os.path.join(settings.UPLOAD_DIR, user.id, doc.filename), 
+        original_name=doc.original_name,
+        user_id=user.id,
+    )
+    # Return the updated document record with new chunk settings
+    return DocumentResponse.model_validate(doc)

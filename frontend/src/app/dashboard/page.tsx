@@ -17,6 +17,8 @@ import PDFViewer from "@/components/document/PDFViewer";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export interface DocInfo {
+  chunk_size?: number;
+  chunk_overlap?: number;
   summary: string;
   id: string;
   original_name: string;

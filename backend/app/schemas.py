@@ -135,6 +135,10 @@ class ChatHistoryResponse(BaseModel):
     messages: List[ChatMessageResponse]
     document_id: Optional[str] = None
 
+# Chunk settings schema for optional chunk size and overlap parameters in document processing
+class ChunkSettings(BaseModel):
+    chunk_size: int | None
+    chunk_overlap: int | None
 
 # Rebuild models for forward references
 TokenResponse.model_rebuild()

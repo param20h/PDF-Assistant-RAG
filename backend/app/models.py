@@ -42,6 +42,8 @@ class Document(Base):
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     summary = Column(Text, nullable=True)  # Optional summary of the document's content
+    chunk_size = Column(Integer, nullable=True)   # if NULL, use global default from settings
+    chunk_overlap = Column(Integer, nullable=True) # if NULL, use global default from settings
 
     # Relationships
     owner = relationship("User", back_populates="documents")
