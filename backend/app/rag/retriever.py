@@ -19,7 +19,6 @@ from app.rag.tracing import trace_function
 from app.rag.vectorstore import query_chunks
 
 logger = logging.getLogger(__name__)
-print("DEBUG: Hybrid Search Retriever Loading...")
 settings = get_settings()
 MAX_QUERY_VARIANTS = 4
 
