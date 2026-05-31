@@ -46,6 +46,7 @@ def get_reranker():
 class CustomVectorRetriever(BaseRetriever):
     user_id: str = Field(description="User ID")
     document_id: Optional[str] = Field(default=None, description="Document ID")
+    document_ids: Optional[List[str]] = Field(default=None, description="List of Document IDs")
     top_k: int = Field(default=10, description="Top K results")
 
     def _get_relevant_documents(
@@ -56,6 +57,7 @@ class CustomVectorRetriever(BaseRetriever):
             query_embedding=query_vector,
             user_id=self.user_id,
             document_id=self.document_id,
+            document_ids=self.document_ids,
             top_k=self.top_k,
         )
         return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
@@ -64,6 +66,7 @@ class CustomVectorRetriever(BaseRetriever):
 class CustomBM25Retriever(BaseRetriever):
     user_id: str = Field(description="User ID")
     document_id: Optional[str] = Field(default=None, description="Document ID")
+    document_ids: Optional[List[str]] = Field(default=None, description="List of Document IDs")
     top_k: int = Field(default=10, description="Top K results")
 
     def _get_relevant_documents(
@@ -74,6 +77,7 @@ class CustomBM25Retriever(BaseRetriever):
             query=query,
             user_id=self.user_id,
             document_id=self.document_id,
+            document_ids=self.document_ids,
             top_k=self.top_k,
         )
         return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
@@ -211,9 +215,10 @@ def _merge_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 @trace_function(
     "retrieve",
-    metadata_factory=lambda query, user_id, document_id=None: {
+    metadata_factory=lambda query, user_id, document_id=None, document_ids=None: {
         "user_id": user_id,
         "document_id": document_id,
+        "document_ids": document_ids,
         "embedding_model": settings.EMBEDDING_MODEL,
         "reranker_model": settings.RERANKER_MODEL,
         "top_k_retrieval": settings.TOP_K_RETRIEVAL,
@@ -224,6 +229,7 @@ def retrieve(
     query: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Two-stage retrieval pipeline:
@@ -236,12 +242,14 @@ def retrieve(
     vector_retriever = CustomVectorRetriever(
         user_id=user_id,
         document_id=document_id,
+        document_ids=document_ids,
         top_k=settings.TOP_K_RETRIEVAL,
     )
 
     bm25_retriever = CustomBM25Retriever(
         user_id=user_id,
         document_id=document_id,
+        document_ids=document_ids,
         top_k=settings.TOP_K_RETRIEVAL,
     )
 

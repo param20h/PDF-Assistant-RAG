@@ -262,6 +262,7 @@ def ask_question(
             question=payload.question,
             user_id=user.id,
             document_id=payload.document_id,
+            document_ids=payload.document_ids,
             hf_token=user.hf_token,
         )
 
@@ -329,6 +330,7 @@ def ask_question_stream(
                 question=payload.question,
                 user_id=user.id,
                 document_id=payload.document_id,
+                document_ids=payload.document_ids,
                 hf_token=user.hf_token,
             ):
                 yield chunk
