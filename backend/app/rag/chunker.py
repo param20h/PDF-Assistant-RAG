@@ -3,6 +3,7 @@ Smart document chunking using LangChain's RecursiveCharacterTextSplitter.
 Supports PDF, DOCX, TXT, and Markdown files with page-level metadata.
 """
 import json
+import re
 import fitz  # PyMuPDF
 import docx
 from typing import List, Dict, Any
@@ -46,12 +47,19 @@ def _words_to_text(words: List[Dict[str, Any]], line_tolerance: float = 3.0) -> 
     return "\n".join(line for line in text_lines if line.strip())
 
 
+def _clean_table_cell(cell: Any) -> str:
+    """Normalize extracted table cell text for Markdown serialization."""
+    if cell is None:
+        return ""
+    return re.sub(r"\s+", " ", str(cell)).strip().replace("|", "\\|")
+
+
 def _table_to_markdown(rows: List[List[Any]]) -> str:
     """Serialize extracted table rows into Markdown for retrieval."""
     cleaned_rows = [
-        ["" if cell is None else str(cell).replace("\n", " ").strip() for cell in row]
+        [_clean_table_cell(cell) for cell in row]
         for row in rows
-        if row and any(cell is not None and str(cell).strip() for cell in row)
+        if row and any(_clean_table_cell(cell) for cell in row)
     ]
     if not cleaned_rows:
         return ""
@@ -60,7 +68,7 @@ def _table_to_markdown(rows: List[List[Any]]) -> str:
     normalized = [row + [""] * (width - len(row)) for row in cleaned_rows]
 
     def fmt(row: List[str]) -> str:
-        return "| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |"
+        return "| " + " | ".join(row) + " |"
 
     header = normalized[0]
     separator = ["---"] * width

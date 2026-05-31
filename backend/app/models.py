@@ -211,8 +211,8 @@ class ChatMessage(Base):
 class DriveConnection(Base):
     __tablename__ = "drive_connections"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
     folder_id = Column(String(255), nullable=False, index=True)
     credentials_json = Column(Text, nullable=True)
     service_account_file = Column(String(500), nullable=True)

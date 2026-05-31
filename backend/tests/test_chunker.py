@@ -5,7 +5,7 @@ import types
 import pytest
 
 from app.rag import chunker
-from app.rag.chunker import chunk_document, get_page_count
+from app.rag.chunker import _table_to_markdown, chunk_document, get_page_count
 
 
 def test_txt_extraction_and_chunking(tmp_path):
@@ -39,6 +39,22 @@ def test_get_page_count_for_txt_returns_one(tmp_path):
     file_path.write_text("hello", encoding="utf-8")
 
     assert get_page_count(str(file_path)) == 1
+
+
+def test_table_to_markdown_cleans_cells_and_escapes_pipes():
+    rows = [
+        ["Name", "Age", "Role"],
+        [" Asha\nRao ", 24, "Admin | Owner"],
+        [None, "  ", None],
+        ["Ravi", 28],
+    ]
+
+    assert _table_to_markdown(rows) == "\n".join([
+        "| Name | Age | Role |",
+        "| --- | --- | --- |",
+        "| Asha Rao | 24 | Admin \\| Owner |",
+        "| Ravi | 28 |  |",
+    ])
 
 
 def test_pdf_table_detection_separates_table_from_paragraph(monkeypatch):
