@@ -1,0 +1,65 @@
+name: "\U0001f41b Bug Report"
+description: "Create a report to help us improve the project by fixing a bug."
+title: "[BUG] "
+labels: ["bug"]
+assignees:
+  - "param20h"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! 
+        Before you submit, please search the issue tracker to see if this has already been reported.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description of the Bug"
+      description: "A clear and concise description of what the bug is."
+      placeholder: "When I click on X, nothing happens..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "Steps to Reproduce"
+      description: "How can we reproduce this issue?"
+      value: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected Behavior"
+      description: "A clear and concise description of what you expected to happen."
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "Screenshots / Logs"
+      description: "If applicable, add screenshots or error logs to help explain your problem."
+
+  - type: input
+    id: environment
+    attributes:
+      label: "Environment"
+      description: "What OS, browser, or environment were you using?"
+      placeholder: "e.g., macOS Sequoia, Chrome 120, Node.js v20"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: gssoc
+    attributes:
+      label: "GSSoC '26"
+      description: "Are you a GSSoC contributor?"
+      options:
+        - label: "Yes, I am participating in GirlScript Summer of Code and would like to fix this."

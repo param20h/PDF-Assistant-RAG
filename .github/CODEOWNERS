@@ -1,0 +1,18 @@
+# CODEOWNERS
+# These users are auto-requested for review on every PR.
+# Syntax: <file-pattern>  <@github-username>
+
+# Global owner — reviews everything
+*                   @param20h
+
+# Backend
+backend/            @param20h
+
+# Frontend
+frontend/           @param20h
+
+# CI / Infra — these should never change without admin review
+.github/            @param20h
+Dockerfile          @param20h
+docker-compose.yml  @param20h
+render.yaml         @param20h
