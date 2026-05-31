@@ -1,10 +1,18 @@
 """
-Two-stage retrieval: ChromaDB similarity search + cross-encoder reranking.
+Two-stage retrieval: Hybrid Ensemble (ChromaDB + BM25) + cross-encoder reranking.
 """
 import json
 import logging
 import re
 from typing import List, Dict, Any, Optional
+
+# In LangChain 1.3.2+, EnsembleRetriever moved to langchain_classic (imported by langchain_community)
+from langchain_classic.retrievers import EnsembleRetriever
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.documents import Document as LangchainDocument
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from pydantic import Field
+
 from app.config import get_settings
 from app.rag.embeddings import embed_query
 from app.rag.tracing import trace_function
@@ -33,6 +41,42 @@ def get_reranker():
             _reranker = "disabled"
 
     return _reranker if _reranker != "disabled" else None
+
+
+class CustomVectorRetriever(BaseRetriever):
+    user_id: str = Field(description="User ID")
+    document_id: Optional[str] = Field(default=None, description="Document ID")
+    top_k: int = Field(default=10, description="Top K results")
+
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[LangchainDocument]:
+        query_vector = embed_query(query)
+        candidates = query_chunks(
+            query_embedding=query_vector,
+            user_id=self.user_id,
+            document_id=self.document_id,
+            top_k=self.top_k,
+        )
+        return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
+
+
+class CustomBM25Retriever(BaseRetriever):
+    user_id: str = Field(description="User ID")
+    document_id: Optional[str] = Field(default=None, description="Document ID")
+    top_k: int = Field(default=10, description="Top K results")
+
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[LangchainDocument]:
+        from app.rag.bm25 import query_bm25
+        candidates = query_bm25(
+            query=query,
+            user_id=self.user_id,
+            document_id=self.document_id,
+            top_k=self.top_k,
+        )
+        return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
 
 
 def transform_query(query: str) -> List[str]:
@@ -183,28 +227,43 @@ def retrieve(
 ) -> List[Dict[str, Any]]:
     """
     Two-stage retrieval pipeline:
-    1. ChromaDB similarity search (top-K broad)
+    1. Hybrid Search (Vector + BM25 via EnsembleRetriever with RRF) with Query Transformation
     2. Cross-encoder reranking (top-K refined)
 
     Returns chunks with confidence scores.
     """
-    # ── Stage 1: Query transformation + embedding search ─────────────
-    candidates = []
-    for search_query in transform_query(query):
-        query_vector = embed_query(search_query)
-        candidates.extend(
-            query_chunks(
-                query_embedding=query_vector,
-                user_id=user_id,
-                document_id=document_id,
-                top_k=settings.TOP_K_RETRIEVAL,
-            )
-        )
+    # ── Stage 1: Hybrid Search with Query Transformation ─────────────
+    vector_retriever = CustomVectorRetriever(
+        user_id=user_id,
+        document_id=document_id,
+        top_k=settings.TOP_K_RETRIEVAL,
+    )
 
-    if not candidates:
+    bm25_retriever = CustomBM25Retriever(
+        user_id=user_id,
+        document_id=document_id,
+        top_k=settings.TOP_K_RETRIEVAL,
+    )
+
+    ensemble_retriever = EnsembleRetriever(
+        retrievers=[vector_retriever, bm25_retriever],
+        weights=[0.6, 0.4]
+    )
+
+    all_candidates = []
+    for search_query in transform_query(query):
+        docs = ensemble_retriever.invoke(search_query)
+        for i, doc in enumerate(docs):
+            chunk = doc.metadata.copy()
+            # Preserve a mock score based on rank for fallback if reranker fails
+            # We use 1.0/(i+1) as a base RRF-like score
+            chunk["score"] = 1.0 / (i + 1)
+            all_candidates.append(chunk)
+
+    if not all_candidates:
         return []
 
-    candidates = _merge_candidates(candidates)
+    candidates = _merge_candidates(all_candidates)
 
     # ── Stage 2: Cross-encoder reranking ─────────────
     reranker = get_reranker()
@@ -223,8 +282,9 @@ def retrieve(
             candidates.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
 
         except Exception as e:
-            logger.warning(f"Reranking failed, using embedding scores: {e}")
+            logger.warning(f"Reranking failed, using hybrid scores: {e}")
 
+    # Ensure candidates are sorted by best available score
     candidates.sort(key=lambda x: x.get("rerank_score", x.get("score", 0)), reverse=True)
 
     # ── Take top-K after reranking ───────────────────

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { toast } from "sonner";
 import { api, CONNECTION_ERROR_BANNER_MESSAGE, CONNECTION_ERROR_MESSAGE } from "@/lib/api";
 import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
@@ -57,6 +58,7 @@ export default function DashboardPage() {
   const router = useRouter();
 
   const [documents, setDocuments] = useState<DocInfo[]>([]);
+  const prevDocsRef = useRef<Record<string, string>>({});
   const [activeDoc, setActiveDoc] = useState<DocInfo | null>(null);
   const [pdfPage, setPdfPage] = useState(1);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -104,6 +106,25 @@ export default function DashboardPage() {
       await loadDocuments();
     })();
   }, [user, loadDocuments]);
+
+  // Ingest status change toast notification handler
+  useEffect(() => {
+    const prev = prevDocsRef.current;
+    const nextPrevDocs: Record<string, string> = {};
+    (documents || []).forEach((doc) => {
+      nextPrevDocs[doc.id] = doc.status;
+
+      const oldStatus = prev[doc.id];
+      if (oldStatus && oldStatus !== doc.status) {
+        if (doc.status === "ready") {
+          toast.success(`🎉 Ingestion complete: '${doc.original_name}' is ready!`);
+        } else if (doc.status === "failed") {
+          toast.error(`❌ Ingestion failed for '${doc.original_name}': ${doc.error_message || "Unknown error"}`);
+        }
+      }
+    });
+    prevDocsRef.current = nextPrevDocs;
+  }, [documents]);
 
   // Poll for processing status
   useEffect(() => {

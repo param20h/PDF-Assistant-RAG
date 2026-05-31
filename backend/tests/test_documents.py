@@ -95,6 +95,7 @@ def test_ingest_document_builds_and_saves_graph(db_session, monkeypatch, tmp_pat
 
 def test_delete_document_removes_knowledge_graph(client, auth_headers, ready_document, monkeypatch):
     deleted = {}
+    doc_id = ready_document.id
 
     monkeypatch.setattr("app.routes.documents.delete_document_chunks", lambda **kwargs: None)
     monkeypatch.setattr(
@@ -105,9 +106,9 @@ def test_delete_document_removes_knowledge_graph(client, auth_headers, ready_doc
     )
 
     response = client.delete(
-        f"/api/v1/documents/{ready_document.id}",
+        f"/api/v1/documents/{doc_id}",
         headers=auth_headers,
     )
 
     assert response.status_code == 200
-    assert deleted["document_id"] == ready_document.id
+    assert deleted["document_id"] == doc_id

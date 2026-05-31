@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.rag.retriever import retrieve
 from app.rag.graph_retriever import get_entity_context
 from app.rag.prompts import SYSTEM_PROMPT, RAG_PROMPT_TEMPLATE, GREETING_PROMPT
+from app.rag.tools import TOOL_PROMPT, TOOLS, execute_tool
 from app.rag.tracing import trace_function
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,34 @@ def get_llm_client(hf_token: Optional[str] = None) -> InferenceClient:
     return InferenceClient(
         token=hf_token or settings.HF_TOKEN,
     )
+
+
+def _execute_tools_if_requested(client: InferenceClient, messages: list[dict[str, Any]]) -> Any:
+    """Run the LLM and execute any tool call responses until the final answer is produced."""
+    for _ in range(3):
+        response = client.chat_completion(
+            messages=messages,
+            model=settings.LLM_MODEL,
+            max_tokens=settings.LLM_MAX_NEW_TOKENS,
+            temperature=settings.LLM_TEMPERATURE,
+            tools=TOOLS,
+            tool_prompt=TOOL_PROMPT,
+        )
+
+        choice = response.choices[0]
+        tool_calls = getattr(choice.message, "tool_calls", None)
+        if not tool_calls:
+            return response
+
+        tool_call = tool_calls[0]
+        tool_name = tool_call.function.name
+        tool_args = json.loads(tool_call.function.arguments)
+        tool_result = execute_tool(tool_name, tool_args)
+
+        messages.append({"role": "tool", "name": tool_name, "content": tool_result})
+
+    # If tools are still requested after several rounds, return the latest response anyway.
+    return response
 
 
 def is_greeting(question: str) -> bool:
@@ -141,12 +170,7 @@ def generate_answer(
     # ── Generate answer ──────────────────────────────
     # STAGE 3: Send prompt to HuggingFace Inference API and get the generated answer
     try:
-        response = client.chat_completion(
-            messages=messages,
-            model=settings.LLM_MODEL,
-            max_tokens=settings.LLM_MAX_NEW_TOKENS,
-            temperature=settings.LLM_TEMPERATURE,
-        )
+        response = _execute_tools_if_requested(client, messages)
         if response.choices:
             answer = response.choices[0].message.content.strip()
         else:
@@ -257,15 +281,17 @@ def generate_answer_stream(
     user_content = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
     messages = _chat_messages(SYSTEM_PROMPT, user_content)
 
-    # ── Stream answer tokens ─────────────────────────
-    # STAGE 3: Stream tokens from HuggingFace Inference API → forward each as an SSE 'token' event
+    # Resolve tool calls before streaming, then stream the final answer.
     try:
+        _execute_tools_if_requested(client, messages)
         stream = client.chat_completion(
             messages=messages,
             model=settings.LLM_MODEL,
             max_tokens=settings.LLM_MAX_NEW_TOKENS,
             temperature=settings.LLM_TEMPERATURE,
             stream=True,
+            tools=TOOLS,
+            tool_prompt=TOOL_PROMPT,
         )
         for chunk in stream:
             if chunk.choices:

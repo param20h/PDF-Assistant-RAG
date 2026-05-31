@@ -72,6 +72,6 @@ def test_retrieve_fans_out_transformed_queries_and_merges_duplicates(monkeypatch
     chunks = retriever.retrieve("How do taxes and healthcare work?", user_id="user-1")
 
     assert searched_queries == ["embedding:taxes", "embedding:healthcare"]
-    assert [chunk["id"] for chunk in chunks] == ["shared", "healthcare", "taxes"]
-    assert chunks[0]["score"] == 0.9
+    assert [chunk["id"] for chunk in chunks] == ["shared", "taxes", "healthcare"]
+    assert chunks[0]["score"] == 1.0
     assert chunks[0]["confidence"] == 100.0
