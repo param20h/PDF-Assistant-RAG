@@ -6,8 +6,22 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 
-# In LangChain 1.3.2+, EnsembleRetriever moved to langchain_classic (imported by langchain_community)
-from langchain_classic.retrievers import EnsembleRetriever
+try:
+    # In LangChain 1.3.2+, EnsembleRetriever moved to langchain_classic.
+    from langchain_classic.retrievers import EnsembleRetriever
+except ImportError:
+    class EnsembleRetriever:
+        """Small fallback used when optional LangChain classic deps are absent."""
+
+        def __init__(self, retrievers, weights=None):
+            self.retrievers = retrievers
+            self.weights = weights or [1.0] * len(retrievers)
+
+        def invoke(self, query):
+            docs = []
+            for retriever in self.retrievers:
+                docs.extend(retriever.invoke(query))
+            return docs
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document as LangchainDocument
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
