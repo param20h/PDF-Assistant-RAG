@@ -12,6 +12,7 @@ import {
   FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
+import { toast } from "sonner";
 
 interface Props {
   documents: DocInfo[];
@@ -38,15 +39,20 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
 
         try {
           for (let i = 0; i < acceptedFiles.length; i++) {
+            const file = acceptedFiles[i];
             const formData = new FormData();
-            formData.append("file", acceptedFiles[i]);
+            formData.append("file", file);
+            
+            toast.info(`⏳ Uploading '${file.name}'...`);
             await api.postForm("/api/v1/documents/upload", formData);
             setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
+            toast.success(`📤 '${file.name}' uploaded successfully! Ingestion started.`);
           }
           onDocumentsChange();
         } catch (err) {
           const message = err instanceof Error ? err.message : t("documents.uploadFailed");
           setUploadError(message);
+          toast.error(`❌ Upload failed: ${message}`);
         } finally {
           setUploading(false);
           setUploadProgress(0);
