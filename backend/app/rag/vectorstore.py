@@ -4,10 +4,7 @@ Per-user collections for data isolation.
 """
 import logging
 from typing import List, Dict, Any, Optional
-import chromadb
-from chromadb.config import Settings as ChromaSettings
 from app.config import get_settings
-from app.rag.embeddings import get_embedding_model
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -16,12 +13,15 @@ settings = get_settings()
 _chroma_client = None
 
 
-def get_chroma_client() -> chromadb.ClientAPI:
+def get_chroma_client():
     """Get or create persistent ChromaDB client."""
     global _chroma_client
 
     if _chroma_client is None:
         import os
+        import chromadb
+        from chromadb.config import Settings as ChromaSettings
+
         os.makedirs(settings.CHROMA_PERSIST_DIR, exist_ok=True)
 
         _chroma_client = chromadb.PersistentClient(
@@ -49,13 +49,30 @@ def store_chunks(
     user_id: str,
 ) -> int:
     """
-    Embed and store document chunks in ChromaDB.
+    Embed and store document chunks in ChromaDB, and build a local BM25 index.
     Returns the number of chunks stored.
     """
     if not chunks:
         return 0
 
+    # Build and store BM25 index
+    from app.rag.bm25 import store_bm25_index
+    try:
+        store_bm25_index(chunks, document_id, filename, user_id)
+    except Exception as e:
+        logger.error(f"Could not build BM25 index: {e}")
+
+    # Generate captions for any extracted images before embedding
+    try:
+        from app.rag.vision import generate_captions_for_chunks
+
+        generate_captions_for_chunks(chunks)
+    except Exception as e:
+        logger.warning(f"Could not generate image captions: {e}")
+
     client = get_chroma_client()
+    from app.rag.embeddings import get_embedding_model
+
     embedding_model = get_embedding_model()
 
     collection_name = get_collection_name(user_id)
@@ -74,6 +91,12 @@ def store_chunks(
             "document_id": document_id,
             "page": chunk["page"],
             "chunk_index": chunk["chunk_index"],
+            "chunk_type": chunk.get("chunk_type", "text"),
+            **({"bbox": chunk.get("bbox", "")} if chunk.get("bbox") else {}),
+            **({"table_index": chunk.get("table_index", 0)} if chunk.get("chunk_type") == "table" else {}),
+            # Indicate whether this chunk was originally an image and include a short caption
+            **({"is_image": True, "image_caption": chunk.get("image_caption", "")}
+               if chunk.get("is_image") else {}),
         }
         for chunk in chunks
     ]
@@ -106,6 +129,7 @@ def query_chunks(
     query_embedding: List[float],
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     top_k: int = 10,
 ) -> List[Dict[str, Any]]:
     """
@@ -125,6 +149,8 @@ def query_chunks(
     where_filter = None
     if document_id:
         where_filter = {"document_id": {"$eq": document_id}}
+    elif document_ids:
+        where_filter = {"document_id": {"$in": document_ids}}
 
     # ── Query ────────────────────────────────────────
     results = collection.query(
@@ -149,6 +175,8 @@ def query_chunks(
                 "filename": metadata.get("filename", ""),
                 "document_id": metadata.get("document_id", ""),
                 "page": metadata.get("page", 1),
+                "chunk_type": metadata.get("chunk_type", "text"),
+                "bbox": metadata.get("bbox", ""),
                 "score": round(similarity, 4),
             })
 
@@ -159,6 +187,12 @@ def delete_document_chunks(document_id: str, user_id: str):
     """Delete all chunks for a specific document."""
     client = get_chroma_client()
     collection_name = get_collection_name(user_id)
+
+    try:
+        from app.rag.bm25 import delete_bm25_index
+        delete_bm25_index(document_id, user_id)
+    except Exception as e:
+        logger.warning(f"Error deleting BM25 index: {e}")
 
     try:
         collection = client.get_collection(name=collection_name)
@@ -178,6 +212,12 @@ def delete_user_collection(user_id: str):
     """Delete entire collection for a user."""
     client = get_chroma_client()
     collection_name = get_collection_name(user_id)
+
+    try:
+        from app.rag.bm25 import delete_user_bm25_indexes
+        delete_user_bm25_indexes(user_id)
+    except Exception as e:
+        logger.warning(f"Error deleting user BM25 indexes: {e}")
 
     try:
         client.delete_collection(name=collection_name)

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api, API_BASE } from "@/lib/api";
 import { useChatStore, type ChatMsg, type SourceChunk } from "@/store/chat-store";
@@ -8,7 +9,42 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import { Send, Loader2, Trash2, MessageSquare, Download } from "lucide-react";
+import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+interface ISpeechRecognitionEvent {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+      isFinal: boolean;
+    };
+  };
+}
+
+interface ISpeechRecognitionErrorEvent {
+  error: string;
+  message: string;
+}
+
+interface ISpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: ISpeechRecognitionEvent) => void) | null;
+  onerror: ((event: ISpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface WindowWithSpeech extends Window {
+  SpeechRecognition?: new () => ISpeechRecognition;
+  webkitSpeechRecognition?: new () => ISpeechRecognition;
+}
 
 interface Props {
   activeDoc: DocInfo | null;
@@ -16,16 +52,23 @@ interface Props {
 }
 
 export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
+  const { t, i18n } = useTranslation();
   const messages = useChatStore((state) => state.messages);
   const input = useChatStore((state) => state.input);
   const streaming = useChatStore((state) => state.streaming);
   const isTyping = useChatStore((state) => state.isTyping);
+  const activeSessionId = useChatStore((state) => state.activeSessionId);
   const setMessages = useChatStore((state) => state.setMessages);
   const setInput = useChatStore((state) => state.setInput);
   const setStreaming = useChatStore((state) => state.setStreaming);
   const setIsTyping = useChatStore((state) => state.setIsTyping);
   const resetChat = useChatStore((state) => state.resetChat);
+  const fetchSessionHistory = useChatStore((state) => state.fetchSessionHistory);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const recognitionRef = useRef<ISpeechRecognition | null>(null);
+  const initialInputRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
@@ -59,8 +102,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     };
   }, [resetChat]);
 
-  // Load history on doc change
+  // Load history on activeSessionId or fallback to activeDoc change
   useEffect(() => {
+    if (activeSessionId) {
+      fetchSessionHistory(activeSessionId);
+      return;
+    }
+
     if (!activeDoc) {
       prevDocId.current = null;
       setMessages([]);
@@ -98,7 +146,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activeDoc, resetChat, setMessages]);
+  }, [activeSessionId, activeDoc, fetchSessionHistory, setMessages]);
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
@@ -126,6 +174,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       const stream = api.streamPost("/api/v1/chat/ask/stream", {
         question,
         document_id: activeDoc?.id || null,
+        session_id: activeSessionId,
       });
 
       for await (const event of stream) {
@@ -185,7 +234,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           m.id === assistantId
             ? {
                 ...m,
-                content: `Failed to get response: ${err instanceof Error ? err.message : "Unknown error"}`,
+                content: t("chat.fallbackError", {
+                  message: err instanceof Error ? err.message : "Unknown error",
+                }),
                 isStreaming: false,
               }
             : m
@@ -198,7 +249,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   };
 
   const handleClear = async () => {
-    if (!activeDoc || !confirm("Clear all chat history for this document?")) return;
+    if (!activeDoc || !confirm(t("chat.clearConfirm"))) return;
     try {
       await api.delete(`/api/v1/chat/history/${activeDoc.id}`);
       setMessages([]);
@@ -233,6 +284,109 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showExportMenu]);
 
+  // Cleanup speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  const startRecording = () => {
+    const SpeechRecognitionAPI =
+      typeof window !== "undefined"
+        ? (window as unknown as WindowWithSpeech).SpeechRecognition ||
+          (window as unknown as WindowWithSpeech).webkitSpeechRecognition
+        : null;
+
+    if (!SpeechRecognitionAPI) {
+      setSpeechError(t("chat.speechNotSupported", { defaultValue: "Speech recognition is not supported in this browser." }));
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionAPI();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      
+      const currentLang = i18n.language || "en";
+      const langMap: Record<string, string> = {
+        en: "en-US",
+        hi: "hi-IN",
+        es: "es-ES",
+        fr: "fr-FR",
+      };
+      recognition.lang = langMap[currentLang] || "en-US";
+
+      initialInputRef.current = input;
+      setSpeechError(null);
+      setIsRecording(true);
+
+      recognition.onresult = (event: ISpeechRecognitionEvent) => {
+        let sessionTranscript = "";
+        for (let i = 0; i < event.results.length; ++i) {
+          sessionTranscript += event.results[i][0].transcript;
+        }
+        setInput(
+          initialInputRef.current +
+            (initialInputRef.current ? " " : "") +
+            sessionTranscript.trim()
+        );
+      };
+
+      recognition.onerror = (event: ISpeechRecognitionErrorEvent) => {
+        const errorCode = event.error;
+        if (errorCode === "aborted") return; // ignore manual aborts
+
+        let msg = t("chat.speechError", { defaultValue: `Speech recognition error: ${errorCode}` });
+        if (errorCode === "not-allowed") {
+          msg = t("chat.micPermissionDenied", {
+            defaultValue: "Microphone access denied. Please enable permissions in settings.",
+          });
+        } else if (errorCode === "no-speech") {
+          msg = t("chat.noSpeechDetected", {
+            defaultValue: "No speech was detected. Please try again.",
+          });
+        } else if (errorCode === "audio-capture") {
+          msg = t("chat.audioCaptureError", {
+            defaultValue: "No microphone found or microphone is not working.",
+          });
+        } else if (errorCode === "network") {
+          msg = t("chat.networkError", {
+            defaultValue: "Network error occurred during speech recognition.",
+          });
+        }
+        setSpeechError(msg);
+        setIsRecording(false);
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      setSpeechError(err instanceof Error ? err.message : "Failed to start speech recognition.");
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -250,12 +404,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               <MessageSquare className="w-8 h-8 text-primary/60" />
             </div>
             <h3 className="text-lg font-semibold mb-1">
-              {activeDoc ? "Ask about your document" : "Select a document"}
+              {activeDoc ? t("chat.askAboutDocument") : t("chat.selectDocument")}
             </h3>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               {activeDoc
-                ? `"${activeDoc.original_name}" is ready. Ask any question and get cited answers.`
-                : "Upload and select a document from the sidebar to start chatting."}
+                ? t("chat.readyPrompt", { name: activeDoc.original_name })
+                : t("chat.uploadPrompt")}
             </p>
           </div>
         ) : (
@@ -283,24 +437,86 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       </div>
 
       {/* ── Input Area ─────────────────────────────── */}
-      <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm">
-        <div className="max-w-3xl mx-auto flex gap-2 items-end">
-          <Textarea
-            ref={textareaRef}
-            id="chat-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              activeDoc
-                ? `Ask about "${activeDoc.original_name}"...`
-                : "Select a document first..."
-            }
-            disabled={streaming}
-            className="min-h-[44px] max-h-32 resize-none bg-background/50 border-border/50"
-            rows={1}
-          />
-          <div className="flex gap-1.5 shrink-0">
+      <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm relative">
+        <div className="max-w-3xl mx-auto relative">
+          {/* Status / Error Message Area */}
+          {(isRecording || speechError) && (
+            <div className="absolute bottom-full mb-2 left-0 right-0 flex items-center justify-between bg-card border border-border/80 shadow-md rounded-lg px-3 py-1.5 text-xs animate-in fade-in slide-in-from-bottom-1 z-40 max-w-3xl mx-auto">
+              <div className="flex items-center gap-2">
+                {isRecording ? (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                    <span className="font-medium text-muted-foreground">
+                      {t("chat.listening", { defaultValue: "Listening... Speak now." })}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-destructive font-medium">{speechError}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isRecording) {
+                    stopRecording();
+                  } else {
+                    setSpeechError(null);
+                  }
+                }}
+                className="text-muted-foreground hover:text-foreground font-semibold px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
+              >
+                {isRecording ? t("chat.stop", { defaultValue: "Stop" }) : "✕"}
+              </button>
+            </div>
+          )}
+
+          <div className="flex gap-2 items-end">
+            <div className="relative flex-1 flex items-center">
+              <Textarea
+                ref={textareaRef}
+                id="chat-input"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  activeDoc
+                    ? t("chat.askPlaceholder", { name: activeDoc.original_name })
+                    : t("chat.selectPlaceholder")
+                }
+                disabled={streaming}
+                className="min-h-[44px] max-h-32 resize-none bg-background/50 border-border/50 pr-10"
+                rows={1}
+              />
+              <Button
+                id="mic-btn"
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={streaming}
+                onClick={toggleRecording}
+                className={cn(
+                  "absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
+                  isRecording
+                    ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
+                    : "hover:text-primary hover:bg-accent"
+                )}
+                title={
+                  isRecording
+                    ? t("chat.stopRecording", { defaultValue: "Stop recording" })
+                    : t("chat.startRecording", { defaultValue: "Start recording" })
+                }
+              >
+                {isRecording ? (
+                  <MicOff className="h-4 w-4" />
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <div className="flex gap-1.5 shrink-0">
             <Button
               id="send-btn"
               size="icon"
@@ -324,7 +540,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     size="icon"
                     onClick={() => setShowExportMenu((v) => !v)}
                     className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
-                    title="Export chat history"
+                    title={t("chat.exportTitle")}
                   >
                     <Download className="w-4 h-4" />
                   </Button>
@@ -336,7 +552,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
                       >
                         <span className="text-base">📝</span>
-                        Markdown (.md)
+                        {t("chat.markdown")}
                       </button>
                       <button
                         id="export-txt-btn"
@@ -344,7 +560,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
                       >
                         <span className="text-base">📄</span>
-                        Plain Text (.txt)
+                        {t("chat.plainText")}
                       </button>
                       <button
                         id="export-pdf-btn"
@@ -352,7 +568,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
                       >
                         <span className="text-base">📕</span>
-                        PDF (.pdf)
+                        {t("chat.pdf")}
                       </button>
                     </div>
                   )}
@@ -372,5 +588,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         </div>
       </div>
     </div>
+  </div>
   );
 }

@@ -4,6 +4,7 @@ Pydantic schemas for API request/response validation.
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
+from app.models import UserRole
 
 
 # ── Auth ─────────────────────────────────────────────
@@ -53,11 +54,31 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class HFTokenUpdate(BaseModel):
+    """Request schema for updating the user's HuggingFace token."""
+    hf_token: str
+
+
+class ApiKeyResponse(BaseModel):
+    id: str
+    key_preview: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ApiKeyCreateResponse(ApiKeyResponse):
+    raw_key: str
+
+
 class UserResponse(BaseModel):
     id: str
     username: str
     email: str
+    role: UserRole
     is_admin: bool
+    hf_token: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -99,11 +120,34 @@ class DocumentListResponse(BaseModel):
     pages: int
 
 
+# Admin
+
+class DiskUsageResponse(BaseModel):
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
+    usage_percent: float
+    upload_dir_bytes: int
+
+
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    total_pdfs_uploaded: int
+    total_documents: int
+    total_messages: int
+    average_query_response_time_ms: float
+    query_count: int
+    disk_space_usage: DiskUsageResponse
+    users: List[UserResponse]
+
+
 # ── Chat ─────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     document_id: Optional[str] = None
+    document_ids: Optional[List[str]] = None
+    session_id: Optional[str] = None
 
 
 class SourceChunk(BaseModel):
@@ -139,6 +183,36 @@ class ChatHistoryResponse(BaseModel):
 class ChunkSettings(BaseModel):
     chunk_size: int | None
     chunk_overlap: int | None
+      
+class UploadUrl(BaseModel):
+    url: str
+
+class ShareAnswerResponse(BaseModel):
+    id: str
+    content: str
+    sources: List[SourceChunk] = []
+    created_at: datetime
+
+
+class ShareLinkResponse(BaseModel):
+    message_id: str
+    share_url: str
+
+
+# ── Chat Session ──────────────────────────────────────
+
+class ChatSessionCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 
 # Rebuild models for forward references
 TokenResponse.model_rebuild()

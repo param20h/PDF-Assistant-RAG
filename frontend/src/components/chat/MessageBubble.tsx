@@ -5,7 +5,8 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
-import { Brain, User, Copy, Check } from "lucide-react";
+import { api } from "@/lib/api";
+import { Brain, User, Copy, Check, Share2, Link2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -52,7 +53,10 @@ const markdownComponents: Components = {
 export default function MessageBubble({ message }: Props) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
+  const [shareFailed, setShareFailed] = useState(false);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sharedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -63,6 +67,31 @@ export default function MessageBubble({ message }: Props) {
       copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
     } catch {
       setCopied(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!message.content || message.isStreaming) return;
+
+    try {
+      const data = await api.post<{ message_id: string; share_url: string }>(
+        `/api/v1/chat/share/${message.id}`
+      );
+      await navigator.clipboard.writeText(`${window.location.origin}${data.share_url}`);
+      setShared(true);
+      setShareFailed(false);
+      if (sharedTimeoutRef.current) clearTimeout(sharedTimeoutRef.current);
+      sharedTimeoutRef.current = setTimeout(() => {
+        setShared(false);
+        setShareFailed(false);
+      }, 2000);
+    } catch {
+      setShareFailed(true);
+      setShared(false);
+      if (sharedTimeoutRef.current) clearTimeout(sharedTimeoutRef.current);
+      sharedTimeoutRef.current = setTimeout(() => {
+        setShareFailed(false);
+      }, 2000);
     }
   };
 
@@ -88,26 +117,50 @@ export default function MessageBubble({ message }: Props) {
         ) : (
           <>
             {message.content && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className={`absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-opacity ${
-                  copied
-                    ? "opacity-100"
-                    : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                }`}
-                onClick={handleCopy}
-                aria-label={copied ? "Copied" : "Copy response"}
-              >
-                {copied ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5" />
+              <>
+                {!message.isStreaming && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className={`absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-opacity ${
+                      shared || shareFailed
+                        ? "opacity-100"
+                        : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                    }`}
+                    onClick={handleShare}
+                    aria-label={shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
+                  >
+                    {shared ? (
+                      <Link2 className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : shareFailed ? (
+                      <X className="w-3.5 h-3.5 text-destructive" />
+                    ) : (
+                      <Share2 className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
                 )}
-              </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className={`absolute top-2 right-9 text-muted-foreground hover:text-foreground transition-opacity ${
+                    copied
+                      ? "opacity-100"
+                      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                  }`}
+                  onClick={handleCopy}
+                  aria-label={copied ? "Copied" : "Copy response"}
+                >
+                  {copied ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </Button>
+              </>
             )}
-            <div className={`prose-chat text-sm ${message.content ? "pr-7" : ""}`}>
+            <div className={`prose-chat text-sm ${message.content ? "pr-14" : ""}`}>
               {message.content ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}

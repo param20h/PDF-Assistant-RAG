@@ -1,8 +1,31 @@
 version: '3.8'
 
 services:
+  # ── PostgreSQL Database ──────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: pdf_rag_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pdf_rag}
+      POSTGRES_USER: ${POSTGRES_USER:-pdf_rag_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pdf_rag_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pdf_rag_user} -d ${POSTGRES_DB:-pdf_rag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Application ──────────────────────────────────────────
   app:
     build: .
+    container_name: pdf_rag_app
     ports:
       - "7860:7860"
     volumes:
@@ -10,9 +33,12 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
       - HF_TOKEN=${HF_TOKEN}
-      - DATABASE_URL=sqlite:///./data/app.db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
       - UPLOAD_DIR=./data/uploads
       - CHROMA_PERSIST_DIR=./data/chroma_db
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7860/api/health"]
@@ -21,5 +47,22 @@ services:
       retries: 3
       start_period: 60s
 
+  # ── pgAdmin (optional — for local DB inspection) ─────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pdf_rag_pgadmin
+    restart: unless-stopped
+    profiles: ["debug"]   # only starts when: docker compose --profile debug up
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
+  postgres_data:
   app_data:

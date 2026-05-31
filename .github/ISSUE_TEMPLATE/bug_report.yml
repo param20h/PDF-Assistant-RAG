@@ -1,84 +1,65 @@
-name: 🐛 Bug Report
-description: Report a bug or unexpected behavior
-labels: ["bug", "needs-triage"]
-assignees: []
-
+name: "\U0001f41b Bug Report"
+description: "Create a report to help us improve the project by fixing a bug."
+title: "[BUG] "
+labels: ["bug"]
+assignees:
+  - "param20h"
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to file a bug report! Please fill this out as completely as possible.
+        Thanks for taking the time to fill out this bug report! 
+        Before you submit, please search the issue tracker to see if this has already been reported.
 
   - type: textarea
     id: description
     attributes:
-      label: Describe the Bug
-      description: A clear description of what the bug is.
-      placeholder: "When I do X, Y happens instead of Z."
+      label: "Description of the Bug"
+      description: "A clear and concise description of what the bug is."
+      placeholder: "When I click on X, nothing happens..."
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Steps to Reproduce
-      description: How do we reproduce this bug?
-      placeholder: |
+      label: "Steps to Reproduce"
+      description: "How can we reproduce this issue?"
+      value: |
         1. Go to '...'
-        2. Click on '...'
-        3. See error
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: Expected Behavior
-      description: What should have happened?
+      label: "Expected Behavior"
+      description: "A clear and concise description of what you expected to happen."
     validations:
       required: true
 
   - type: textarea
     id: screenshots
     attributes:
-      label: Screenshots / Logs
-      description: Paste any relevant error output or screenshots here.
+      label: "Screenshots / Logs"
+      description: "If applicable, add screenshots or error logs to help explain your problem."
 
-  - type: dropdown
-    id: area
+  - type: input
+    id: environment
     attributes:
-      label: Area Affected
-      multiple: true
-      options:
-        - Backend (FastAPI)
-        - Frontend (Next.js)
-        - RAG / Embeddings
-        - Authentication
-        - File Upload
-        - Chat / Streaming
-        - Docker / Deployment
-        - Documentation
+      label: "Environment"
+      description: "What OS, browser, or environment were you using?"
+      placeholder: "e.g., macOS Sequoia, Chrome 120, Node.js v20"
     validations:
       required: true
 
-  - type: input
-    id: python-version
-    attributes:
-      label: Python Version (if backend issue)
-      placeholder: "e.g. 3.11"
-
-  - type: input
-    id: node-version
-    attributes:
-      label: Node.js Version (if frontend issue)
-      placeholder: "e.g. 20.x"
-
   - type: checkboxes
-    id: checklist
+    id: gssoc
     attributes:
-      label: Checklist
+      label: "GSSoC '26"
+      description: "Are you a GSSoC contributor?"
       options:
-        - label: I have searched existing issues and this is not a duplicate.
-          required: true
-        - label: I am targeting the `dev` branch, not `main`.
-          required: true
+        - label: "Yes, I am participating in GirlScript Summer of Code and would like to fix this."

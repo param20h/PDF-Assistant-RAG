@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { GitBranch, Star, GitPullRequest, Users, X, Trophy, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -124,7 +125,7 @@ export default function ContributorsPanel({ onClose }: { onClose: () => void }) 
                         {medals[i]}
                       </span>
                     )}
-                    <img
+                    <Image
                       src={c.avatar_url}
                       alt={c.login}
                       width={56}

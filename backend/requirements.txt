@@ -8,26 +8,36 @@ python-multipart
 # Database
 sqlalchemy
 aiosqlite
+psycopg[binary]
 
 # Auth
 pyjwt
 passlib[bcrypt]
 python-dotenv
 google-auth
+google-api-python-client
+APScheduler
 
 # Config
 pydantic-settings
 pydantic[email]
+pytest
+pytest-cov
+httpx
 
 # Document Processing
 PyMuPDF
+pdfplumber
 python-docx
 
 # LangChain & RAG
 langchain
+langchain-classic
 langchain-community
 langchain-huggingface
 langchain-text-splitters
+langsmith
+rank-bm25
 
 # Embeddings & ML
 sentence-transformers
@@ -35,6 +45,9 @@ transformers
 
 # Vector Database
 chromadb
+networkx>=3.3
+spacy>=3.7
+neo4j>=5.0
 
 # LLM Inference
 huggingface-hub
@@ -46,8 +59,10 @@ slowapi
 # File Validation
 #sudo apt-get install libmagic1 // for Debian/Ubuntu
 #brew install libmagic // for OSX
-python-magic-bin==0.4.27; sys_platform == "win32" # for windows
+python-magic-bin; sys_platform == "win32" # for windows
 python-magic; sys_platform != "win32"
 python-docx
 pypdf
 reportlab
+crawl4ai
+ddgs

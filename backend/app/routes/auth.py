@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.config import get_settings
 from app.database import get_db
-from app.models import User
+from app.models import User, ApiKey, UserRole
 from app.schemas import (
     GoogleLoginRequest,
+    HFTokenUpdate,
     RefreshRequest,
     TokenResponse,
     UpdatePassword,
@@ -23,6 +24,8 @@ from app.schemas import (
     UserResponse,
     UserUpdate,
     UserUpdateResponse,
+    ApiKeyResponse,
+    ApiKeyCreateResponse,
 )
 from app.auth import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, decode_token
 
@@ -137,6 +140,7 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
         username=payload.username,
         email=payload.email,
         hashed_password=hash_password(payload.password),
+        role=UserRole.user,
     )
     db.add(user)
     db.commit()
@@ -277,6 +281,34 @@ def get_me(user: User = Depends(get_current_user)):
     """
     return UserResponse.model_validate(user)
 
+@router.put("/hf-token", response_model=UserResponse)
+def update_hf_token(
+    payload: HFTokenUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update the HuggingFace token for the authenticated user.
+
+    Stores the provided HF token in the user's profile so it can be used
+    for HuggingFace API calls (e.g. InferenceClient) in place of the
+    globally configured ``HF_TOKEN`` environment variable.
+
+    Args:
+        payload: HFTokenUpdate object containing the new ``hf_token`` value.
+        user: The currently authenticated user, obtained from the
+            ``get_current_user`` dependency.
+        db: SQLAlchemy database session, obtained from the dependency.
+
+    Returns:
+        UserResponse: The updated user profile including the new ``hf_token``
+        field.
+    """
+    user.hf_token = payload.hf_token
+    db.commit()
+    db.refresh(user)
+    return UserResponse.model_validate(user)
+
+
 @router.put("/update")
 def update_user_info(payload:UserUpdate,
                     user: User = Depends(get_current_user),
@@ -382,6 +414,42 @@ def update_password(payload:UpdatePassword,
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Database error")
+
+from typing import List
+import hashlib
+
+@router.post("/api-keys", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_api_key(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a new API key for the authenticated user."""
+    raw_key = "rag_" + secrets.token_urlsafe(32)
+    hashed_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+    
+    api_key = ApiKey(
+        user_id=user.id,
+        key_prefix=raw_key[:10],
+        hashed_key=hashed_key,
+    )
+    db.add(api_key)
+    db.commit()
+    db.refresh(api_key)
+    
+    return {"key": raw_key, "api_key": api_key}
+
+@router.get("/api-keys", response_model=List[ApiKeyResponse])
+def list_api_keys(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """List all API keys for the authenticated user."""
+    return db.query(ApiKey).filter(ApiKey.user_id == user.id).all()
+
+@router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_api_key(key_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Revoke an API key."""
+    api_key = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.user_id == user.id).first()
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    
+    db.delete(api_key)
+    db.commit()
+    return None
 
 @router.get("/config")
 def get_auth_config():
