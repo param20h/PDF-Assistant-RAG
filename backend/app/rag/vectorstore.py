@@ -49,11 +49,18 @@ def store_chunks(
     user_id: str,
 ) -> int:
     """
-    Embed and store document chunks in ChromaDB.
+    Embed and store document chunks in ChromaDB, and build a local BM25 index.
     Returns the number of chunks stored.
     """
     if not chunks:
         return 0
+
+    # Build and store BM25 index
+    from app.rag.bm25 import store_bm25_index
+    try:
+        store_bm25_index(chunks, document_id, filename, user_id)
+    except Exception as e:
+        logger.error(f"Could not build BM25 index: {e}")
 
     # Generate captions for any extracted images before embedding
     try:
@@ -179,6 +186,12 @@ def delete_document_chunks(document_id: str, user_id: str):
     collection_name = get_collection_name(user_id)
 
     try:
+        from app.rag.bm25 import delete_bm25_index
+        delete_bm25_index(document_id, user_id)
+    except Exception as e:
+        logger.warning(f"Error deleting BM25 index: {e}")
+
+    try:
         collection = client.get_collection(name=collection_name)
         # Get all IDs for this document
         results = collection.get(
@@ -196,6 +209,12 @@ def delete_user_collection(user_id: str):
     """Delete entire collection for a user."""
     client = get_chroma_client()
     collection_name = get_collection_name(user_id)
+
+    try:
+        from app.rag.bm25 import delete_user_bm25_indexes
+        delete_user_bm25_indexes(user_id)
+    except Exception as e:
+        logger.warning(f"Error deleting user BM25 indexes: {e}")
 
     try:
         client.delete_collection(name=collection_name)
