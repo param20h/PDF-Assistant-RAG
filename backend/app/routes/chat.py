@@ -4,7 +4,7 @@ Chat routes — ask questions with RAG, stream responses via SSE, manage history
 import html
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 import logging
 from typing import Optional, List
@@ -246,6 +246,10 @@ def ask_question(
                     status_code=400,
                     detail=f"Document is still {doc.status}. Please wait for processing to complete.",
                 )
+            
+            # Update last_accessed_at timestamp
+            doc.last_accessed_at = datetime.now(timezone.utc)
+            db.commit()
 
         # Resolve or create session
         session_id = payload.session_id
@@ -302,6 +306,10 @@ def ask_question_stream(
                 status_code=400,
                 detail=f"Document is still {doc.status}. Please wait for processing to complete.",
             )
+        
+        # Update last_accessed_at timestamp
+        doc.last_accessed_at = datetime.now(timezone.utc)
+        db.commit()
 
     started_at = time.perf_counter()
 

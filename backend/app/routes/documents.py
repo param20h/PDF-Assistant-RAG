@@ -82,6 +82,7 @@ async def validate_upload(file: UploadFile):
         size = Path(temp_path).stat().st_size
 
         if size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+            Path(temp_path).unlink(missing_ok=True)
             raise HTTPException(status_code=400, detail="File too large")
 
         # libmagic may not be installed in all environments — import lazily
