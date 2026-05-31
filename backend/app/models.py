@@ -123,6 +123,7 @@ class User(Base):
     messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+    drive_connections = relationship("DriveConnection", back_populates="user", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):
@@ -176,6 +177,9 @@ class Document(Base):
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
     summary = Column(Text, nullable=True)  # Optional summary of the document's content
+    drive_file_id = Column(String(255), unique=True, nullable=True, index=True)
+    drive_folder_id = Column(String(255), nullable=True, index=True)
+    drive_synced_at = Column(DateTime, nullable=True)
 
     # Relationships
     owner = relationship("User", back_populates="documents")
@@ -204,6 +208,22 @@ class ChatMessage(Base):
     shared_message = relationship("SharedMessage", back_populates="message", uselist=False, cascade="all, delete-orphan")
 
 
+class DriveConnection(Base):
+    __tablename__ = "drive_connections"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    folder_id = Column(String(255), nullable=False, index=True)
+    credentials_json = Column(Text, nullable=True)
+    service_account_file = Column(String(500), nullable=True)
+    enabled = Column(Boolean, default=True, nullable=False)
+    last_synced_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User", back_populates="drive_connections")
+
+
 class SharedMessage(Base):
     """
     Links specific chat messages to public sharing URLs.
@@ -216,3 +236,4 @@ class SharedMessage(Base):
 
     # Relationships
     message = relationship("ChatMessage", back_populates="shared_message")
+

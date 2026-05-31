@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     JWT_REFRESH_EXPIRY_DAYS: int = 7
     GOOGLE_CLIENT_ID: str = ""
 
+    # Google Drive background sync
+    DRIVE_SYNC_ENABLED: bool = False
+    DRIVE_SYNC_INTERVAL_MINUTES: int = 60
+    GOOGLE_SERVICE_ACCOUNT_FILE: str = ""
+
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 20

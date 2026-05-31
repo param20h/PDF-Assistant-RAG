@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.rate_limit import limiter
 from app.database import init_db, get_db
 from app.rag.vectorstore import get_chroma_client
+from app.scheduler import start_scheduler, stop_scheduler
 
 # Configure logging
 logging.basicConfig(
@@ -117,6 +118,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # ── Shutdown ─────────────────────────────────────
+    stop_scheduler()
     logger.info("Shutting down")
     cleanup_task.cancel()
     try:
