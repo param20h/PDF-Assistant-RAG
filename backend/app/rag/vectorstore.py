@@ -129,6 +129,7 @@ def query_chunks(
     query_embedding: List[float],
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     top_k: int = 10,
 ) -> List[Dict[str, Any]]:
     """
@@ -148,6 +149,8 @@ def query_chunks(
     where_filter = None
     if document_id:
         where_filter = {"document_id": {"$eq": document_id}}
+    elif document_ids:
+        where_filter = {"document_id": {"$in": document_ids}}
 
     # ── Query ────────────────────────────────────────
     results = collection.query(

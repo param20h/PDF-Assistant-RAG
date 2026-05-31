@@ -1,18 +1,27 @@
-"""Agent tools for the PDF Assistant RAG backend."""
-
+"""
+Custom tools for the Agentic RAG system.
+Defines PDF Search, Web Research, and Math tools.
+"""
 import ast
+import json
 import logging
 import operator as op
-from typing import Any
+from typing import Any, Dict, List, Optional, Type
 
 from ddgs import DDGS
-
-logger = logging.getLogger(__name__)
-
 from huggingface_hub.inference._generated.types.chat_completion import (
     ChatCompletionInputFunctionDefinition,
     ChatCompletionInputTool,
 )
+from langchain_core.tools import BaseTool
+from pydantic import BaseModel, Field
+
+from app.rag.graph_retriever import get_entity_context
+from app.rag.retriever import retrieve
+
+logger = logging.getLogger(__name__)
+
+# ── Math Helper ──────────────────────────────────────
 
 _ALLOWED_OPERATORS = {
     ast.Add: op.add,
@@ -55,11 +64,7 @@ def _evaluate_ast(node: ast.AST) -> float:
 
 
 def calculate_expression(expression: str) -> str:
-    """Safely evaluate a simple arithmetic expression.
-
-    This tool only permits numeric literals and arithmetic operators.
-    It does not execute arbitrary code.
-    """
+    """Safely evaluate a simple arithmetic expression."""
     try:
         parsed = ast.parse(expression, mode="eval")
     except SyntaxError as exc:
@@ -75,6 +80,8 @@ def calculate_expression(expression: str) -> str:
 
     return str(result)
 
+
+# ── LangChain Tools ──────────────────────────────────
 
 def web_search(query: str, max_results: int = 5) -> str:
     """Search the web using DuckDuckGo (no API key required).
@@ -120,23 +127,122 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> str:
     raise ValueError(f"Unknown tool: {name}")
 
 
+# ── Pydantic Schemas ──────────────────────────────────
+
+class PDFSearchSchema(BaseModel):
+    query: str = Field(description="The search query to look for in the PDF documents.")
+
+
+class MathSchema(BaseModel):
+    expression: str = Field(
+        description="The mathematical expression to evaluate (e.g., '2 + 2' or '(1000 - 250) * 0.2')."
+    )
+
+
+class WebSearchSchema(BaseModel):
+    query: str = Field(description="The query to search the live web for.")
+
+
+# ── LangChain Tool Classes ────────────────────────────
+
+class PDFSearchTool(BaseTool):
+    name: str = "pdf_search"
+    description: str = (
+        "Useful for searching and retrieving relevant information from uploaded PDF documents. "
+        "Use this for any questions about the content of the documents."
+    )
+    args_schema: Type[BaseModel] = PDFSearchSchema
+
+    user_id: str
+    document_id: Optional[str] = None
+    # We'll store sources here to retrieve them after agent execution
+    last_sources: List[Dict[str, Any]] = []
+
+    def _run(self, query: str) -> str:
+        """Execute the search."""
+        try:
+            chunks = retrieve(
+                query=query,
+                user_id=self.user_id,
+                document_id=self.document_id,
+            )
+
+            # Save for later retrieval
+            self.last_sources = chunks
+
+            if not chunks:
+                return "No relevant information found in the documents."
+
+            # Format chunks for the LLM
+            context_parts = []
+            for i, chunk in enumerate(chunks, 1):
+                context_parts.append(
+                    f"Excerpt {i} ({chunk['filename']}, Page {chunk['page']}):\n{chunk['text']}"
+                )
+
+            # Also try to get GraphRAG context
+            graph_context = get_entity_context(
+                query=query,
+                user_id=self.user_id,
+                document_id=self.document_id,
+            )
+
+            main_context = "\n\n".join(context_parts)
+            if graph_context:
+                return f"{main_context}\n\nAdditional Relationships found:\n{graph_context}"
+
+            return main_context
+        except Exception as e:
+            logger.error(f"PDFSearchTool error: {e}")
+            return f"Error searching documents: {str(e)}"
+
+
+class MathTool(BaseTool):
+    name: str = "calculator"
+    description: str = (
+        "Useful for performing mathematical calculations and evaluating numerical expressions. "
+        "Use this when the user asks for sums, differences, or complex math based on document data."
+    )
+    args_schema: Type[BaseModel] = MathSchema
+
+    def _run(self, expression: str) -> str:
+        """Execute the math evaluation safely using ast-based evaluator."""
+        try:
+            result = calculate_expression(expression)
+            return f"Result: {result}"
+        except Exception as e:
+            return f"Error evaluating expression: {str(e)}. Please ensure it's a valid numerical expression."
+
+
+class WebSearchTool(BaseTool):
+    name: str = "web_search"
+    description: str = (
+        "Useful for fact-checking information or finding live data from the internet. "
+        "Use this only when the PDF content is insufficient or outdated."
+    )
+    args_schema: Type[BaseModel] = WebSearchSchema
+
+    def _run(self, query: str) -> str:
+        """Execute a live web search via DuckDuckGo."""
+        return web_search(query)
+
+
+# ── HuggingFace Tool Definitions ──────────────────────
+
 CALCULATOR_TOOL = ChatCompletionInputTool(
     function=ChatCompletionInputFunctionDefinition(
         name="calculator",
         description=(
-            "Safely evaluate a numeric arithmetic expression for financial calculations. "
-            "Use only numeric values and arithmetic operators like +, -, *, /, %, //, and **."
+            "Evaluate a simple arithmetic expression. "
+            "Use this for all numeric calculations instead of computing mentally."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "expression": {
                     "type": "string",
-                    "description": (
-                        "A valid arithmetic expression to evaluate, for example '1000 - 250' or "
-                        "'(revenue - expenses) * 0.2'."
-                    ),
-                }
+                    "description": "A valid arithmetic expression, e.g. '(1000 - 250) * 0.2'.",
+                },
             },
             "required": ["expression"],
         },

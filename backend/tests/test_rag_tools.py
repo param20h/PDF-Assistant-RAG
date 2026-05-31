@@ -1,4 +1,4 @@
-from app.rag.tools import CALCULATOR_TOOL, calculate_expression, execute_tool
+from app.rag.tools import MathTool, calculate_expression
 
 
 def test_calculator_tool_evaluates_basic_expression():
@@ -16,11 +16,14 @@ def test_calculator_tool_rejects_unsafe_expression():
         assert False, "Unsafe expressions should not be evaluated"
 
 
-def test_execute_tool_with_expression_argument():
-    result = execute_tool("calculator", {"expression": "12 * 3"})
-    assert result == "36"
+def test_math_tool_run():
+    tool = MathTool()
+    result = tool.run({"expression": "12 * 3"})
+    assert "Result: 36" in result
 
 
-def test_calculator_tool_metadata():
-    assert CALCULATOR_TOOL["function"]["name"] == "calculator"
-    assert "expression" in CALCULATOR_TOOL["function"]["parameters"]["properties"]
+def test_math_tool_metadata():
+    tool = MathTool()
+    assert tool.name == "calculator"
+    assert "mathematical calculations" in tool.description
+    assert tool.args_schema is not None

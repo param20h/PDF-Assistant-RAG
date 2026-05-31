@@ -122,11 +122,19 @@ def extract_pdf_with_tables(filepath: str) -> List[Dict[str, Any]]:
             for table_index, table in enumerate(tables):
                 table_text = _table_to_markdown(table.extract() or [])
                 if table_text.strip():
+                    # Normalize table bbox: [x0/W, y0/H, x1/W, y1/H]
+                    W, H = float(page.width), float(page.height)
+                    normalized_bbox = [
+                        round(float(table.bbox[0]) / W, 4),
+                        round(float(table.bbox[1]) / H, 4),
+                        round(float(table.bbox[2]) / W, 4),
+                        round(float(table.bbox[3]) / H, 4),
+                    ]
                     pages.append({
                         "text": table_text,
                         "page": page_num,
                         "chunk_type": "table",
-                        "bbox": json.dumps([round(float(value), 2) for value in table.bbox]),
+                        "bbox": json.dumps(normalized_bbox),
                         "table_index": table_index,
                     })
 
@@ -210,46 +218,85 @@ def chunk_document(filepath: str) -> List[Dict[str, Any]]:
 
     all_chunks = []
     chunk_index = 0
+    pdf_doc = None
 
-    for page_data in pages:
-        text = page_data["text"]
-        page_num = page_data["page"]
-        chunk_type = page_data.get("chunk_type", "text")
+    if ext == "pdf":
+        try:
+            pdf_doc = fitz.open(filepath)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Could not open PDF with fitz for bbox extraction: {e}")
 
-        if chunk_type == "table":
-            all_chunks.append({
-                "text": text.strip(),
-                "page": page_num,
-                "chunk_index": chunk_index,
-                "chunk_type": "table",
-                "bbox": page_data.get("bbox", ""),
-                "table_index": page_data.get("table_index", 0),
-            })
-            chunk_index += 1
-            continue
+    try:
+        for page_data in pages:
+            text = page_data["text"]
+            page_num = page_data["page"]
+            chunk_type = page_data.get("chunk_type", "text")
 
-        # Split this page's text
-        splits = splitter.split_text(text)
-
-        for split_text in splits:
-            if split_text.strip():
+            if chunk_type == "table":
                 all_chunks.append({
-                    "text": split_text.strip(),
+                    "text": text.strip(),
                     "page": page_num,
                     "chunk_index": chunk_index,
-                    "chunk_type": chunk_type,
+                    "chunk_type": "table",
+                    "bbox": page_data.get("bbox", ""),
+                    "table_index": page_data.get("table_index", 0),
                 })
                 chunk_index += 1
+                continue
 
-        # Attach any images that belong to this page after text chunks for the page
-        for img in [i for i in images if i["page"] == page_num]:
-            all_chunks.append({
-                "text": "",
-                "page": page_num,
-                "chunk_index": chunk_index,
-                "image_bytes": img["image_bytes"],
-            })
-            chunk_index += 1
+            # Split this page's text
+            splits = splitter.split_text(text)
+
+            for split_text in splits:
+                if split_text.strip():
+                    chunk = {
+                        "text": split_text.strip(),
+                        "page": page_num,
+                        "chunk_index": chunk_index,
+                        "chunk_type": chunk_type,
+                    }
+
+                    # Extract bbox for PDF text chunks
+                    if pdf_doc and page_num <= len(pdf_doc):
+                        try:
+                            page_obj = pdf_doc[page_num - 1]
+                            # Use search_for to find the text on the page
+                            rects = page_obj.search_for(split_text.strip())
+                            if rects:
+                                W, H = float(page_obj.rect.width), float(page_obj.rect.height)
+                                # Rects can span multiple lines, we store them as a list of normalized bboxes
+                                norm_rects = [
+                                    [
+                                        round(r.x0 / W, 4),
+                                        round(r.y0 / H, 4),
+                                        round(r.x1 / W, 4),
+                                        round(r.y1 / H, 4)
+                                    ]
+                                    for r in rects
+                                ]
+                                chunk["bbox"] = json.dumps(norm_rects)
+                        except Exception as e:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Bbox extraction error on page {page_num}: {e}")
+
+                    all_chunks.append(chunk)
+                    chunk_index += 1
+
+            # Attach any images that belong to this page after text chunks for the page
+            for img in [i for i in images if i["page"] == page_num]:
+                all_chunks.append({
+                    "text": "",
+                    "page": page_num,
+                    "chunk_index": chunk_index,
+                    "image_bytes": img["image_bytes"],
+                })
+                chunk_index += 1
+    finally:
+        if pdf_doc:
+            pdf_doc.close()
 
     return all_chunks
 

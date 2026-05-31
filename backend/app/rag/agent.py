@@ -1,55 +1,67 @@
 """
-RAG Agent — generation with HuggingFace Inference API (chat completion).
-Supports both streaming (SSE) and non-streaming responses.
+Agentic RAG — intelligent routing using ReAct (Reasoning and Acting).
+Intelligently chooses between PDF search, Web Search, and Math tools.
 """
 import logging
 import json
+import re
 from typing import List, Dict, Any, Optional, Generator
 
 from huggingface_hub import InferenceClient
+from langchain_classic.agents import create_react_agent, AgentExecutor
+from langchain_core.prompts import PromptTemplate
+from langchain_huggingface import HuggingFaceEndpoint
+
 from app.config import get_settings
 from app.rag.retriever import retrieve
 from app.rag.graph_retriever import get_entity_context
-from app.rag.prompts import SYSTEM_PROMPT, RAG_PROMPT_TEMPLATE, GREETING_PROMPT
-from app.rag.tools import TOOL_PROMPT, TOOLS, execute_tool
+from app.rag.prompts import AGENT_SYSTEM_PROMPT
+from app.rag.tools import PDFSearchTool, MathTool, WebSearchTool
 from app.rag.tracing import trace_function
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+
 def get_llm_client(hf_token: Optional[str] = None) -> InferenceClient:
-    """Create a HuggingFace InferenceClient per-request."""
+    """Create a HuggingFace InferenceClient per-request (for simple tasks)."""
     return InferenceClient(
         token=hf_token or settings.HF_TOKEN,
     )
 
 
-def _execute_tools_if_requested(client: InferenceClient, messages: list[dict[str, Any]]) -> Any:
-    """Run the LLM and execute any tool call responses until the final answer is produced."""
-    for _ in range(3):
-        response = client.chat_completion(
-            messages=messages,
-            model=settings.LLM_MODEL,
-            max_tokens=settings.LLM_MAX_NEW_TOKENS,
-            temperature=settings.LLM_TEMPERATURE,
-            tools=TOOLS,
-            tool_prompt=TOOL_PROMPT,
-        )
+def get_agent_executor(
+    user_id: str,
+    document_id: Optional[str] = None,
+    hf_token: Optional[str] = None,
+):
+    """Initialize the LangChain ReAct agent executor."""
+    # Initialize tools
+    pdf_tool = PDFSearchTool(user_id=user_id, document_id=document_id)
+    tools = [pdf_tool, MathTool(), WebSearchTool()]
 
-        choice = response.choices[0]
-        tool_calls = getattr(choice.message, "tool_calls", None)
-        if not tool_calls:
-            return response
+    # Initialize LLM
+    llm = HuggingFaceEndpoint(
+        repo_id=settings.LLM_MODEL,
+        huggingfacehub_api_token=hf_token or settings.HF_TOKEN,
+        max_new_tokens=settings.LLM_MAX_NEW_TOKENS,
+        temperature=settings.LLM_TEMPERATURE,
+        timeout=300,
+    )
 
-        tool_call = tool_calls[0]
-        tool_name = tool_call.function.name
-        tool_args = json.loads(tool_call.function.arguments)
-        tool_result = execute_tool(tool_name, tool_args)
+    # Setup Agent
+    prompt = PromptTemplate.from_template(AGENT_SYSTEM_PROMPT)
+    agent = create_react_agent(llm, tools, prompt)
 
-        messages.append({"role": "tool", "name": tool_name, "content": tool_result})
+    executor = AgentExecutor(
+        agent=agent,
+        tools=tools,
+        verbose=True,
+        handle_parsing_errors=True,
+        max_iterations=5,
+    )
 
-    # If tools are still requested after several rounds, return the latest response anyway.
-    return response
+    return executor, pdf_tool
 
 
 def is_greeting(question: str) -> bool:
@@ -60,50 +72,6 @@ def is_greeting(question: str) -> bool:
         "bye", "goodbye", "help", "what can you do", "who are you",
     }
     return question.lower().strip().rstrip("!?.") in greetings
-
-
-def build_context(chunks: List[Dict[str, Any]]) -> str:
-    """Format retrieved chunks into a context string."""
-    if not chunks:
-        return "No relevant document context was found."
-
-    context_parts = []
-    for i, chunk in enumerate(chunks, 1):
-        confidence = chunk.get("confidence", 0)
-        context_parts.append(
-            f"### Excerpt {i} — {chunk['filename']}, Page {chunk['page']} "
-            f"(Relevance: {confidence}%)\n\n{chunk['text']}"
-        )
-
-    return "\n\n---\n\n".join(context_parts)
-
-
-def build_augmented_context(
-    chunks: List[Dict[str, Any]],
-    question: str,
-    user_id: str,
-    document_id: Optional[str] = None,
-) -> str:
-    """Combine vector-retrieved excerpts with GraphRAG relationships."""
-    context = build_context(chunks)
-    graph_context = get_entity_context(
-        query=question,
-        user_id=user_id,
-        document_id=document_id,
-    )
-
-    if not graph_context:
-        return context
-
-    return f"{context}\n\n---\n\n{graph_context}"
-
-
-def _chat_messages(system: str, user_content: str) -> list:
-    """Build messages list for chat completion API."""
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user_content},
-    ]
 
 
 @trace_function(
@@ -121,78 +89,53 @@ def generate_answer(
     hf_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Full RAG pipeline: retrieve → build context → generate answer.
-    Returns dict with 'answer' and 'sources'.
+    Agentic generation: retrieve via tools → reason → generate answer.
     """
-    # Get HuggingFace InferenceClient per-request
-    client = get_llm_client(hf_token)
-
     # ── Handle greetings ─────────────────────────────
-    # Short-circuit: if user just says "hello", skip RAG entirely
     if is_greeting(question):
+        client = get_llm_client(hf_token)
         try:
-            # Send greeting to LLM with a friendly system prompt (no document context)
-            messages = _chat_messages(
-                "You are Document AI Analyst, a friendly AI assistant for document analysis.",
-                question,
-            )
+            messages = [
+                {"role": "system", "content": "You are Document AI Analyst, a friendly AI assistant."},
+                {"role": "user", "content": question},
+            ]
             response = client.chat_completion(
                 messages=messages,
                 model=settings.LLM_MODEL,
                 max_tokens=256,
-                temperature=0.7,
             )
-            answer = response.choices[0].message.content.strip() if response.choices else "Hello! I'm Document AI Analyst. Upload a PDF and ask me questions about it."
-        except Exception as e:
-            logger.error(f"Greeting error: {e}")
-            answer = "Hello! I'm Document AI Analyst. Upload a PDF and ask me questions about it."
+            answer = response.choices[0].message.content.strip() if response.choices else "Hello! How can I help you today?"
+        except Exception:
+            answer = "Hello! I'm Document AI Analyst. How can I help you with your documents?"
         return {"answer": answer, "sources": []}
 
-    # ── Retrieve relevant chunks ─────────────────────
-    # STAGE 1+2: Semantic search (ChromaDB) + cross-encoder reranking → top 5 chunks
-    chunks = retrieve(
-        query=question,
-        user_id=user_id,
-        document_id=document_id,
-    )
-
-    # ── Build prompt ─────────────────────────────────
-    # Format retrieved chunks into a readable context block, then inject into the RAG prompt template
-    context = build_augmented_context(
-        chunks=chunks,
-        question=question,
-        user_id=user_id,
-        document_id=document_id,
-    )
-    user_content = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
-    messages = _chat_messages(SYSTEM_PROMPT, user_content)
-
-    # ── Generate answer ──────────────────────────────
-    # STAGE 3: Send prompt to HuggingFace Inference API and get the generated answer
+    # ── Run Agent ────────────────────────────────────
     try:
-        response = _execute_tools_if_requested(client, messages)
-        if response.choices:
-            answer = response.choices[0].message.content.strip()
-        else:
-            answer = "I couldn't generate a response. Please try again."
+        executor, pdf_tool = get_agent_executor(user_id, document_id, hf_token)
+        result = executor.invoke({"input": question})
+        
+        answer = result.get("output", "I'm sorry, I couldn't process your request.")
+        
+        # Retrieve sources from the PDF tool if it was used
+        sources = [
+            {
+                "text": chunk["text"][:300] + ("..." if len(chunk["text"]) > 300 else ""),
+                "filename": chunk["filename"],
+                "page": chunk["page"],
+                "score": chunk["score"],
+                "confidence": chunk.get("confidence", 0),
+            }
+            for chunk in getattr(pdf_tool, "last_sources", [])
+        ]
+        
+        return {"answer": answer, "sources": sources}
+
     except Exception as e:
-        logger.error(f"LLM generation error: {e}")
-        answer = f"I encountered an error generating a response. Please try again. Error: {str(e)}"
-
-    # ── Format sources ───────────────────────────────
-    # Truncate chunk text to 300 chars and attach metadata (filename, page, score, confidence) for frontend citation display
-    sources = [
-        {
-            "text": chunk["text"][:300] + ("..." if len(chunk["text"]) > 300 else ""),
-            "filename": chunk["filename"],
-            "page": chunk["page"],
-            "score": chunk["score"],
-            "confidence": chunk["confidence"],
+        logger.error(f"Agent execution error: {e}")
+        return {
+            "answer": f"I encountered an error while processing your request: {str(e)}",
+            "sources": []
         }
-        for chunk in chunks
-    ]
-
-    return {"answer": answer, "sources": sources}
 
 
 @trace_function(
@@ -210,99 +153,64 @@ def generate_answer_stream(
     hf_token: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """
-    Streaming RAG pipeline — yields SSE-formatted chunks.
-    First yields sources, then streams answer tokens.
+    Streaming Agentic pipeline.
     """
-    # Get HuggingFace InferenceClient per-request
-    client = get_llm_client(hf_token)
-
     # ── Handle greetings ─────────────────────────────
-    # Short-circuit: if user just says "hello", skip RAG entirely
     if is_greeting(question):
-        # Yield empty sources array first so frontend resets its citation display
         yield f"data: {json.dumps({'type': 'sources', 'data': []})}\n\n"
-
+        client = get_llm_client(hf_token)
         try:
-            # Send greeting to LLM with a friendly system prompt (no document context)
-            messages = _chat_messages(
-                "You are Document AI Analyst, a friendly AI assistant for document analysis.",
-                question,
-            )
-            # Stream greeting response token-by-token via SSE
             stream = client.chat_completion(
-                messages=messages,
+                messages=[{"role": "user", "content": question}],
                 model=settings.LLM_MODEL,
                 max_tokens=256,
-                temperature=0.7,
                 stream=True,
             )
             for chunk in stream:
-                if chunk.choices:
-                    delta = chunk.choices[0].delta.content
-                    if delta:
-                        yield f"data: {json.dumps({'type': 'token', 'data': delta})}\n\n"
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield f"data: {json.dumps({'type': 'token', 'data': chunk.choices[0].delta.content})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
-
-        # Signal end of stream, then exit early (no RAG)
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
 
-    # ── Retrieve relevant chunks ─────────────────────
-    # STAGE 1+2: Semantic search (ChromaDB) + cross-encoder reranking → top 5 chunks
-    chunks = retrieve(
-        query=question,
-        user_id=user_id,
-        document_id=document_id,
-    )
-
-    # ── Yield sources first ──────────────────────────
-    # Yield all sources first — frontend needs them to render citation cards before the answer starts appearing
-    sources = [
-        {
-            "text": chunk["text"][:300] + ("..." if len(chunk["text"]) > 300 else ""),
-            "filename": chunk["filename"],
-            "page": chunk["page"],
-            "score": chunk["score"],
-            "confidence": chunk["confidence"],
-        }
-        for chunk in chunks
-    ]
-    yield f"data: {json.dumps({'type': 'sources', 'data': sources})}\n\n"
-
-    # ── Build prompt ─────────────────────────────────
-    # Format retrieved chunks into a readable context block, then inject into the RAG prompt template
-    context = build_augmented_context(
-        chunks=chunks,
-        question=question,
-        user_id=user_id,
-        document_id=document_id,
-    )
-    user_content = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
-    messages = _chat_messages(SYSTEM_PROMPT, user_content)
-
-    # Resolve tool calls before streaming, then stream the final answer.
+    # ── Run Agent ────────────────────────────────────
     try:
-        _execute_tools_if_requested(client, messages)
-        stream = client.chat_completion(
-            messages=messages,
-            model=settings.LLM_MODEL,
-            max_tokens=settings.LLM_MAX_NEW_TOKENS,
-            temperature=settings.LLM_TEMPERATURE,
-            stream=True,
-            tools=TOOLS,
-            tool_prompt=TOOL_PROMPT,
-        )
-        for chunk in stream:
-            if chunk.choices:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield f"data: {json.dumps({'type': 'token', 'data': delta})}\n\n"
+        executor, pdf_tool = get_agent_executor(user_id, document_id, hf_token)
+        
+        sources_sent = False
 
-    # If LLM fails mid-stream, yield an error event so frontend can display the message
+        for step in executor.stream({"input": question}):
+            # Stream thoughts/actions to the user so they see the reasoning
+            if "actions" in step:
+                for action in step["actions"]:
+                    thought = f"\n> **Thinking:** {action.log.split('Action:')[0].strip()}\n\n"
+                    yield f"data: {json.dumps({'type': 'token', 'data': thought})}\n\n"
+            
+            elif "intermediate_steps" in step:
+                # If pdf_search was just run, we can yield sources
+                if not sources_sent and getattr(pdf_tool, "last_sources", []):
+                    sources = [
+                        {
+                            "text": chunk["text"][:300] + ("..." if len(chunk["text"]) > 300 else ""),
+                            "filename": chunk["filename"],
+                            "page": chunk["page"],
+                            "score": chunk["score"],
+                            "confidence": chunk.get("confidence", 0),
+                        }
+                        for chunk in pdf_tool.last_sources
+                    ]
+                    yield f"data: {json.dumps({'type': 'sources', 'data': sources})}\n\n"
+                    sources_sent = True
+
+            elif "output" in step:
+                full_answer = step["output"]
+                # Clean up the "Final Answer:" prefix if present
+                clean_answer = re.sub(r"^Final Answer:\s*", "", full_answer, flags=re.I)
+                yield f"data: {json.dumps({'type': 'token', 'data': clean_answer})}\n\n"
+
     except Exception as e:
-        logger.error(f"LLM streaming error: {e}")
+        logger.error(f"Agent streaming error: {e}")
         yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
 
-    # Signal end of stream to frontend (stops the streaming indicator)
     yield f"data: {json.dumps({'type': 'done'})}\n\n"
