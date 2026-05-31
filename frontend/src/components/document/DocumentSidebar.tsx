@@ -12,6 +12,8 @@ import {
   FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
+import { Settings } from "lucide-react";
+import DocumentSettings from "./DocumentSettings";
 import { toast } from "sonner";
 
 interface Props {
@@ -27,6 +29,7 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [settingsDoc, setSettingsDoc] = useState<DocInfo | null>(null);
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -85,6 +88,11 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
     } finally {
       setDeleting(null);
     }
+  };
+
+  const handleSettingsClick = (doc: DocInfo, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering document selection
+    setSettingsDoc(doc); 
   };
 
   const statusIcon = (status: string) => {
@@ -207,25 +215,52 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
                       )}
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                    onClick={(e) => handleDelete(doc.id, e)}
-                    disabled={deleting === doc.id}
-                  >
-                    {deleting === doc.id ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-3 h-3 text-destructive" />
-                    )}
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0"> 
+                    {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */} 
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      onClick={(e) => handleSettingsClick(doc, e)}
+                      disabled={doc.status !== "ready"}
+                    >
+                      <Settings className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                      onClick={(e) => handleDelete(doc.id, e)}
+                      disabled={deleting === doc.id}
+                    >
+                      {deleting === doc.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3 h-3 text-destructive" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </button>
             ))}
           </div>
         )}
       </ScrollArea>
+      {/* Settings Modal */}
+      {/* The DocumentSettings component is rendered here and controlled by the settingsDoc state. When a user clicks the settings button for a document, it sets that document in settingsDoc, which opens the modal. The modal can then call onDocumentsChange to refresh the list after saving settings. */}
+      {settingsDoc && (
+        <DocumentSettings
+          document={settingsDoc} // Pass the selected document to the document settings component
+          open={!!settingsDoc} // Open when settingsDoc is not null
+          onOpenChange={(open) => { // Close the modal when open is false
+            if (!open) setSettingsDoc(null); // Clear the settingsDoc state to close the modal
+          }}
+          onSettingsSaved={() => { // Refresh documents after saving settings
+            onDocumentsChange(); // Refresh the document list to reflect any changes
+            setSettingsDoc(null); // Close the settings modal after saving
+          }}
+        />
+      )}
     </div>
   );
 }

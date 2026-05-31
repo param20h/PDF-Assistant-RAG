@@ -42,6 +42,8 @@ const PDFViewer = dynamic(() => import("@/components/document/PDFViewer"), {
 });
 
 export interface DocInfo {
+  chunk_size?: number;
+  chunk_overlap?: number;
   summary: string;
   id: string;
   original_name: string;

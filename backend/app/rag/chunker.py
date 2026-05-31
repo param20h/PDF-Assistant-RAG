@@ -192,10 +192,12 @@ def extract_txt(filepath: str) -> List[Dict[str, Any]]:
 
     return [{"text": text, "page": 1}] if text.strip() else []
 
-
-def chunk_document(filepath: str) -> List[Dict[str, Any]]:
+# Change the chunk_document function input to take a file path and optional chunk size and overlap parameters. 
+def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = None) -> List[Dict[str, Any]]:
     """
     Load a document, extract text per page, and split into semantic chunks.
+    Accepts a file path and optional chunk size and overlap parameters. 
+    If chunk size and overlap are not provided, defaults from settings will be used.
     Returns list of dicts with 'text', 'page', and 'chunk_index'.
     """
     ext = filepath.rsplit(".", 1)[-1].lower()
@@ -215,11 +217,17 @@ def chunk_document(filepath: str) -> List[Dict[str, Any]]:
 
     if not pages:
         return []
+    
+    # Set chunk size and chunk overlap with defaults if not provided
+    if not chunk_size:
+        chunk_size = settings.CHUNK_SIZE
+    if not chunk_overlap:
+        chunk_overlap = settings.CHUNK_OVERLAP
 
     # ── LangChain recursive splitter ─────────────────
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=settings.CHUNK_SIZE,
-        chunk_overlap=settings.CHUNK_OVERLAP,
+        chunk_size=chunk_size, # Allow custom chunk size to be passed in for embedding
+        chunk_overlap=chunk_overlap, # Allow custom chunk overlap to be passed in for embedding
         separators=["\n\n", "\n", ". ", " ", ""],
         length_function=len,
     )

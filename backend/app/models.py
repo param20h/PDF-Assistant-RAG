@@ -177,6 +177,8 @@ class Document(Base):
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
     summary = Column(Text, nullable=True)  # Optional summary of the document's content
+    chunk_size = Column(Integer, nullable=True)   # if NULL, use global default from settings
+    chunk_overlap = Column(Integer, nullable=True) # if NULL, use global default from settings
     drive_file_id = Column(String(255), unique=True, nullable=True, index=True)
     drive_folder_id = Column(String(255), nullable=True, index=True)
     drive_synced_at = Column(DateTime, nullable=True)
