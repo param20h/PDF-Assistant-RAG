@@ -146,6 +146,7 @@ class AdminStatsResponse(BaseModel):
 class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     document_id: Optional[str] = None
+    document_ids: Optional[List[str]] = None
     session_id: Optional[str] = None
 
 
