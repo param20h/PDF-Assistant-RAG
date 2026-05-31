@@ -1,13 +1,21 @@
-"""Agent tools for the PDF Assistant RAG backend."""
-
+"""
+Custom tools for the Agentic RAG system.
+Defines PDF Search, Web Research, and Math tools.
+"""
+import json
+import logging
 import ast
 import operator as op
-from typing import Any
+from typing import List, Dict, Any, Optional, Type
+from pydantic import BaseModel, Field
+from langchain_core.tools import BaseTool
 
-from huggingface_hub.inference._generated.types.chat_completion import (
-    ChatCompletionInputFunctionDefinition,
-    ChatCompletionInputTool,
-)
+from app.rag.retriever import retrieve
+from app.rag.graph_retriever import get_entity_context
+
+logger = logging.getLogger(__name__)
+
+# ── Math Helper ──────────────────────────────────────
 
 _ALLOWED_OPERATORS = {
     ast.Add: op.add,
@@ -50,11 +58,7 @@ def _evaluate_ast(node: ast.AST) -> float:
 
 
 def calculate_expression(expression: str) -> str:
-    """Safely evaluate a simple arithmetic expression.
-
-    This tool only permits numeric literals and arithmetic operators.
-    It does not execute arbitrary code.
-    """
+    """Safely evaluate a simple arithmetic expression."""
     try:
         parsed = ast.parse(expression, mode="eval")
     except SyntaxError as exc:
@@ -70,47 +74,92 @@ def calculate_expression(expression: str) -> str:
 
     return str(result)
 
+# ── LangChain Tools ──────────────────────────────────
 
-def execute_tool(name: str, arguments: dict[str, Any]) -> str:
-    """Execute a registered tool by name."""
-    if name != "calculator":
-        raise ValueError(f"Unknown tool: {name}")
+class PDFSearchSchema(BaseModel):
+    query: str = Field(description="The search query to look for in the PDF documents.")
 
-    expression = arguments.get("expression")
-    if not isinstance(expression, str) or not expression.strip():
-        raise ValueError("The calculator tool requires a non-empty 'expression' string.")
+class PDFSearchTool(BaseTool):
+    name: str = "pdf_search"
+    description: str = (
+        "Useful for searching and retrieving relevant information from uploaded PDF documents. "
+        "Use this for any questions about the content of the documents."
+    )
+    args_schema: Type[BaseModel] = PDFSearchSchema
+    
+    user_id: str
+    document_id: Optional[str] = None
+    # We'll store sources here to retrieve them after agent execution
+    last_sources: List[Dict[str, Any]] = []
 
-    return calculate_expression(expression)
+    def _run(self, query: str) -> str:
+        """Execute the search."""
+        try:
+            chunks = retrieve(
+                query=query,
+                user_id=self.user_id,
+                document_id=self.document_id,
+            )
+            
+            # Save for later retrieval
+            self.last_sources = chunks
+            
+            if not chunks:
+                return "No relevant information found in the documents."
 
+            # Format chunks for the LLM
+            context_parts = []
+            for i, chunk in enumerate(chunks, 1):
+                context_parts.append(
+                    f"Excerpt {i} ({chunk['filename']}, Page {chunk['page']}):\n{chunk['text']}"
+                )
+            
+            # Also try to get GraphRAG context
+            graph_context = get_entity_context(
+                query=query,
+                user_id=self.user_id,
+                document_id=self.document_id,
+            )
+            
+            main_context = "\n\n".join(context_parts)
+            if graph_context:
+                return f"{main_context}\n\nAdditional Relationships found:\n{graph_context}"
+            
+            return main_context
+        except Exception as e:
+            logger.error(f"PDFSearchTool error: {e}")
+            return f"Error searching documents: {str(e)}"
 
-CALCULATOR_TOOL = ChatCompletionInputTool(
-    function=ChatCompletionInputFunctionDefinition(
-        name="calculator",
-        description=(
-            "Safely evaluate a numeric arithmetic expression for financial calculations. "
-            "Use only numeric values and arithmetic operators like +, -, *, /, %, //, and **."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "expression": {
-                    "type": "string",
-                    "description": (
-                        "A valid arithmetic expression to evaluate, for example '1000 - 250' or "
-                        "'(revenue - expenses) * 0.2'."
-                    ),
-                }
-            },
-            "required": ["expression"],
-        },
-    ),
-    type="tool",
-)
+class MathSchema(BaseModel):
+    expression: str = Field(description="The mathematical expression to evaluate (e.g., '2 + 2' or '(1000 - 250) * 0.2').")
 
-TOOL_PROMPT = (
-    "Use the calculator tool for all numeric arithmetic operations in the user query. "
-    "The tool accepts a single 'expression' field and returns the evaluated numeric result. "
-    "Do not attempt to compute arithmetic without the tool."
-)
+class MathTool(BaseTool):
+    name: str = "calculator"
+    description: str = (
+        "Useful for performing mathematical calculations and evaluating numerical expressions. "
+        "Use this when the user asks for sums, differences, or complex math based on document data."
+    )
+    args_schema: Type[BaseModel] = MathSchema
 
-TOOLS = [CALCULATOR_TOOL]
+    def _run(self, expression: str) -> str:
+        """Execute the math evaluation safely using ast-based evaluator."""
+        try:
+            result = calculate_expression(expression)
+            return f"Result: {result}"
+        except Exception as e:
+            return f"Error evaluating expression: {str(e)}. Please ensure it's a valid numerical expression."
+
+# Placeholder for Web Search Tool (to be implemented in Issue #220)
+class WebSearchSchema(BaseModel):
+    query: str = Field(description="The query to search the live web for.")
+
+class WebSearchTool(BaseTool):
+    name: str = "web_search"
+    description: str = (
+        "Useful for fact-checking information or finding live data from the internet. "
+        "Use this only when the PDF content is insufficient or outdated."
+    )
+    args_schema: Type[BaseModel] = WebSearchSchema
+
+    def _run(self, query: str) -> str:
+        return "Web search is currently in maintenance mode. Please rely on document content."
