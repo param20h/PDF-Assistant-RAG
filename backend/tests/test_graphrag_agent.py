@@ -34,7 +34,7 @@ def test_generate_answer_appends_graph_context_without_changing_sources(monkeypa
         }
     ]
 
-    monkeypatch.setattr(agent, "get_llm_client", lambda: client)
+    monkeypatch.setattr(agent, "get_llm_client", lambda hf_token=None: client)
     monkeypatch.setattr(agent, "retrieve", lambda **kwargs: chunks)
     monkeypatch.setattr(
         agent,
@@ -66,7 +66,7 @@ def test_generate_answer_stream_appends_graph_context(monkeypatch):
             captured["messages"] = messages
             return iter([])
 
-    monkeypatch.setattr(agent, "get_llm_client", lambda: StreamingClient())
+    monkeypatch.setattr(agent, "get_llm_client", lambda hf_token=None: StreamingClient())
     monkeypatch.setattr(
         agent,
         "retrieve",

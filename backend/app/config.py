@@ -24,11 +24,6 @@ class Settings(BaseSettings):
     JWT_REFRESH_EXPIRY_DAYS: int = 7
     GOOGLE_CLIENT_ID: str = ""
 
-    # Google Drive background sync
-    DRIVE_SYNC_ENABLED: bool = False
-    DRIVE_SYNC_INTERVAL_MINUTES: int = 60
-    GOOGLE_SERVICE_ACCOUNT_FILE: str = ""
-
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 20
@@ -93,6 +88,14 @@ class Settings(BaseSettings):
     VISION_MODEL: str | None = None
     OPENAI_API_KEY: str = ""
 
+    # ── Workspace Invitation ─────────────────────────
+    APP_URL: str = "http://localhost:3000"
+    INVITE_TOKEN_EXPIRY_HOURS: int = 72
+    EMAIL_FROM: str = "no-reply@example.com"
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 0
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
 
     @property
     def cors_origins(self) -> list[str]:

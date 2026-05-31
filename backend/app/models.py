@@ -142,6 +142,19 @@ class ApiKey(Base):
     user = relationship("User", back_populates="api_keys")
 
 
+class WorkspaceInvitation(Base):
+    __tablename__ = "workspace_invitations"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    email = Column(String(120), nullable=False, index=True)
+    token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    inviter_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    workspace_name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime, nullable=False)
+    accepted_at = Column(DateTime, nullable=True)
+
+    inviter = relationship("User")
 class ChatSession(Base):
     """
     Groups chat messages into logical sessions/threads.
@@ -174,7 +187,8 @@ class Document(Base):
     status = Column(String(20), default="pending")          # pending | processing | ready | failed
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    summary = Column(Text, nullable=True)
+    last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
+    summary = Column(Text, nullable=True)  # Optional summary of the document's content
 
     # Relationships
     owner = relationship("User", back_populates="documents")
@@ -201,22 +215,6 @@ class ChatMessage(Base):
     document = relationship("Document", back_populates="messages")
     session = relationship("ChatSession", back_populates="messages")
     shared_message = relationship("SharedMessage", back_populates="message", uselist=False, cascade="all, delete-orphan")
-
-
-class DriveConnection(Base):
-    __tablename__ = "drive_connections"
-
-    id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    folder_id = Column(String(255), nullable=False, index=True)
-    credentials_json = Column(Text, nullable=True)
-    service_account_file = Column(String(500), nullable=True)
-    enabled = Column(Boolean, default=True, nullable=False)
-    last_synced_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-    user = relationship("User", back_populates="drive_connections")
 
 
 class SharedMessage(Base):

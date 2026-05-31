@@ -15,8 +15,6 @@ pyjwt
 passlib[bcrypt]
 python-dotenv
 google-auth
-google-api-python-client
-APScheduler
 
 # Config
 pydantic-settings
@@ -32,10 +30,12 @@ python-docx
 
 # LangChain & RAG
 langchain
+langchain-classic
 langchain-community
 langchain-huggingface
 langchain-text-splitters
 langsmith
+rank-bm25
 
 # Embeddings & ML
 sentence-transformers
