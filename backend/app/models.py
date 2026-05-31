@@ -123,6 +123,7 @@ class User(Base):
     messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+    drive_connections = relationship("DriveConnection", back_populates="user", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):
@@ -176,6 +177,9 @@ class Document(Base):
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
     summary = Column(Text, nullable=True)  # Optional summary of the document's content
+    drive_file_id = Column(String(255), unique=True, nullable=True, index=True)
+    drive_folder_id = Column(String(255), nullable=True, index=True)
+    drive_synced_at = Column(DateTime, nullable=True)
 
     # Relationships
     owner = relationship("User", back_populates="documents")

@@ -25,9 +25,16 @@ from app.config import get_settings
 from app.rag.chunker import chunk_document, get_page_count
 from app.rag.vectorstore import store_chunks, delete_document_chunks
 
-import crawl4ai
-from crawl4ai import AsyncWebCrawler
-from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
+try:
+    from crawl4ai import AsyncWebCrawler
+    from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
+except ImportError as exc:
+    AsyncWebCrawler = None
+    BrowserConfig = None
+    CrawlerRunConfig = None
+    CRAWL4AI_IMPORT_ERROR = exc
+else:
+    CRAWL4AI_IMPORT_ERROR = None
 
 from sqlalchemy import select
 logger = logging.getLogger(__name__)
@@ -348,6 +355,12 @@ async def upload_document_url(
     Playwright/crawl4ai), which causes a NotImplementedError.
     On Linux (production) a plain new_event_loop() is used instead.
     """
+    if CRAWL4AI_IMPORT_ERROR is not None:
+        raise HTTPException(
+            status_code=503,
+            detail="URL upload is unavailable because crawl4ai is not installed",
+        )
+
     temp_path: Optional[str] = None
     try:
         parsed = urlparse(payload.url)

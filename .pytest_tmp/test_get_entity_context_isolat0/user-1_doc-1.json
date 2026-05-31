@@ -1,0 +1,75 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {
+      "name": "OpenAI",
+      "label": "ORG",
+      "mentions": 1,
+      "pages": [
+        1
+      ],
+      "chunks": [
+        0
+      ],
+      "id": "ORG:openai"
+    },
+    {
+      "name": "Microsoft",
+      "label": "ORG",
+      "mentions": 2,
+      "pages": [
+        1,
+        2
+      ],
+      "chunks": [
+        0,
+        1
+      ],
+      "id": "ORG:microsoft"
+    },
+    {
+      "name": "Azure",
+      "label": "PRODUCT",
+      "mentions": 1,
+      "pages": [
+        2
+      ],
+      "chunks": [
+        1
+      ],
+      "id": "PRODUCT:azure"
+    }
+  ],
+  "edges": [
+    {
+      "weight": 1,
+      "pages": [
+        1
+      ],
+      "chunks": [
+        0
+      ],
+      "source": "ORG:openai",
+      "target": "ORG:microsoft"
+    },
+    {
+      "weight": 1,
+      "pages": [
+        2
+      ],
+      "chunks": [
+        1
+      ],
+      "source": "ORG:microsoft",
+      "target": "PRODUCT:azure"
+    }
+  ],
+  "metadata": {
+    "user_id": "user-1",
+    "document_id": "doc-1",
+    "node_count": 3,
+    "edge_count": 2
+  }
+}
