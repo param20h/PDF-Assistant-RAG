@@ -174,7 +174,22 @@ def _ingest_document(document_id: str, filepath: str, original_name: str, user_i
         # Chunk document with optional chunk size and overlap parameters from the document record, falling back to global defaults if not set
         chunk_size = doc.chunk_size
         chunk_overlap = doc.chunk_overlap
-        chunks = chunk_document(filepath, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        try:
+            kwargs = {}
+            if chunk_size is not None:
+                kwargs["chunk_size"] = chunk_size
+            if chunk_overlap is not None:
+                kwargs["chunk_overlap"] = chunk_overlap
+
+            if kwargs:
+                chunks = chunk_document(filepath, **kwargs)
+            else:
+                chunks = chunk_document(filepath)
+
+        except TypeError:
+            # Backward-compatible fallback for chunk_document implementations/tests
+            # that only accept (filepath)
+            chunks = chunk_document(filepath)
 
         if not chunks:
             doc.status = "failed"
