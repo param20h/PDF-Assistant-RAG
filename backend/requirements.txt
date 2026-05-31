@@ -63,3 +63,4 @@ python-docx
 pypdf
 reportlab
 crawl4ai
+ddgs
