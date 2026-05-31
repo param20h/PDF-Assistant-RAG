@@ -1,8 +1,13 @@
 """Agent tools for the PDF Assistant RAG backend."""
 
 import ast
+import logging
 import operator as op
 from typing import Any
+
+from ddgs import DDGS
+
+logger = logging.getLogger(__name__)
 
 from huggingface_hub.inference._generated.types.chat_completion import (
     ChatCompletionInputFunctionDefinition,
@@ -71,16 +76,48 @@ def calculate_expression(expression: str) -> str:
     return str(result)
 
 
+def web_search(query: str, max_results: int = 5) -> str:
+    """Search the web using DuckDuckGo (no API key required).
+
+    Returns a formatted string of search results including title, URL, and snippet.
+    """
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+
+        if not results:
+            return "No web search results found."
+
+        formatted = []
+        for i, r in enumerate(results, 1):
+            formatted.append(
+                f"{i}. **{r.get('title', 'No title')}**\n"
+                f"   URL: {r.get('href', '')}\n"
+                f"   {r.get('body', '')}"
+            )
+        return "\n\n".join(formatted)
+
+    except Exception as exc:
+        logger.error("DuckDuckGo search error: %s", exc)
+        return f"Web search failed: {exc}"
+
+
 def execute_tool(name: str, arguments: dict[str, Any]) -> str:
     """Execute a registered tool by name."""
-    if name != "calculator":
-        raise ValueError(f"Unknown tool: {name}")
+    if name == "calculator":
+        expression = arguments.get("expression")
+        if not isinstance(expression, str) or not expression.strip():
+            raise ValueError("The calculator tool requires a non-empty 'expression' string.")
+        return calculate_expression(expression)
 
-    expression = arguments.get("expression")
-    if not isinstance(expression, str) or not expression.strip():
-        raise ValueError("The calculator tool requires a non-empty 'expression' string.")
+    if name == "web_search":
+        query = arguments.get("query")
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("The web_search tool requires a non-empty 'query' string.")
+        max_results = int(arguments.get("max_results", 5))
+        return web_search(query, max_results)
 
-    return calculate_expression(expression)
+    raise ValueError(f"Unknown tool: {name}")
 
 
 CALCULATOR_TOOL = ChatCompletionInputTool(
@@ -107,10 +144,38 @@ CALCULATOR_TOOL = ChatCompletionInputTool(
     type="tool",
 )
 
+WEB_SEARCH_TOOL = ChatCompletionInputTool(
+    function=ChatCompletionInputFunctionDefinition(
+        name="web_search",
+        description=(
+            "Search the web using DuckDuckGo for current information not found in the uploaded documents. "
+            "Use this when the user asks about real-world facts, recent events, or topics outside the PDF content."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query to look up on the web.",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Number of search results to return (default: 5, max: 10).",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        },
+    ),
+    type="tool",
+)
+
 TOOL_PROMPT = (
     "Use the calculator tool for all numeric arithmetic operations in the user query. "
     "The tool accepts a single 'expression' field and returns the evaluated numeric result. "
-    "Do not attempt to compute arithmetic without the tool."
+    "Do not attempt to compute arithmetic without the tool. "
+    "Use the web_search tool when the user asks about real-world facts, current events, "
+    "or topics that are not covered by the uploaded PDF documents."
 )
 
-TOOLS = [CALCULATOR_TOOL]
+TOOLS = [CALCULATOR_TOOL, WEB_SEARCH_TOOL]
