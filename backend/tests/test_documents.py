@@ -93,14 +93,13 @@ def test_ingest_document_builds_and_saves_graph(db_session, monkeypatch, tmp_pat
     assert refreshed.chunk_count == 1
 
 
-def test_delete_document_removes_knowledge_graph(client, auth_headers, ready_document, monkeypatch):
-    deleted = {}
+def test_delete_document_soft_deletes_and_hides_document(client, auth_headers, ready_document, db_session, monkeypatch):
+    deletion_calls = []
     doc_id = ready_document.id
 
-    monkeypatch.setattr("app.routes.documents.delete_document_chunks", lambda **kwargs: None)
     monkeypatch.setattr(
         "app.rag.graph_builder.delete_graph",
-        lambda user_id, document_id: deleted.update(
+        lambda user_id, document_id: deletion_calls.append(
             {"user_id": user_id, "document_id": document_id}
         ),
     )
@@ -111,4 +110,15 @@ def test_delete_document_removes_knowledge_graph(client, auth_headers, ready_doc
     )
 
     assert response.status_code == 200
-    assert deleted["document_id"] == doc_id
+    assert deletion_calls == []
+
+    db_session.refresh(ready_document)
+    assert ready_document.is_deleted is True
+    assert ready_document.deleted_at is not None
+
+    list_response = client.get("/api/v1/documents/", headers=auth_headers)
+    assert list_response.status_code == 200
+    assert list_response.json()["total"] == 0
+
+    get_response = client.get(f"/api/v1/documents/{doc_id}", headers=auth_headers)
+    assert get_response.status_code == 404

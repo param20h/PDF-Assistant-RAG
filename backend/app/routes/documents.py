@@ -8,6 +8,7 @@ import uuid
 import logging
 import asyncio
 import concurrent.futures
+from datetime import datetime, timezone
 from typing import Optional
 from pathlib import Path
 import shutil
@@ -23,7 +24,7 @@ from app.schemas import DocumentResponse, DocumentListResponse, DocumentStatusRe
 from app.auth import get_current_user
 from app.config import get_settings
 from app.rag.chunker import chunk_document, get_page_count
-from app.rag.vectorstore import store_chunks, delete_document_chunks
+from app.rag.vectorstore import store_chunks
 
 try:
     from crawl4ai import AsyncWebCrawler
@@ -158,7 +159,11 @@ def _ingest_document(document_id: str, filepath: str, original_name: str, user_i
 
     db = SessionLocal()
     try:
-        doc = db.query(Document).filter(Document.id == document_id).first()
+        doc = (
+            db.query(Document)
+            .filter(Document.id == document_id, Document.is_deleted.is_(False))
+            .first()
+        )
         if not doc:
             logger.error(f"Document {document_id} not found for ingestion")
             return
@@ -236,7 +241,11 @@ def _ingest_document(document_id: str, filepath: str, original_name: str, user_i
     except Exception as e:
         logger.error(f"Ingestion error for {document_id}: {e}")
         try:
-            doc = db.query(Document).filter(Document.id == document_id).first()
+            doc = (
+                db.query(Document)
+                .filter(Document.id == document_id, Document.is_deleted.is_(False))
+                .first()
+            )
             if doc:
                 doc.status = "failed"
                 doc.error_message = str(e)[:500]
@@ -476,6 +485,7 @@ def get_document_status(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
@@ -517,7 +527,7 @@ def list_documents(
     """Total Pages"""
     totalDocuments = (
         db.query(Document)
-        .filter(Document.user_id == user.id)
+        .filter(Document.user_id == user.id, Document.is_deleted.is_(False))
         .count()
     )
     """Total Pages"""
@@ -526,7 +536,7 @@ def list_documents(
     """List all documents for the authenticated user in Paginated form"""
     docs = ((
             db.execute(select(Document)
-            .where(Document.user_id == user.id)
+            .where(Document.user_id == user.id, Document.is_deleted.is_(False))
             .order_by(Document.uploaded_at.desc())
             .limit(per_page).offset(skip))
             )
@@ -567,6 +577,7 @@ def get_document(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
@@ -603,6 +614,7 @@ def serve_pdf(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
@@ -627,12 +639,11 @@ def delete_document(
     db: Session = Depends(get_db),
 ):
     """
-    Delete a document and its associated vector embeddings.
+    Soft-delete a document so it disappears from normal document APIs.
 
-    Removes the document from the database, deletes the physical file from
-    disk, and attempts to delete all corresponding vector chunks from ChromaDB.
-    If ChromaDB deletion fails, the error is logged but does not block the
-    overall operation.
+    The underlying file, vectors, graph, and chat history are retained for a
+    future recycle-bin/restore flow. Normal read/list endpoints filter deleted
+    documents so accidental deletion is reversible at the database level.
 
     Args:
         document_id: The unique identifier of the document to delete.
@@ -653,32 +664,14 @@ def delete_document(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Delete file from disk
-    filepath = os.path.join(settings.UPLOAD_DIR, user.id, doc.filename)
-    if os.path.exists(filepath):
-        os.remove(filepath)
-
-    # Delete vectors from ChromaDB
-    try:
-        delete_document_chunks(document_id=document_id, user_id=user.id)
-    except Exception as e:
-        logger.warning(f"Error deleting vectors: {e}")
-
-    # Delete persisted knowledge graph
-    try:
-        from app.rag.graph_builder import delete_graph
-
-        delete_graph(user_id=user.id, document_id=document_id)
-    except Exception as e:
-        logger.warning(f"Error deleting knowledge graph: {e}")
-
-    # Delete from database (cascades to chat messages)
-    db.delete(doc)
+    doc.is_deleted = True
+    doc.deleted_at = datetime.now(timezone.utc)
     db.commit()
 
     return {"message": f"Document '{doc.original_name}' deleted successfully"}
@@ -714,6 +707,7 @@ def update_chunk_settings(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:

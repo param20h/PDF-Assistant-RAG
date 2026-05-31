@@ -75,6 +75,8 @@ def _migrate_schema():
     existing_docs_columns = {c["name"] for c in inspector.get_columns("documents")}
     docs_migrations = [
         ("documents", "last_accessed_at", "ALTER TABLE documents ADD COLUMN last_accessed_at TIMESTAMP"),
+        ("documents", "is_deleted", "ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP"),
     ]
     for table, column, ddl in docs_migrations:
         if column not in existing_docs_columns:

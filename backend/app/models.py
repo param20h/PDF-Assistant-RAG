@@ -182,6 +182,8 @@ class Document(Base):
     drive_file_id = Column(String(255), unique=True, nullable=True, index=True)
     drive_folder_id = Column(String(255), nullable=True, index=True)
     drive_synced_at = Column(DateTime, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime, nullable=True)
 
     # Relationships
     owner = relationship("User", back_populates="documents")
@@ -238,4 +240,3 @@ class SharedMessage(Base):
 
     # Relationships
     message = relationship("ChatMessage", back_populates="shared_message")
-
