@@ -46,7 +46,7 @@ transformers
 # Vector Database
 chromadb
 networkx>=3.3
-spacy>=3.7
+spacy>=3.8.14
 neo4j>=5.0
 
 # LLM Inference
