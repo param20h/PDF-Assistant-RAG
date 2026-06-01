@@ -4,7 +4,7 @@ updates:
     directory: /
     target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "09:00"
       timezone: Asia/Kolkata
@@ -22,7 +22,7 @@ updates:
     directory: /backend
     target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "09:15"
       timezone: Asia/Kolkata
@@ -41,7 +41,7 @@ updates:
     directory: /frontend
     target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "09:30"
       timezone: Asia/Kolkata
@@ -63,7 +63,7 @@ updates:
     directory: /
     target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "09:45"
       timezone: Asia/Kolkata
