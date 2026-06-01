@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Document, Page, pdfjs, type PDFPageProxy } from "react-pdf";
+import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2 } from "lucide-react";
@@ -102,10 +102,9 @@ export default function PDFViewer({
     setLoadedPageKey(pageKey);
   };
 
-  const handlePageLoadSuccess = (page: PDFPageProxy) => {
+  const handlePageLoadSuccess = (page: { getViewport: (options: { scale: number }) => { width: number; height: number } }) => {
     const viewport = page.getViewport({ scale });
     setPageDimensions({ width: viewport.width, height: viewport.height });
-    setLoading(false);
   };
 
   return (

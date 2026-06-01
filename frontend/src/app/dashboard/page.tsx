@@ -178,8 +178,9 @@ export default function DashboardPage() {
         <div className="flex-1 min-w-0 flex flex-col">
           <ChatPanel
             activeDoc={activeDoc}
-            onCitationClick={(page) => {
-              setPdfPage(page);
+            onCitationClick={(target) => {
+              setPdfPage(target.page);
+              setPdfHighlightTarget({ page: target.page, rects: target.highlightRects });
               if (!viewerOpen) setViewerOpen(true);
             }}
           />
