@@ -236,6 +236,7 @@ def ask_question(
             doc = db.query(Document).filter(
                 Document.id == payload.document_id,
                 Document.user_id == user.id,
+                Document.is_deleted.is_(False),
             ).first()
 
             if not doc:
@@ -296,6 +297,7 @@ def ask_question_stream(
         doc = db.query(Document).filter(
             Document.id == payload.document_id,
             Document.user_id == user.id,
+            Document.is_deleted.is_(False),
         ).first()
 
         if not doc:
@@ -437,6 +439,7 @@ def export_chat_history(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == resolved_user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
