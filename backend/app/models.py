@@ -134,10 +134,12 @@ class ApiKey(Base):
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
-    key_prefix = Column(String(10), nullable=False)
+    name = Column(String(100), nullable=False, default="default")
+    key_prefix = Column(String(20), nullable=False)
     hashed_key = Column(String(255), nullable=False, unique=True, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    last_used = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="api_keys")

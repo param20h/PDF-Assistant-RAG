@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -56,9 +57,11 @@ export default function Header({
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const workspace = useWorkspaceStore((s) => s.workspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
 
+  const currentWorkspaceLabel = WORKSPACES.find((w) => w.id === workspace)?.label ?? workspace;
   const isDark = theme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
@@ -69,6 +72,7 @@ export default function Header({
 
   const fetchDocumentsForWorkspace = async (id: string) => {
     // Placeholder: simulate fetching documents for the selected workspace
+    setWorkspaceLoading(true);
     try {
       // Attempt a real API call if available; otherwise this will fail silently
       const res = await api.get(`/api/v1/documents?workspace=${encodeURIComponent(id)}`).catch(() => null);
@@ -77,6 +81,8 @@ export default function Header({
       // e.g. documentStore.setDocuments(res || [])
     } catch (err) {
       console.warn("Failed to fetch documents for workspace", id, err);
+    } finally {
+      setWorkspaceLoading(false);
     }
   };
 
@@ -85,7 +91,7 @@ export default function Header({
       <header className="h-14 flex items-center justify-between px-4 border-b border-border/50 bg-card/50 backdrop-blur-md flex-shrink-0 z-50">
         {/* Left */}
         <div className="flex items-center gap-3">
-          {/* Hamburger — mobile only */}
+          {/* Hamburger - mobile only */}
           <Button
             variant="ghost"
             size="icon"
@@ -99,7 +105,7 @@ export default function Header({
             <Menu className="w-4 h-4" />
           </Button>
 
-          {/* Desktop sidebar toggle — hidden on mobile */}
+          {/* Desktop sidebar toggle - hidden on mobile */}
           <Button
             variant="ghost"
             size="icon"
@@ -120,9 +126,7 @@ export default function Header({
             <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
               <Brain className="w-4 h-4 text-primary" />
             </div>
-            <span className="font-semibold text-sm hidden sm:inline">
-              Document AI Analyst
-            </span>
+            <span className="font-semibold text-sm hidden sm:inline">Document AI Analyst</span>
           </div>
         </div>
 
@@ -161,11 +165,21 @@ export default function Header({
           <DropdownMenu>
             <DropdownMenuTrigger
               className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer"
-              aria-label={`Select workspace. Current workspace: ${WORKSPACES.find((w) => w.id === workspace)?.label ?? workspace}`}
+              aria-label={`Select workspace. Current workspace: ${currentWorkspaceLabel}`}
+              aria-busy={workspaceLoading}
             >
-              <Briefcase className="w-4 h-4" />
-              <span className="text-sm hidden sm:inline">{WORKSPACES.find((w) => w.id === workspace)?.label}</span>
-              <ChevronDown className="w-3 h-3" />
+              {workspaceLoading ? (
+                <>
+                  <Skeleton className="h-4 w-4 rounded-sm" />
+                  <Skeleton className="hidden h-4 w-16 sm:block" />
+                </>
+              ) : (
+                <>
+                  <Briefcase className="w-4 h-4" />
+                  <span className="text-sm hidden sm:inline">{currentWorkspaceLabel}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </>
+              )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
               {WORKSPACES.map((w) => (
@@ -201,10 +215,7 @@ export default function Header({
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive cursor-pointer"
-                onClick={handleLogout}
-              >
+              <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign out
               </DropdownMenuItem>
@@ -213,8 +224,7 @@ export default function Header({
         </div>
       </header>
 
-      {/* ── Mobile Navigation Sheet ──────────────────────────────────── */}
-      {/* Backdrop */}
+      {/* Mobile navigation sheet */}
       {sheetOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
@@ -223,43 +233,38 @@ export default function Header({
         />
       )}
 
-      {/* Slide-in panel */}
-<aside
-  id="mobile-document-navigation"
-  className={[
-    "fixed inset-y-0 left-0 z-50 w-72 flex flex-col",
-    "bg-sidebar border-r border-sidebar-border",
-    "transform transition-transform duration-300 ease-in-out md:hidden",
-    sheetOpen ? "translate-x-0" : "-translate-x-full",
-  ].join(" ")}
-  aria-label="Mobile navigation"
-  aria-hidden={!sheetOpen}
-  inert={!sheetOpen ? true : undefined}
->
-  {/* Sheet header */}
-  <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border flex-shrink-0">
-    <div className="flex items-center gap-2">
-      <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
-        <Brain className="w-4 h-4 text-primary" />
-      </div>
-      <span className="font-semibold text-sm">Document AI Analyst</span>
-    </div>
-    <Button
-      variant="ghost"
-      size="icon"
-      className="h-8 w-8"
-      onClick={() => setSheetOpen(false)}
-      aria-label="Close navigation"
-    >
-      <X className="w-4 h-4" />
-    </Button>
-  </div>
+      <aside
+        id="mobile-document-navigation"
+        className={[
+          "fixed inset-y-0 left-0 z-50 w-72 flex flex-col",
+          "bg-sidebar border-r border-sidebar-border",
+          "transform transition-transform duration-300 ease-in-out md:hidden",
+          sheetOpen ? "translate-x-0" : "-translate-x-full",
+        ].join(" ")}
+        aria-label="Mobile navigation"
+        aria-hidden={!sheetOpen}
+        inert={!sheetOpen ? true : undefined}
+      >
+        <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
+              <Brain className="w-4 h-4 text-primary" />
+            </div>
+            <span className="font-semibold text-sm">Document AI Analyst</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setSheetOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
 
-  {/* Sidebar content */}
-  <div className="flex-1 overflow-hidden">
-     {sheetOpen ? mobileSheetContent : null}
-  </div>
-</aside>
+        <div className="flex-1 overflow-hidden">{sheetOpen ? mobileSheetContent : null}</div>
+      </aside>
     </>
   );
 }

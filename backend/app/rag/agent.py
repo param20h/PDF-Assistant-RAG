@@ -4,7 +4,6 @@ Intelligently chooses between PDF search, Web Search, and Math tools.
 """
 import logging
 import json
-import re
 from typing import List, Dict, Any, Optional, Generator
 
 from huggingface_hub import InferenceClient
@@ -16,6 +15,7 @@ from app.config import get_settings
 from app.rag.retriever import retrieve
 from app.rag.graph_retriever import get_entity_context
 from app.rag.prompts import AGENT_SYSTEM_PROMPT
+from app.rag.security import MALFORMED_OUTPUT_MESSAGE, OutputParserError, parse_agent_output
 from app.rag.tools import PDFSearchTool, MathTool, WebSearchTool
 from app.rag.tracing import trace_function
 
@@ -114,7 +114,12 @@ def generate_answer(
         executor, pdf_tool = get_agent_executor(user_id, document_id, hf_token)
         result = executor.invoke({"input": question})
         
-        answer = result.get("output", "I'm sorry, I couldn't process your request.")
+        raw_answer = result.get("output", "")
+        try:
+            answer = parse_agent_output(raw_answer)
+        except OutputParserError as e:
+            logger.warning(f"Rejected malformed LLM output: {e}")
+            answer = MALFORMED_OUTPUT_MESSAGE
         
         # Retrieve sources from the PDF tool if it was used
         sources = [
@@ -181,11 +186,8 @@ def generate_answer_stream(
         sources_sent = False
 
         for step in executor.stream({"input": question}):
-            # Stream thoughts/actions to the user so they see the reasoning
             if "actions" in step:
-                for action in step["actions"]:
-                    thought = f"\n> **Thinking:** {action.log.split('Action:')[0].strip()}\n\n"
-                    yield f"data: {json.dumps({'type': 'token', 'data': thought})}\n\n"
+                continue
             
             elif "intermediate_steps" in step:
                 # If pdf_search was just run, we can yield sources
@@ -205,8 +207,11 @@ def generate_answer_stream(
 
             elif "output" in step:
                 full_answer = step["output"]
-                # Clean up the "Final Answer:" prefix if present
-                clean_answer = re.sub(r"^Final Answer:\s*", "", full_answer, flags=re.I)
+                try:
+                    clean_answer = parse_agent_output(full_answer)
+                except OutputParserError as e:
+                    logger.warning(f"Rejected malformed streamed LLM output: {e}")
+                    clean_answer = MALFORMED_OUTPUT_MESSAGE
                 yield f"data: {json.dumps({'type': 'token', 'data': clean_answer})}\n\n"
 
     except Exception as e:
