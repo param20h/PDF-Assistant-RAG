@@ -3,24 +3,40 @@ Document management routes — upload, list, delete, and serve PDF files.
 Background ingestion via FastAPI BackgroundTasks.
 """
 import os
+import sys
 import uuid
 import logging
+import asyncio
+import concurrent.futures
+from datetime import datetime, timezone
 from typing import Optional
 from pathlib import Path
 import shutil
 import tempfile
-
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User, Document
-from app.schemas import DocumentResponse, DocumentListResponse, DocumentStatusResponse
+from app.schemas import DocumentResponse, DocumentListResponse, DocumentStatusResponse, ChunkSettings, UploadUrl
 from app.auth import get_current_user
 from app.config import get_settings
 from app.rag.chunker import chunk_document, get_page_count
-from app.rag.vectorstore import store_chunks, delete_document_chunks
+from app.rag.vectorstore import store_chunks
+
+try:
+    from crawl4ai import AsyncWebCrawler
+    from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
+except ImportError as exc:
+    AsyncWebCrawler = None
+    BrowserConfig = None
+    CrawlerRunConfig = None
+    CRAWL4AI_IMPORT_ERROR = exc
+else:
+    CRAWL4AI_IMPORT_ERROR = None
+
 from sqlalchemy import select
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -62,7 +78,7 @@ async def validate_upload(file: UploadFile):
 
     # extension without leading dot in settings
     if ext.lstrip(".") not in settings.ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are allowed")
+        raise HTTPException(status_code=400, detail="Only PDF, DOCX, TEXT, AND MARKDOWN files are allowed")
 
     # save to a temporary file
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
@@ -74,6 +90,7 @@ async def validate_upload(file: UploadFile):
         size = Path(temp_path).stat().st_size
 
         if size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+            Path(temp_path).unlink(missing_ok=True)
             raise HTTPException(status_code=400, detail="File too large")
 
         # libmagic may not be installed in all environments — import lazily
@@ -142,7 +159,11 @@ def _ingest_document(document_id: str, filepath: str, original_name: str, user_i
 
     db = SessionLocal()
     try:
-        doc = db.query(Document).filter(Document.id == document_id).first()
+        doc = (
+            db.query(Document)
+            .filter(Document.id == document_id, Document.is_deleted.is_(False))
+            .first()
+        )
         if not doc:
             logger.error(f"Document {document_id} not found for ingestion")
             return
@@ -155,14 +176,40 @@ def _ingest_document(document_id: str, filepath: str, original_name: str, user_i
         page_count = get_page_count(filepath)
         doc.page_count = page_count
 
-        # Chunk the document
-        chunks = chunk_document(filepath)
+        # Chunk document with optional chunk size and overlap parameters from the document record, falling back to global defaults if not set
+        chunk_size = doc.chunk_size
+        chunk_overlap = doc.chunk_overlap
+        try:
+            kwargs = {}
+            if chunk_size is not None:
+                kwargs["chunk_size"] = chunk_size
+            if chunk_overlap is not None:
+                kwargs["chunk_overlap"] = chunk_overlap
+
+            if kwargs:
+                chunks = chunk_document(filepath, **kwargs)
+            else:
+                chunks = chunk_document(filepath)
+
+        except TypeError:
+            # Backward-compatible fallback for chunk_document implementations/tests
+            # that only accept (filepath)
+            chunks = chunk_document(filepath)
 
         if not chunks:
             doc.status = "failed"
             doc.error_message = "No text could be extracted from the document"
             db.commit()
             return
+
+        # Build and persist a lightweight entity co-occurrence graph for GraphRAG.
+        try:
+            from app.rag.graph_builder import build_graph, save_graph
+
+            graph = build_graph(chunks)
+            save_graph(graph, user_id=user_id, document_id=document_id)
+        except Exception as e:
+            logger.warning(f"Could not build knowledge graph for document {document_id}: {e}")
 
         # Store embeddings in ChromaDB
         chunk_count = store_chunks(
@@ -194,7 +241,11 @@ def _ingest_document(document_id: str, filepath: str, original_name: str, user_i
     except Exception as e:
         logger.error(f"Ingestion error for {document_id}: {e}")
         try:
-            doc = db.query(Document).filter(Document.id == document_id).first()
+            doc = (
+                db.query(Document)
+                .filter(Document.id == document_id, Document.is_deleted.is_(False))
+                .first()
+            )
             if doc:
                 doc.status = "failed"
                 doc.error_message = str(e)[:500]
@@ -204,6 +255,36 @@ def _ingest_document(document_id: str, filepath: str, original_name: str, user_i
     finally:
         db.close()
 
+
+
+def _crawl_in_new_loop(url: str) -> str:
+    """Run the async crawler in a fresh event loop on a worker thread.
+    On Windows this must be a ProactorEventLoop to support subprocesses.
+    """
+    if sys.platform == "win32":
+        loop = asyncio.ProactorEventLoop()
+    else:
+        loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        async def _crawl():
+            browser_config = BrowserConfig()
+            run_config = CrawlerRunConfig(
+                excluded_tags=['form', 'header'],
+
+                # Content processing
+                process_iframes=True,
+                # remove_overlay_elements=True,
+
+                # Cache control
+                # cache_mode=CacheMode.ENABLED
+            )
+            async with AsyncWebCrawler(config=browser_config) as crawler:
+                result = await crawler.arun(url=url, config=run_config)
+                return result.markdown or ""
+        return loop.run_until_complete(_crawl())
+    finally:
+        loop.close()
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
@@ -287,6 +368,106 @@ async def upload_document(
 
     return DocumentResponse.model_validate(document)
 
+@router.post("/urlupload", status_code=status.HTTP_202_ACCEPTED)
+async def upload_document_url(
+        payload: UploadUrl,
+        background_tasks: BackgroundTasks,
+        user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+):
+    """
+    Uses crawl4ai's AsyncWebCrawler in a dedicated thread with its own
+    event loop. This is required on Windows because uvicorn's default
+    SelectorEventLoop does not support subprocess creation (used by
+    Playwright/crawl4ai), which causes a NotImplementedError.
+    On Linux (production) a plain new_event_loop() is used instead.
+    """
+    if CRAWL4AI_IMPORT_ERROR is not None:
+        raise HTTPException(
+            status_code=503,
+            detail="URL upload is unavailable because crawl4ai is not installed",
+        )
+
+    temp_path: Optional[str] = None
+    try:
+        parsed = urlparse(payload.url)
+        if not all([parsed.scheme, parsed.netloc]):
+            raise HTTPException(status_code=400, detail="Invalid URL")
+
+
+        # Run in a worker thread with its own event loop to avoid
+        # NotImplementedError on Windows (SelectorEventLoop can't spawn subprocesses)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            markdown = await asyncio.get_event_loop().run_in_executor(
+                pool, _crawl_in_new_loop, payload.url
+            )
+
+        if not markdown:
+            raise HTTPException(status_code=422, detail="No content could be extracted from the URL")
+
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".txt",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            tmp.write(markdown)
+            temp_path = tmp.name
+
+        # ── Move temp file to permanent user upload directory ──
+        ext = "txt"
+        user_dir = os.path.join(settings.UPLOAD_DIR, user.id)
+        os.makedirs(user_dir, exist_ok=True)
+
+        stored_filename = f"{uuid.uuid4().hex}.{ext}"
+        filepath = os.path.join(user_dir, stored_filename)
+        shutil.move(temp_path, filepath)
+        temp_path = None  # file is now at filepath; no longer a temp to clean up
+
+        file_size = Path(filepath).stat().st_size
+
+        # ── Derive a human-readable name from the URL ─────────
+        url_path = parsed.path.rstrip("/")
+        original_name = f"{parsed.netloc}{url_path or ''}.txt"
+
+        # ── Create database record ─────────────────────────────
+        document = Document(
+            user_id=user.id,
+            filename=stored_filename,
+            original_name=original_name,
+            file_size=file_size,
+            status="pending",
+        )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+
+        # ── Trigger background ingestion ───────────────────────
+        background_tasks.add_task(
+            _ingest_document,
+            document_id=document.id,
+            filepath=filepath,
+            original_name=original_name,
+            user_id=user.id,
+        )
+
+        return DocumentResponse.model_validate(document)
+
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid URL")
+    except Exception as e:
+        logger.error(f"URL upload error: {e}")
+        raise HTTPException(status_code=400, detail=f"Something went wrong with URL processing: {str(e)}")
+    finally:
+        '''Runs whether the request succeeded, raised an HTTPException,
+        or hit an unexpected error — no temp files are ever left behind.'''
+        if temp_path is not None:
+            Path(temp_path).unlink(missing_ok=True)
+
+
 
 @router.get("/{document_id}/status", response_model=DocumentStatusResponse)
 def get_document_status(
@@ -304,6 +485,7 @@ def get_document_status(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
@@ -345,7 +527,7 @@ def list_documents(
     """Total Pages"""
     totalDocuments = (
         db.query(Document)
-        .filter(Document.user_id == user.id)
+        .filter(Document.user_id == user.id, Document.is_deleted.is_(False))
         .count()
     )
     """Total Pages"""
@@ -354,7 +536,7 @@ def list_documents(
     """List all documents for the authenticated user in Paginated form"""
     docs = ((
             db.execute(select(Document)
-            .where(Document.user_id == user.id)
+            .where(Document.user_id == user.id, Document.is_deleted.is_(False))
             .order_by(Document.uploaded_at.desc())
             .limit(per_page).offset(skip))
             )
@@ -395,6 +577,7 @@ def get_document(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
@@ -431,6 +614,7 @@ def serve_pdf(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
@@ -455,12 +639,11 @@ def delete_document(
     db: Session = Depends(get_db),
 ):
     """
-    Delete a document and its associated vector embeddings.
+    Soft-delete a document so it disappears from normal document APIs.
 
-    Removes the document from the database, deletes the physical file from
-    disk, and attempts to delete all corresponding vector chunks from ChromaDB.
-    If ChromaDB deletion fails, the error is logged but does not block the
-    overall operation.
+    The underlying file, vectors, graph, and chat history are retained for a
+    future recycle-bin/restore flow. Normal read/list endpoints filter deleted
+    documents so accidental deletion is reversible at the database level.
 
     Args:
         document_id: The unique identifier of the document to delete.
@@ -481,24 +664,82 @@ def delete_document(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Delete file from disk
-    filepath = os.path.join(settings.UPLOAD_DIR, user.id, doc.filename)
-    if os.path.exists(filepath):
-        os.remove(filepath)
-
-    # Delete vectors from ChromaDB
-    try:
-        delete_document_chunks(document_id=document_id, user_id=user.id)
-    except Exception as e:
-        logger.warning(f"Error deleting vectors: {e}")
-
-    # Delete from database (cascades to chat messages)
-    db.delete(doc)
+    doc.is_deleted = True
+    doc.deleted_at = datetime.now(timezone.utc)
     db.commit()
 
     return {"message": f"Document '{doc.original_name}' deleted successfully"}
+
+
+@router.post("/{document_id}/chunk_settings", response_model=DocumentResponse)
+def update_chunk_settings(
+    document_id: str,
+    settings_update: ChunkSettings,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update chunking settings for a specific document.
+
+    This endpoint allows users to update the chunk size and overlap for a document and calls _injest_document fucntion in the background to re-chunk the document with new chunk parameters.
+
+    Args:
+        document_id: The unique identifier of the document to update.
+        settings_update: A ChunkSettings object containing the chunk_size and chunk_overlap values.
+        background_tasks: FastAPI BackgroundTasks instance to run the ingestion process asynchronously.
+        user: The currently authenticated user, injected by the `get_current_user` dependency.
+        db: Database session, injected by the `get_db` dependency.
+
+    Returns:
+        DocumentResponse: The updated document record, validated against the response model.
+
+    Raises:
+        HTTPException: With status code 404 if the document is not found or does not belong to the authenticated user.
+        HTTPException: With status code 400 if the provided chunk size or overlap values are invalid (e.g., chunk size less than 100, or overlap greater than or equal to chunk size).
+    """
+    # Validate if the document exists and belongs to the user
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user.id,
+        Document.is_deleted.is_(False),
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if settings_update.chunk_size is not None:
+        if settings_update.chunk_size < 100:
+            raise HTTPException(400, "Chunk size must be at least 100")
+        doc.chunk_size = settings_update.chunk_size
+    if settings_update.chunk_overlap is not None:
+        if settings_update.chunk_overlap >= settings_update.chunk_size:
+            raise HTTPException(400, "Chunk overlap cannot be greater than or equal to chunk size")
+        doc.chunk_overlap = settings_update.chunk_overlap    
+
+    # Refresh the document record to update the chunk settings before re-ingestion
+    db.commit()
+    db.refresh(doc)
+
+    # Reset document status, chunk/page counts, summary to trigger re-ingestion with new chunk settings.
+    doc.status = "pending"
+    doc.chunk_count = 0
+    doc.page_count = 0
+    doc.summary = None
+    db.commit()
+
+    # Trigger background ingestion with updated chunk settings. The _ingest_document function will read the new chunk settings from the document record and re-chunk the document accordingly.
+    background_tasks.add_task(
+        _ingest_document,
+        document_id=doc.id,
+        filepath=os.path.join(settings.UPLOAD_DIR, user.id, doc.filename), 
+        original_name=doc.original_name,
+        user_id=user.id,
+    )
+    # Return the updated document record with new chunk settings
+    return DocumentResponse.model_validate(doc)

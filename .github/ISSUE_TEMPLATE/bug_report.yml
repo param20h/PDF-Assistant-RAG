@@ -59,7 +59,7 @@ body:
   - type: checkboxes
     id: gssoc
     attributes:
-      label: "GSSoC '24"
+      label: "GSSoC '26"
       description: "Are you a GSSoC contributor?"
       options:
         - label: "Yes, I am participating in GirlScript Summer of Code and would like to fix this."

@@ -3,17 +3,18 @@ Admin-only operational statistics routes.
 """
 import shutil
 from pathlib import Path
+from typing import List
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth import get_admin_user
+from app.auth import get_current_admin
 from app.config import get_settings
 from app.database import get_db
 from app.metrics import get_query_metrics
-from app.models import Document, User
-from app.schemas import AdminStatsResponse, DiskUsageResponse
+from app.models import Document, User, ChatMessage
+from app.schemas import AdminStatsResponse, DiskUsageResponse, UserResponse
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 settings = get_settings()
@@ -33,12 +34,25 @@ def _directory_size(path: Path) -> int:
     return total
 
 
-@router.get("/stats", response_model=AdminStatsResponse)
+@router.get(
+    "/stats",
+    response_model=AdminStatsResponse,
+    summary="Get admin dashboard statistics",
+    description=(
+        "Returns aggregate user, document, message, query-latency, and disk "
+        "usage metrics for authenticated administrators."
+    ),
+)
 def get_admin_stats(
-    _admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
 ):
-    """Return aggregate system statistics for administrators."""
+    """Return aggregate operational statistics for the admin dashboard.
+
+    The response includes counts for users, uploaded PDFs, all documents, chat
+    messages, average RAG query latency, and upload-directory disk usage.
+    Access is restricted by the `get_current_admin` dependency.
+    """
     upload_dir = Path(settings.UPLOAD_DIR).resolve()
     upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -59,6 +73,8 @@ def get_admin_stats(
     return AdminStatsResponse(
         total_users=db.query(User).count(),
         total_pdfs_uploaded=total_pdfs_uploaded,
+        total_documents=db.query(Document).count(),
+        total_messages=db.query(ChatMessage).count(),
         average_query_response_time_ms=float(
             query_metrics["average_query_response_time_ms"]
         ),
@@ -70,4 +86,23 @@ def get_admin_stats(
             usage_percent=used_percent,
             upload_dir_bytes=_directory_size(upload_dir),
         ),
+        users=db.query(User).all()
     )
+
+
+@router.get(
+    "/users",
+    response_model=List[UserResponse],
+    summary="List all registered users",
+    description="Returns the registered user inventory for authenticated administrators.",
+)
+def list_all_users(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+):
+    """List all registered users.
+
+    Access is restricted to administrators and the response is serialized
+    through `UserResponse` so token fields and secrets are not exposed.
+    """
+    return db.query(User).all()

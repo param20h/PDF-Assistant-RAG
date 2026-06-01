@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X } from "lucide-react";
+import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -41,7 +41,6 @@ const markdownComponents: Components = {
   ),
   code: ({ className, children, ...props }) => {
     const language = /language-(\w+)/.exec(className ?? "")?.[1];
-
     return (
       <code className={className} data-language={language} {...props}>
         {children}
@@ -55,8 +54,19 @@ export default function MessageBubble({ message }: Props) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const [shareFailed, setShareFailed] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Component unmount ആകുമ്പോൾ speech cancel ചെയ്യും
+  useEffect(() => {
+    return () => {
+      if (utteranceRef.current) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -64,7 +74,7 @@ export default function MessageBubble({ message }: Props) {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
       if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
-      copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      copiedTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
     } catch {
       setCopied(false);
     }
@@ -72,7 +82,6 @@ export default function MessageBubble({ message }: Props) {
 
   const handleShare = async () => {
     if (!message.content || message.isStreaming) return;
-
     try {
       const data = await api.post<{ message_id: string; share_url: string }>(
         `/api/v1/chat/share/${message.id}`
@@ -93,6 +102,34 @@ export default function MessageBubble({ message }: Props) {
         setShareFailed(false);
       }, 2000);
     }
+  };
+
+  const handleSpeech = () => {
+    if (!message.content || message.isStreaming) return;
+
+    // Already speaking — cancel ചെയ്യും
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(message.content);
+    utteranceRef.current = utterance;
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+
+    // Chrome bug fix: onstart reliable അല്ല, speak() മുൻപ് set ചെയ്യണം
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
   };
 
   return (
@@ -118,6 +155,7 @@ export default function MessageBubble({ message }: Props) {
           <>
             {message.content && (
               <>
+                {/* Share button */}
                 {!message.isStreaming && (
                   <Button
                     type="button"
@@ -140,6 +178,8 @@ export default function MessageBubble({ message }: Props) {
                     )}
                   </Button>
                 )}
+
+                {/* Copy button */}
                 <Button
                   type="button"
                   variant="ghost"
@@ -158,9 +198,19 @@ export default function MessageBubble({ message }: Props) {
                     <Copy className="w-3.5 h-3.5" />
                   )}
                 </Button>
+                {copied && (
+                  <div 
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded-md whitespace-nowrap opacity-100 transition-opacity pointer-events-none"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Copied!
+                  </div>
+                )}
               </>
             )}
-            <div className={`prose-chat text-sm ${message.content ? "pr-14" : ""}`}>
+
+            <div className={`prose-chat text-sm ${message.content ? "pr-20" : ""}`}>
               {message.content ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}

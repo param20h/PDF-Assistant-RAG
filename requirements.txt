@@ -1,6 +1,7 @@
 flask
 python-dotenv
 pymupdf
+pdfplumber
 flask-login
 pymongo
 werkzeug

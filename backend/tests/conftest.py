@@ -65,8 +65,11 @@ class Limiter:
     def __init__(self, key_func=None, *args, **kwargs):
         self.key_func = key_func
 
-    def limit(self, _value):
+    def limit(self, value):
         def decorator(fn):
+            limits = list(getattr(fn, "__rate_limits__", []))
+            limits.append(value)
+            setattr(fn, "__rate_limits__", limits)
             return fn
         return decorator
 

@@ -4,24 +4,21 @@ Chat routes — ask questions with RAG, stream responses via SSE, manage history
 import html
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import inch
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
 from app.metrics import record_query_response_time
-from app.models import User, ChatMessage, Document, SharedMessage
-from app.rate_limit import limiter
+from app.models import User, ChatMessage, Document, SharedMessage, ChatSession
+from app.rate_limit import CHAT_QUERY_RATE_LIMIT, limiter
+from app.rag.security import UnsafePromptError, validate_user_input
 from app.schemas import (
     ChatRequest,
     ChatResponse,
@@ -30,6 +27,8 @@ from app.schemas import (
     ShareAnswerResponse,
     ShareLinkResponse,
     SourceChunk,
+    ChatSessionCreate,
+    ChatSessionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,11 +36,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
-@router.get("/share/{message_id}", response_model=ShareAnswerResponse)
+@router.get(
+    "/share/{message_id}",
+    response_model=ShareAnswerResponse,
+    summary="Read a public shared answer",
+    description=(
+        "Returns a previously shared assistant answer and its safe citation "
+        "metadata without requiring authentication."
+    ),
+)
 def get_shared_answer(
     message_id: str,
     db: Session = Depends(get_db),
 ):
+    """Return a public shared assistant answer by message ID.
+
+    Only assistant messages that already have a `SharedMessage` record are
+    exposed. User prompts, private chat history, and unshared answers remain
+    protected.
+    """
     message = db.query(ChatMessage).filter(
         ChatMessage.id == message_id,
         ChatMessage.role == "assistant",
@@ -53,12 +66,25 @@ def get_shared_answer(
     return _share_answer_response(message)
 
 
-@router.post("/share/{message_id}", response_model=ShareLinkResponse)
+@router.post(
+    "/share/{message_id}",
+    response_model=ShareLinkResponse,
+    summary="Create a public share link for an assistant answer",
+    description=(
+        "Marks one authenticated user's assistant message as shareable and "
+        "returns the frontend share URL."
+    ),
+)
 def create_share_link(
     message_id: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Create or reuse a public share record for an assistant answer.
+
+    The message must belong to the authenticated user and must have the
+    assistant role. User-authored messages cannot be shared through this route.
+    """
     message = db.query(ChatMessage).filter(
         ChatMessage.id == message_id,
         ChatMessage.user_id == user.id,
@@ -77,65 +103,206 @@ def create_share_link(
         db.commit()
 
     return ShareLinkResponse(
-        message_id=message.id,
+        message_id=str(message.id),
         share_url=f"/share?message_id={message.id}",
     )
 
 
-def generate_answer(question: str, user_id: str, document_id: Optional[str] = None):
+@router.get(
+    "/sessions",
+    response_model=List[ChatSessionResponse],
+    summary="List chat sessions",
+    description="Returns all chat sessions owned by the authenticated user, newest first.",
+)
+def get_chat_sessions(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve all chat sessions for the authenticated user."""
+    sessions = (
+        db.query(ChatSession)
+        .filter(ChatSession.user_id == user.id)
+        .order_by(ChatSession.created_at.desc())
+        .all()
+    )
+    return sessions
+
+
+@router.post(
+    "/sessions",
+    response_model=ChatSessionResponse,
+    status_code=201,
+    summary="Create a chat session",
+    description="Creates a named chat session owned by the authenticated user.",
+)
+def create_chat_session(
+    payload: ChatSessionCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a new chat session for the authenticated user."""
+    session = ChatSession(
+        user_id=user.id,
+        title=payload.title,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@router.put(
+    "/sessions/{session_id}",
+    response_model=ChatSessionResponse,
+    summary="Rename a chat session",
+    description="Renames one chat session after verifying it belongs to the authenticated user.",
+)
+def rename_chat_session(
+    session_id: str,
+    payload: ChatSessionCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Rename an existing chat session owned by the authenticated user."""
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user.id,
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    session.title = payload.title
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    summary="Delete a chat session",
+    description="Deletes one owned chat session and cascades its messages through the database relationship.",
+)
+def delete_chat_session(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a chat session owned by the authenticated user."""
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user.id,
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    db.delete(session)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.get(
+    "/history/session/{session_id}",
+    response_model=ChatHistoryResponse,
+    summary="Get chat history for a session",
+    description="Returns ordered user and assistant messages for one owned chat session.",
+)
+def get_session_history(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve ordered chat history for a specific owned chat session."""
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user.id,
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    messages = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.session_id == session_id,
+            ChatMessage.user_id == user.id,
+        )
+        .order_by(ChatMessage.created_at.asc())
+        .all()
+    )
+
+    formatted = []
+    for msg in messages:
+        sources = []
+        if msg.sources_json:
+            try:
+                sources = [SourceChunk(**s) for s in json.loads(msg.sources_json)]
+            except Exception:
+                pass
+
+        formatted.append(
+            ChatMessageResponse(
+                id=str(msg.id),
+                role=msg.role,
+                content=msg.content,
+                sources=sources,
+                created_at=msg.created_at,
+            )
+        )
+
+    return ChatHistoryResponse(messages=formatted, document_id=None)
+
+
+def generate_answer(question: str, user_id: str, document_id: Optional[str] = None, hf_token: Optional[str] = None):
     from app.rag.agent import generate_answer as _generate_answer
 
-    return _generate_answer(question=question, user_id=user_id, document_id=document_id)
+    return _generate_answer(question=question, user_id=user_id, document_id=document_id, hf_token=hf_token)
 
 
-def generate_answer_stream(question: str, user_id: str, document_id: Optional[str] = None):
+def generate_answer_stream(question: str, user_id: str, document_id: Optional[str] = None, hf_token: Optional[str] = None):
     from app.rag.agent import generate_answer_stream as _generate_answer_stream
 
-    return _generate_answer_stream(question=question, user_id=user_id, document_id=document_id)
+    return _generate_answer_stream(question=question, user_id=user_id, document_id=document_id, hf_token=hf_token)
 
 
-@router.post("/ask", response_model=ChatResponse)
-@limiter.limit("10/minute")
+@router.post(
+    "/ask",
+    response_model=ChatResponse,
+    summary="Ask a RAG question",
+    description=(
+        "Runs non-streaming retrieval-augmented generation for the authenticated "
+        "user, optionally scoped to one ready document."
+    ),
+)
+@limiter.limit(CHAT_QUERY_RATE_LIMIT)
 def ask_question(
     request: Request,
     payload: ChatRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Ask a question with RAG retrieval (non-streaming).
-
-    Processes a user's question by retrieving relevant document chunks,
-    generating an answer using an LLM, and saving the conversation to chat
-    history. If a `document_id` is provided, the retrieval is scoped to that
-    specific document; otherwise, it searches across all documents owned by
-    the user.
-
-    Args:
-        payload: ChatRequest containing the `question` text and optionally a
-            `document_id` to limit the retrieval scope.
-        user: The currently authenticated user, obtained from the dependency.
-        db: SQLAlchemy database session, obtained from the dependency.
-
-    Returns:
-        ChatResponse: An object containing:
-            - answer: The generated answer text.
-            - sources: A list of `SourceChunk` objects with metadata about
-              the retrieved chunks (e.g., filename, page number, text snippet).
-            - document_id: The document ID that was used (if any).
-
-    Raises:
-        HTTPException: 404 if the specified `document_id` does not exist or
-            does not belong to the authenticated user.
-        HTTPException: 400 if the document exists but its status is not
-            "ready" (e.g., still processing or failed).
-    """
+    """Ask a question with RAG retrieval and return the complete answer."""
     started_at = time.perf_counter()
     try:
+        try:
+            validate_user_input(payload.question)
+        except UnsafePromptError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
         # Validate document exists if specified
         if payload.document_id:
             doc = db.query(Document).filter(
                 Document.id == payload.document_id,
                 Document.user_id == user.id,
+                Document.is_deleted.is_(False),
             ).first()
 
             if not doc:
@@ -146,16 +313,32 @@ def ask_question(
                     status_code=400,
                     detail=f"Document is still {doc.status}. Please wait for processing to complete.",
                 )
+            
+            # Update last_accessed_at timestamp
+            doc.last_accessed_at = datetime.now(timezone.utc)
+            db.commit()
+
+        # Resolve or create session
+        session_id = payload.session_id
+        if not session_id:
+            session = db.query(ChatSession).filter(ChatSession.user_id == user.id).first()
+            if not session:
+                session = ChatSession(user_id=user.id, title="Default Chat")
+                db.add(session)
+                db.commit()
+                db.refresh(session)
+            session_id = session.id
 
         result = generate_answer(
             question=payload.question,
             user_id=user.id,
             document_id=payload.document_id,
+            hf_token=user.hf_token,
         )
 
         # Save to chat history
-        _save_message(db, user.id, payload.document_id, "user", payload.question)
-        _save_message(db, user.id, payload.document_id, "assistant", result["answer"], result["sources"])
+        _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
+        _save_message(db, user.id, payload.document_id, "assistant", result["answer"], result["sources"], session_id=session_id)
 
         return ChatResponse(
             answer=result["answer"],
@@ -166,54 +349,33 @@ def ask_question(
         record_query_response_time(time.perf_counter() - started_at)
 
 
-@router.post("/ask/stream")
-@limiter.limit("10/minute")
+@router.post(
+    "/ask/stream",
+    summary="Stream a RAG answer",
+    description=(
+        "Runs retrieval-augmented generation and streams answer tokens as "
+        "server-sent events. The final assistant response is saved to history."
+    ),
+)
+@limiter.limit(CHAT_QUERY_RATE_LIMIT)
 def ask_question_stream(
     request: Request,
     payload: ChatRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Ask a question with Server-Sent Events (SSE) streaming response.
+    """Ask a question and stream the answer using Server-Sent Events."""
+    try:
+        validate_user_input(payload.question)
+    except UnsafePromptError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    Processes a user's question using RAG and streams the answer token by
-    token over SSE. The user's question is saved to chat history immediately.
-    The assistant's answer is accumulated on the server and saved to history
-    only after the stream completes. If a `document_id` is provided, retrieval
-    is scoped to that document.
-
-    Args:
-        payload: ChatRequest containing the `question` text and optionally a
-            `document_id` to limit the retrieval scope.
-        user: The currently authenticated user, obtained from the dependency.
-        db: SQLAlchemy database session, obtained from the dependency.
-
-    Returns:
-        StreamingResponse: A FastAPI `StreamingResponse` with:
-            - media_type: "text/event-stream"
-            - Headers: Cache-Control, Connection, and X-Accel-Buffering set
-              for proper SSE behavior.
-            - Body: A generator yielding SSE messages with `token` (partial
-              answer) and `sources` (final source metadata) events.
-
-    Raises:
-        HTTPException: 404 if the specified `document_id` does not exist or
-            does not belong to the authenticated user.
-        HTTPException: 400 if the document exists but its status is not
-            "ready" (e.g., still processing or failed).
-
-    Note:
-        The streaming response uses a generator `event_stream` that yields
-        raw SSE chunks. The assistant's full answer is reconstructed from
-        the stream to save the complete conversation history. A separate
-        database session is created inside the generator to avoid using the
-        closed request session.
-    """
     # Validate document
     if payload.document_id:
         doc = db.query(Document).filter(
             Document.id == payload.document_id,
             Document.user_id == user.id,
+            Document.is_deleted.is_(False),
         ).first()
 
         if not doc:
@@ -224,11 +386,26 @@ def ask_question_stream(
                 status_code=400,
                 detail=f"Document is still {doc.status}. Please wait for processing to complete.",
             )
+        
+        # Update last_accessed_at timestamp
+        doc.last_accessed_at = datetime.now(timezone.utc)
+        db.commit()
 
     started_at = time.perf_counter()
 
+    # Resolve or create session
+    session_id = payload.session_id
+    if not session_id:
+        session = db.query(ChatSession).filter(ChatSession.user_id == user.id).first()
+        if not session:
+            session = ChatSession(user_id=user.id, title="Default Chat")
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+        session_id = session.id
+
     # Save user message immediately
-    _save_message(db, user.id, payload.document_id, "user", payload.question)
+    _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
 
     # Stream response
     def event_stream():
@@ -240,6 +417,7 @@ def ask_question_stream(
                 question=payload.question,
                 user_id=user.id,
                 document_id=payload.document_id,
+                hf_token=user.hf_token,
             ):
                 yield chunk
 
@@ -258,7 +436,7 @@ def ask_question_stream(
             from app.database import SessionLocal
             save_db = SessionLocal()
             try:
-                _save_message(save_db, user.id, payload.document_id, "assistant", full_answer, sources)
+                _save_message(save_db, user.id, payload.document_id, "assistant", full_answer, sources, session_id=session_id)
             finally:
                 save_db.close()
         finally:
@@ -275,31 +453,18 @@ def ask_question_stream(
     )
 
 
-@router.get("/history/{document_id}", response_model=ChatHistoryResponse)
+@router.get(
+    "/history/{document_id}",
+    response_model=ChatHistoryResponse,
+    summary="Get document chat history",
+    description="Returns ordered chat messages for one document owned by the authenticated user.",
+)
 def get_chat_history(
     document_id: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Retrieve the complete chat history for a specific document.
-
-    Fetches all messages (both user and assistant) associated with the given
-    document and the authenticated user, ordered chronologically from oldest
-    to newest. Assistant messages that contain source metadata will have the
-    `sources` field populated.
-
-    Args:
-        document_id: The unique identifier of the document whose chat history is requested.
-        user: The currently authenticated user, obtained from the dependency.
-        db: SQLAlchemy database session, obtained from the dependency.
-
-    Returns:
-        ChatHistoryResponse: An object containing:
-            - messages: A list of `ChatMessageResponse` objects, each with
-              `id`, `role` ("user" or "assistant"), `content`, `sources`
-              (list of `SourceChunk` for assistant messages), and `created_at`.
-            - document_id: The document ID that was queried.
-    """
+    """Retrieve the complete chat history for a specific document."""
     messages = (
         db.query(ChatMessage)
         .filter(
@@ -320,7 +485,7 @@ def get_chat_history(
                 pass
 
         formatted.append(ChatMessageResponse(
-            id=msg.id,
+            id=str(msg.id),
             role=msg.role,
             content=msg.content,
             sources=sources,
@@ -330,40 +495,21 @@ def get_chat_history(
     return ChatHistoryResponse(messages=formatted, document_id=document_id)
 
 
-@router.get("/export/{document_id}")
+@router.get(
+    "/export/{document_id}",
+    summary="Export document chat history",
+    description=(
+        "Downloads one document's chat history as Markdown, plain text, or PDF. "
+        "The browser download flow authenticates with a query token."
+    ),
+)
 def export_chat_history(
     document_id: str,
     format: str = "md",
     token: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """Export the chat history for a document as a downloadable file.
-
-    Supports Markdown (.md), plain text (.txt), or PDF (.pdf) export. The function accepts
-    authentication via either the standard `Authorization: Bearer <token>`
-    header (handled by the dependency chain) or a `token` query parameter to
-    facilitate browser-initiated downloads that cannot set custom headers.
-
-    Args:
-        document_id: The unique identifier of the document whose chat history is to be exported.
-        format: Output format, either "md" (Markdown), "txt" (plain text), or "pdf". Defaults to "md".
-        token: Optional JWT token passed as a query parameter. Used for browser
-            downloads when the `Authorization` header is not available.
-        db: SQLAlchemy database session, obtained from the dependency.
-
-    Returns:
-        Response: A FastAPI `Response` object with:
-            - `content`: Formatted chat history as a string or PDF bytes.
-            - `media_type`: `text/markdown`, `text/plain`, or `application/pdf`.
-            - `headers`: `Content-Disposition` attachment header with a generated filename.
-
-    Raises:
-        HTTPException: 401 if neither the token query parameter nor a valid
-            bearer token provides an authenticated user.
-        HTTPException: 400 if the `format` parameter is not "md", "txt", or "pdf".
-        HTTPException: 404 if the document does not exist or does not belong
-            to the user, or if no chat messages are found for the document.
-    """
+    """Export the chat history for a document as a downloadable file."""
     from app.auth import decode_token as _decode
 
     # Resolve user from query-param token (browser download links can't set headers)
@@ -383,6 +529,7 @@ def export_chat_history(
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == resolved_user.id,
+        Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
@@ -410,6 +557,7 @@ def export_chat_history(
         media_type = "text/plain"
         extension = "txt"
     else:
+        from app.routes.chat_export import format_pdf as _format_pdf
         content = _format_pdf(doc, messages)
         media_type = "application/pdf"
         extension = "pdf"
@@ -426,26 +574,17 @@ def export_chat_history(
     )
 
 
-@router.delete("/history/{document_id}")
+@router.delete(
+    "/history/{document_id}",
+    summary="Clear document chat history",
+    description="Deletes all chat messages for one document owned by the authenticated user.",
+)
 def clear_chat_history(
     document_id: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete all chat messages associated with a specific document.
-
-    Removes every chat message (both user and assistant) linked to the given
-    `document_id` and the authenticated user. The deletion is permanent and
-    cannot be undone.
-
-    Args:
-        document_id: The unique identifier of the document whose chat history should be cleared.
-        user: The currently authenticated user, obtained from the dependency.
-        db: SQLAlchemy database session, obtained from the dependency.
-
-    Returns:
-        dict: A simple JSON object with a `message` field confirming the deletion.
-    """
+    """Delete all chat messages associated with a specific document."""
     db.query(ChatMessage).filter(
         ChatMessage.user_id == user.id,
         ChatMessage.document_id == document_id,
@@ -462,35 +601,22 @@ def _save_message(
     role: str,
     content: str,
     sources: list = None,
+    session_id: Optional[str] = None,
 ):
-    """Save a chat message to the database.
+    """Save a chat message to the database."""
+    if not session_id:
+        session = db.query(ChatSession).filter(ChatSession.user_id == user_id).first()
+        if not session:
+            session = ChatSession(user_id=user_id, title="Default Chat")
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+        session_id = session.id
 
-    Creates a `ChatMessage` record with the provided user, document,
-    role, content, and optional source metadata. The message is added to
-    the session and committed immediately. The database session must be
-    managed by the caller (e.g., closed after use).
-
-    Args:
-        user_id: The ID of the authenticated user.
-        document_id: Optional document ID that the message pertains to.
-            Can be `None` for global chat contexts.
-        db: SQLAlchemy database session (active, typically from a dependency).
-        role: The message sender role, e.g., "user" or "assistant".
-        content: The full text content of the message.
-        sources: Optional list of source dictionaries (usually from RAG
-            retrieval) to be stored as JSON. Defaults to `None`.
-
-    Returns:
-        None
-
-    Note:
-        The function commits the transaction. It does not close the session,
-        leaving that responsibility to the caller. If `sources` is provided,
-        it is serialized using `json.dumps()`.
-    """
     msg = ChatMessage(
         user_id=user_id,
         document_id=document_id,
+        session_id=session_id,
         role=role,
         content=content,
         sources_json=json.dumps(sources) if sources else None,
@@ -509,7 +635,7 @@ def _share_answer_response(message: ChatMessage) -> ShareAnswerResponse:
             sources = []
 
     return ShareAnswerResponse(
-        id=message.id,
+        id=str(message.id),
         content=message.content,
         created_at=message.created_at,
         sources=sources,
@@ -517,28 +643,12 @@ def _share_answer_response(message: ChatMessage) -> ShareAnswerResponse:
 
 
 def _format_markdown(doc, messages) -> str:
-    """Format chat history as a Markdown document.
-
-    Generates a Markdown string containing the document metadata and the
-    full conversation. User messages are labeled "You", assistant messages
-    are labeled "Assistant". For assistant responses, if source information
-    is available, it is rendered as a numbered list with filename, page,
-    confidence, and a text preview.
-
-    Args:
-        doc: The Document object (must have `original_name` attribute).
-        messages: List of ChatMessage objects, each with attributes:
-            `role` (str), `content` (str), `created_at` (datetime, optional),
-            and `sources_json` (str, JSON-encoded list of source dicts).
-
-    Returns:
-        str: A Markdown string ready for writing to a `.md` file.
-    """
+    """Format chat history as a Markdown document."""
     lines = [
         f"# Chat History — {doc.original_name}",
         "",
         f"**Document:** {doc.original_name}  ",
-        f"**Exported at:** {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  ",
+        f"**Exported at:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  ",
         f"**Total messages:** {len(messages)}",
         "",
         "---",
@@ -555,7 +665,6 @@ def _format_markdown(doc, messages) -> str:
         lines.append(msg.content)
         lines.append("")
 
-        # Include source citations for assistant messages
         if msg.role == "assistant" and msg.sources_json:
             try:
                 sources = json.loads(msg.sources_json)
@@ -581,26 +690,10 @@ def _format_markdown(doc, messages) -> str:
 
 
 def _format_plaintext(doc, messages) -> str:
-    """Format chat history as a plain text document.
-
-    Generates a plain text string containing the document metadata and the
-    full conversation. User messages are labeled "You", assistant messages
-    are labeled "Assistant". For assistant responses, if source information
-    is available, it is rendered as a numbered list with filename, page,
-    and confidence (text preview is omitted in plain text format).
-
-    Args:
-        doc: The Document object (must have `original_name` attribute).
-        messages: List of ChatMessage objects, each with attributes:
-            `role` (str), `content` (str), `created_at` (datetime, optional),
-            and `sources_json` (str, JSON‑encoded list of source dicts).
-
-    Returns:
-        str: A plain text string ready for writing to a `.txt` file.
-    """
+    """Format chat history as a plain text document."""
     lines = [
         f"Chat History — {doc.original_name}",
-        f"Exported at: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Exported at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"Total messages: {len(messages)}",
         "=" * 60,
         "",
@@ -613,7 +706,6 @@ def _format_plaintext(doc, messages) -> str:
         lines.append(f"[{role_label}] ({timestamp})")
         lines.append(msg.content)
 
-        # Include source citations for assistant messages
         if msg.role == "assistant" and msg.sources_json:
             try:
                 sources = json.loads(msg.sources_json)
@@ -631,81 +723,3 @@ def _format_plaintext(doc, messages) -> str:
         lines.append("")
 
     return "\n".join(lines)
-
-
-def _format_pdf(doc, messages) -> bytes:
-    """Format chat history as a PDF document."""
-    buffer = BytesIO()
-    pdf = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        leftMargin=0.75 * inch,
-        rightMargin=0.75 * inch,
-        topMargin=0.75 * inch,
-        bottomMargin=0.75 * inch,
-    )
-
-    styles = getSampleStyleSheet()
-    metadata_style = styles["Normal"]
-    metadata_style.spaceAfter = 6
-    content_style = ParagraphStyle(
-        "ChatContent",
-        parent=styles["BodyText"],
-        leading=14,
-        spaceAfter=10,
-    )
-    source_style = ParagraphStyle(
-        "ChatSource",
-        parent=styles["BodyText"],
-        leftIndent=14,
-        leading=12,
-        spaceAfter=4,
-    )
-
-    story = [
-        Paragraph(f"Chat History - {html.escape(doc.original_name)}", styles["Title"]),
-        Spacer(1, 0.15 * inch),
-        Paragraph(f"Document: {html.escape(doc.original_name)}", metadata_style),
-        Paragraph(f"Exported at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", metadata_style),
-        Paragraph(f"Total messages: {len(messages)}", metadata_style),
-        Spacer(1, 0.2 * inch),
-    ]
-
-    for msg in messages:
-        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S") if msg.created_at else ""
-        role_label = "You" if msg.role == "user" else "Assistant"
-
-        story.append(Paragraph(f"<b>{html.escape(role_label)}</b>", styles["Heading3"]))
-        story.append(Paragraph(html.escape(timestamp), styles["Italic"]))
-        story.append(Paragraph(_pdf_text(msg.content), content_style))
-
-        if msg.role == "assistant" and msg.sources_json:
-            try:
-                sources = json.loads(msg.sources_json)
-                if sources:
-                    story.append(Paragraph("<b>Sources:</b>", metadata_style))
-                    for i, src in enumerate(sources, 1):
-                        filename = html.escape(str(src.get("filename", "Unknown")))
-                        page = html.escape(str(src.get("page", "?")))
-                        confidence = html.escape(str(src.get("confidence", 0)))
-                        story.append(
-                            Paragraph(
-                                f"[{i}] {filename}, Page {page} (Confidence: {confidence}%)",
-                                source_style,
-                            )
-                        )
-                        text_preview = str(src.get("text", "")).strip()
-                        if text_preview:
-                            story.append(Paragraph(_pdf_text(text_preview), source_style))
-            except Exception:
-                pass
-
-        story.append(Spacer(1, 0.15 * inch))
-
-    pdf.build(story)
-    return buffer.getvalue()
-
-
-def _pdf_text(text: str) -> str:
-    """Escape text for ReportLab paragraphs while preserving line breaks."""
-    return html.escape(text or "").replace("\n", "<br/>")

@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     JWT_REFRESH_EXPIRY_DAYS: int = 7
     GOOGLE_CLIENT_ID: str = ""
 
+    # Google Drive background sync
+    DRIVE_SYNC_ENABLED: bool = False
+    DRIVE_SYNC_INTERVAL_MINUTES: int = 60
+    GOOGLE_SERVICE_ACCOUNT_FILE: str = ""
+
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 20
@@ -33,7 +38,10 @@ class Settings(BaseSettings):
         ".docx": [
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/zip",
-        ]
+        ],
+        ".txt": ["text/plain"],
+        ".md": ["text/markdown"],
+
     }
 
     # ── RAG Pipeline ─────────────────────────────────────
@@ -41,6 +49,22 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
     TOP_K_RETRIEVAL: int = 10
     TOP_K_RERANK: int = 5
+
+    # ── Knowledge Graph (GraphRAG) ───────────────────────
+    GRAPH_PERSIST_DIR: str = "./data/graphs"
+    GRAPH_ENTITY_LABELS: set = {
+        "PERSON",
+        "ORG",
+        "GPE",
+        "LOC",
+        "PRODUCT",
+        "EVENT",
+        "WORK_OF_ART",
+        "LAW",
+        "NORP",
+        "FAC",
+    }
+    GRAPH_MAX_RELATIONSHIPS: int = 12
 
     # ── Embeddings (local HuggingFace model) ─────────────
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"

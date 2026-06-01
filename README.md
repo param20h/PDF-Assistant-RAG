@@ -99,6 +99,10 @@ The system uses **semantic search + cross-encoder reranking** to find the most r
 
 ## 🏗️ Architecture
 
+> Contributor note: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a
+> route-by-route system map, request-flow diagrams, ownership boundaries, and
+> Swagger/OpenAPI documentation guidance.
+
 ```mermaid
 graph TD
     subgraph Frontend["Frontend (Next.js 16)"]
@@ -362,7 +366,25 @@ CHROMA_PERSIST_DIR=./data/chroma_db
 
 > Get your free HuggingFace token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 
-### 3. Run Locally
+### 3. Set up crawl4ai (URL Upload Feature)
+
+The URL upload feature (`POST /api/v1/documents/urlupload`) uses **crawl4ai** with a Playwright browser to crawl web pages. `crawl4ai-setup` handles the Playwright browser installation automatically — run it once after `pip install`:
+
+```bash
+crawl4ai-setup
+```
+
+> **Linux / Docker users:** If Chromium fails to launch due to missing system libraries, also run:
+> ```bash
+> playwright install-deps chromium
+> ```
+> This installs OS-level dependencies (libnss, libatk, etc.) on fresh Ubuntu/Debian servers.
+
+> **Windows users:** No extra steps — the `NotImplementedError` (SelectorEventLoop + subprocess) is already handled in the backend automatically.
+
+---
+
+### 4. Run Locally
 
 Open **two terminals**:
 
@@ -384,7 +406,7 @@ npm run dev
 # → App running at http://localhost:3000
 ```
 
-### 4. Run with Docker
+### 5. Run with Docker
 
 ```bash
 docker compose up --build
