@@ -40,6 +40,66 @@ def test_upload_rejects_unsupported_extension_before_deep_validation(client, aut
     assert "not supported" in response.json()["detail"]
 
 
+def test_rename_document_updates_original_name(client, auth_headers, ready_document, db_session):
+    response = client.patch(
+        f"/api/v1/documents/{ready_document.id}",
+        headers=auth_headers,
+        json={"name": " renamed-report.pdf "},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == ready_document.id
+    assert payload["original_name"] == "renamed-report.pdf"
+
+    db_session.refresh(ready_document)
+    assert ready_document.original_name == "renamed-report.pdf"
+    assert ready_document.filename == "ready.txt"
+
+
+def test_rename_document_rejects_empty_name(client, auth_headers, ready_document):
+    response = client.patch(
+        f"/api/v1/documents/{ready_document.id}",
+        headers=auth_headers,
+        json={"name": "   "},
+    )
+
+    assert response.status_code == 422
+
+
+def test_rename_document_returns_404_for_missing_document(client, auth_headers):
+    response = client.patch(
+        "/api/v1/documents/00000000-0000-0000-0000-000000000000",
+        headers=auth_headers,
+        json={"name": "missing.pdf"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_rename_document_returns_403_for_other_users_document(client, auth_headers, db_session, other_user):
+    other_document = Document(
+        user_id=other_user.id,
+        filename="other.txt",
+        original_name="other.txt",
+        file_size=64,
+        status="ready",
+    )
+    db_session.add(other_document)
+    db_session.commit()
+    db_session.refresh(other_document)
+
+    response = client.patch(
+        f"/api/v1/documents/{other_document.id}",
+        headers=auth_headers,
+        json={"name": "renamed.txt"},
+    )
+
+    assert response.status_code == 403
+    db_session.refresh(other_document)
+    assert other_document.original_name == "other.txt"
+
+
 def test_ingest_document_builds_and_saves_graph(db_session, monkeypatch, tmp_path, user):
     document = Document(
         user_id=user.id,

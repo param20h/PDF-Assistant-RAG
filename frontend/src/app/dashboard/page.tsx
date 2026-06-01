@@ -68,6 +68,13 @@ export default function DashboardPage() {
   const [connectionError, setConnectionError] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(true);
 
+  const handleDocumentRenamed = useCallback((renamedDocument: DocInfo) => {
+    setDocuments((current) =>
+      current.map((document) => (document.id === renamedDocument.id ? renamedDocument : document))
+    );
+    setActiveDoc((current) => (current?.id === renamedDocument.id ? renamedDocument : current));
+  }, []);
+
     // Auth guard
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -162,6 +169,7 @@ export default function DashboardPage() {
         setPdfPage(1);
       }}
       onDocumentsChange={loadDocuments}
+      onDocumentRenamed={handleDocumentRenamed}
     />
   );
 
