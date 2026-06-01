@@ -64,7 +64,7 @@ export default function MessageBubble({ message }: Props) {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
       if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
-      copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      copiedTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
     } catch {
       setCopied(false);
     }
@@ -158,6 +158,15 @@ export default function MessageBubble({ message }: Props) {
                     <Copy className="w-3.5 h-3.5" />
                   )}
                 </Button>
+                {copied && (
+                  <div 
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded-md whitespace-nowrap opacity-100 transition-opacity pointer-events-none"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Copied!
+                  </div>
+                )}
               </>
             )}
             <div className={`prose-chat text-sm ${message.content ? "pr-14" : ""}`}>
