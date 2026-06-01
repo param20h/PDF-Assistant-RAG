@@ -47,7 +47,7 @@ transformers
 chromadb
 networkx>=3.3
 spacy>=3.7
-neo4j>=5.0
+neo4j>=6.2.0
 
 # LLM Inference
 huggingface-hub
