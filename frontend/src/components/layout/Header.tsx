@@ -92,6 +92,9 @@ export default function Header({
             className="h-8 w-8 md:hidden"
             onClick={() => setSheetOpen(true)}
             title="Open sidebar"
+            aria-label="Open document navigation"
+            aria-expanded={sheetOpen}
+            aria-controls="mobile-document-navigation"
           >
             <Menu className="w-4 h-4" />
           </Button>
@@ -103,6 +106,8 @@ export default function Header({
             className="h-8 w-8 hidden md:inline-flex"
             onClick={onToggleSidebar}
             title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+            aria-label={sidebarOpen ? "Close document sidebar" : "Open document sidebar"}
+            aria-pressed={sidebarOpen}
           >
             {sidebarOpen ? (
               <PanelLeftClose className="w-4 h-4" />
@@ -129,6 +134,8 @@ export default function Header({
             className="h-8 w-8"
             onClick={onToggleViewer}
             title={viewerOpen ? "Close viewer" : "Open viewer"}
+            aria-label={viewerOpen ? "Close PDF viewer" : "Open PDF viewer"}
+            aria-pressed={viewerOpen}
           >
             {viewerOpen ? (
               <PanelRightClose className="w-4 h-4" />
@@ -144,6 +151,7 @@ export default function Header({
               className="h-8 w-8"
               onClick={toggleTheme}
               title={isDark ? "Light mode" : "Dark mode"}
+              aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             >
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
@@ -151,7 +159,10 @@ export default function Header({
 
           {/* Workspace switcher */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
+            <DropdownMenuTrigger
+              className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer"
+              aria-label={`Select workspace. Current workspace: ${WORKSPACES.find((w) => w.id === workspace)?.label ?? workspace}`}
+            >
               <Briefcase className="w-4 h-4" />
               <span className="text-sm hidden sm:inline">{WORKSPACES.find((w) => w.id === workspace)?.label}</span>
               <ChevronDown className="w-3 h-3" />
@@ -173,7 +184,10 @@ export default function Header({
           </DropdownMenu>
 
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
+            <DropdownMenuTrigger
+              className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer"
+              aria-label={`Open user menu for ${user?.username ?? "current user"}`}
+            >
               <Avatar className="w-6 h-6">
                 <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
                   {user?.username?.slice(0, 2).toUpperCase() || "U"}
@@ -211,6 +225,7 @@ export default function Header({
 
       {/* Slide-in panel */}
 <aside
+  id="mobile-document-navigation"
   className={[
     "fixed inset-y-0 left-0 z-50 w-72 flex flex-col",
     "bg-sidebar border-r border-sidebar-border",

@@ -394,6 +394,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     }
   };
 
+  const handleExportMenuKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setShowExportMenu(false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* ── Chat Messages ──────────────────────────── */}
@@ -467,6 +473,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                   }
                 }}
                 className="text-muted-foreground hover:text-foreground font-semibold px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
+                aria-label={isRecording ? "Stop speech recording" : "Dismiss speech error"}
               >
                 {isRecording ? t("chat.stop", { defaultValue: "Stop" }) : "✕"}
               </button>
@@ -489,6 +496,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 disabled={streaming}
                 className="min-h-[44px] max-h-32 resize-none bg-background/50 border-border/50 pr-10"
                 rows={1}
+                aria-label="Chat message"
+                aria-describedby="chat-input-hint"
               />
               <Button
                 id="mic-btn"
@@ -508,6 +517,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     ? t("chat.stopRecording", { defaultValue: "Stop recording" })
                     : t("chat.startRecording", { defaultValue: "Start recording" })
                 }
+                aria-label={
+                  isRecording
+                    ? t("chat.stopRecording", { defaultValue: "Stop recording" })
+                    : t("chat.startRecording", { defaultValue: "Start recording" })
+                }
+                aria-pressed={isRecording}
               >
                 {isRecording ? (
                   <MicOff className="h-4 w-4" />
@@ -523,6 +538,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               onClick={handleSend}
               disabled={!input.trim() || streaming}
               className="h-[44px] w-[44px]"
+              aria-label={streaming ? "Sending message" : "Send message"}
             >
               {streaming ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -541,13 +557,25 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     onClick={() => setShowExportMenu((v) => !v)}
                     className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
                     title={t("chat.exportTitle")}
+                    aria-label={t("chat.exportTitle")}
+                    aria-expanded={showExportMenu}
+                    aria-controls="chat-export-menu"
+                    aria-haspopup="menu"
                   >
                     <Download className="w-4 h-4" />
                   </Button>
                   {showExportMenu && (
-                    <div className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50">
+                    <div
+                      id="chat-export-menu"
+                      role="menu"
+                      aria-label="Export chat"
+                      onKeyDown={handleExportMenuKeyDown}
+                      className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
+                    >
                       <button
                         id="export-md-btn"
+                        type="button"
+                        role="menuitem"
                         onClick={() => handleExport("md")}
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
                       >
@@ -556,6 +584,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                       </button>
                       <button
                         id="export-txt-btn"
+                        type="button"
+                        role="menuitem"
                         onClick={() => handleExport("txt")}
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
                       >
@@ -564,6 +594,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                       </button>
                       <button
                         id="export-pdf-btn"
+                        type="button"
+                        role="menuitem"
                         onClick={() => handleExport("pdf")}
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
                       >
@@ -579,6 +611,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                   size="icon"
                   onClick={handleClear}
                   className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
+                  aria-label="Clear chat history"
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
@@ -586,6 +619,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             )}
           </div>
         </div>
+        <p id="chat-input-hint" className="sr-only">
+          Press Enter to send. Press Shift and Enter for a new line.
+        </p>
       </div>
     </div>
   </div>
