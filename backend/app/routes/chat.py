@@ -329,11 +329,26 @@ def ask_question(
                 db.refresh(session)
             session_id = session.id
 
+        # Build chat history from last 6 exchanges for memory context
+        recent_messages = (
+            db.query(ChatMessage)
+            .filter(
+                ChatMessage.session_id == session_id,
+                ChatMessage.user_id == user.id,
+            )
+            .order_by(ChatMessage.created_at.desc())
+            .limit(12)
+            .all()
+        )
+        recent_messages.reverse()
+        chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
+
         result = generate_answer(
             question=payload.question,
             user_id=user.id,
             document_id=payload.document_id,
             hf_token=user.hf_token,
+            chat_history=chat_history,
         )
 
         # Save to chat history
@@ -404,6 +419,20 @@ def ask_question_stream(
             db.refresh(session)
         session_id = session.id
 
+    # Build chat history from last 6 exchanges for memory context (before saving current message)
+    recent_messages = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.session_id == session_id,
+            ChatMessage.user_id == user.id,
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .limit(12)
+        .all()
+    )
+    recent_messages.reverse()
+    chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
+
     # Save user message immediately
     _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
 
@@ -418,6 +447,7 @@ def ask_question_stream(
                 user_id=user.id,
                 document_id=payload.document_id,
                 hf_token=user.hf_token,
+                chat_history=chat_history,
             ):
                 yield chunk
 
