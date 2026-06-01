@@ -19,6 +19,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.config import get_settings
 from app.rate_limit import limiter
 from app.database import init_db, get_db
+from app.observability import setup_prometheus_metrics
 from app.rag.vectorstore import get_chroma_client
 from app.scheduler import start_scheduler, stop_scheduler
 
@@ -169,6 +170,8 @@ app.include_router(documents_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(github_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
+
+setup_prometheus_metrics(app)
 
 
 # ── Health Check ─────────────────────────────────────
