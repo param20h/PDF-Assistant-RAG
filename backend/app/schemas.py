@@ -75,6 +75,7 @@ class HFTokenUpdate(BaseModel):
 
 class ApiKeyResponse(BaseModel):
     id: str
+    name: str
     key_preview: str
     created_at: datetime
 
@@ -82,8 +83,15 @@ class ApiKeyResponse(BaseModel):
         from_attributes = True
 
 
-class ApiKeyCreateResponse(ApiKeyResponse):
+class ApiKeyCreateResponse(BaseModel):
+    id: str
+    name: str
+    key_preview: str
+    created_at: datetime
     raw_key: str
+
+    class Config:
+        from_attributes = True
 
 
 class UserResponse(BaseModel):
@@ -160,6 +168,7 @@ class AdminStatsResponse(BaseModel):
 class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     document_id: Optional[str] = None
+    document_ids: Optional[List[str]] = None
     session_id: Optional[str] = None
 
 
@@ -192,6 +201,11 @@ class ChatHistoryResponse(BaseModel):
     messages: List[ChatMessageResponse]
     document_id: Optional[str] = None
 
+# Chunk settings schema for optional chunk size and overlap parameters in document processing
+class ChunkSettings(BaseModel):
+    chunk_size: int | None
+    chunk_overlap: int | None
+      
 class UploadUrl(BaseModel):
     url: str
 

@@ -103,18 +103,18 @@ def get_current_user(
     token = credentials.credentials
 
     # Check if token is an API key
-    if token.startswith("rag_"):
+    if token.startswith("pdf_rag_"):
         hashed = hashlib.sha256(token.encode("utf-8")).hexdigest()
         from app.models import ApiKey
-        api_key = db.query(ApiKey).filter(ApiKey.hashed_key == hashed).first()
+        api_key = db.query(ApiKey).filter(ApiKey.hashed_key == hashed, ApiKey.is_active == True).first()
         if not api_key:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid API key",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
-        api_key.last_used = datetime.now(timezone.utc)
+
+        api_key.last_used_at = datetime.now(timezone.utc)
         db.commit()
 
         user = api_key.user

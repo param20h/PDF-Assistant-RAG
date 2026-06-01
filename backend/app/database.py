@@ -71,10 +71,33 @@ def _migrate_schema():
                     "Migration skipped (may already exist): %s.%s", table, column
                 )
 
+    # Migrate api_keys
+    try:
+        existing_keys_columns = {c["name"] for c in inspector.get_columns("api_keys")}
+    except Exception:
+        existing_keys_columns = set()
+    keys_migrations = [
+        ("api_keys", "name", "ALTER TABLE api_keys ADD COLUMN name VARCHAR(100) DEFAULT 'default'"),
+        ("api_keys", "is_active", "ALTER TABLE api_keys ADD COLUMN is_active BOOLEAN DEFAULT 1 NOT NULL"),
+        ("api_keys", "last_used_at", "ALTER TABLE api_keys ADD COLUMN last_used_at TIMESTAMP"),
+    ]
+    for table, column, ddl in keys_migrations:
+        if column not in existing_keys_columns:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+                logger.info("Migration: added column %s.%s", table, column)
+            except Exception:
+                logger.warning(
+                    "Migration skipped (may already exist): %s.%s", table, column
+                )
+
     # Migrate documents
     existing_docs_columns = {c["name"] for c in inspector.get_columns("documents")}
     docs_migrations = [
         ("documents", "last_accessed_at", "ALTER TABLE documents ADD COLUMN last_accessed_at TIMESTAMP"),
+        ("documents", "is_deleted", "ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP"),
     ]
     for table, column, ddl in docs_migrations:
         if column not in existing_docs_columns:

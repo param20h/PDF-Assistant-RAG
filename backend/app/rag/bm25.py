@@ -8,8 +8,12 @@ import pickle
 import logging
 from typing import List, Dict, Any, Optional
 
-from rank_bm25 import BM25Okapi
 from app.config import get_settings
+
+try:
+    from rank_bm25 import BM25Okapi
+except ImportError:
+    BM25Okapi = None
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -34,6 +38,10 @@ def store_bm25_index(chunks: List[Dict[str, Any]], document_id: str, filename: s
     """
     Build and store a BM25 index for the given document chunks.
     """
+    if BM25Okapi is None:
+        logger.warning("rank_bm25 is not installed; skipping BM25 index storage")
+        return
+
     if not chunks:
         return
 
@@ -105,6 +113,9 @@ def query_bm25(
     """
     Query BM25 index(es) for relevant chunks.
     """
+    if BM25Okapi is None:
+        return []
+
     tokenized_query = tokenize(query)
     
     if document_id:

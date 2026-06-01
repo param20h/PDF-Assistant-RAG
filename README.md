@@ -99,6 +99,10 @@ The system uses **semantic search + cross-encoder reranking** to find the most r
 
 ## 🏗️ Architecture
 
+> Contributor note: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a
+> route-by-route system map, request-flow diagrams, ownership boundaries, and
+> Swagger/OpenAPI documentation guidance.
+
 ```mermaid
 graph TD
     subgraph Frontend["Frontend (Next.js 16)"]

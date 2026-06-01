@@ -42,6 +42,8 @@ const PDFViewer = dynamic(() => import("@/components/document/PDFViewer"), {
 });
 
 export interface DocInfo {
+  chunk_size?: number;
+  chunk_overlap?: number;
   summary: string;
   id: string;
   original_name: string;
@@ -64,6 +66,7 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
   const [connectionError, setConnectionError] = useState("");
+  const [documentsLoading, setDocumentsLoading] = useState(true);
 
     // Auth guard
   useEffect(() => {
@@ -84,6 +87,7 @@ export default function DashboardPage() {
 
   // Load documents
   const loadDocuments = useCallback(async () => {
+    setDocumentsLoading(true);
     try {
       const data = await api.get<{ documents?: DocInfo[]; items?: DocInfo[] }>(
         "/api/v1/documents/"
@@ -97,6 +101,8 @@ export default function DashboardPage() {
           ? CONNECTION_ERROR_BANNER_MESSAGE
           : `⚠️ ${message}`
       );
+    } finally {
+      setDocumentsLoading(false);
     }
   }, []);
 
@@ -150,6 +156,7 @@ export default function DashboardPage() {
     <DocumentSidebar
       documents={documents}
       activeDoc={activeDoc}
+      loading={documentsLoading}
       onSelectDoc={(doc) => {
         setActiveDoc(doc);
         setPdfPage(1);

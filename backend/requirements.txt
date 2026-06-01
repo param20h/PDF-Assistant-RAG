@@ -15,6 +15,8 @@ pyjwt
 passlib[bcrypt]
 python-dotenv
 google-auth
+google-api-python-client
+APScheduler
 
 # Config
 pydantic-settings
@@ -53,6 +55,7 @@ huggingface-hub
 # Production
 gunicorn
 slowapi
+prometheus-fastapi-instrumentator
 
 # File Validation
 #sudo apt-get install libmagic1 // for Debian/Ubuntu
@@ -63,3 +66,4 @@ python-docx
 pypdf
 reportlab
 crawl4ai
+ddgs

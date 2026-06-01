@@ -34,12 +34,25 @@ def _directory_size(path: Path) -> int:
     return total
 
 
-@router.get("/stats", response_model=AdminStatsResponse)
+@router.get(
+    "/stats",
+    response_model=AdminStatsResponse,
+    summary="Get admin dashboard statistics",
+    description=(
+        "Returns aggregate user, document, message, query-latency, and disk "
+        "usage metrics for authenticated administrators."
+    ),
+)
 def get_admin_stats(
     db: Session = Depends(get_db),
     _admin: User = Depends(get_current_admin),
 ):
-    """Return aggregate system statistics for administrators."""
+    """Return aggregate operational statistics for the admin dashboard.
+
+    The response includes counts for users, uploaded PDFs, all documents, chat
+    messages, average RAG query latency, and upload-directory disk usage.
+    Access is restricted by the `get_current_admin` dependency.
+    """
     upload_dir = Path(settings.UPLOAD_DIR).resolve()
     upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -77,10 +90,19 @@ def get_admin_stats(
     )
 
 
-@router.get("/users", response_model=List[UserResponse])
+@router.get(
+    "/users",
+    response_model=List[UserResponse],
+    summary="List all registered users",
+    description="Returns the registered user inventory for authenticated administrators.",
+)
 def list_all_users(
     db: Session = Depends(get_db),
     _admin: User = Depends(get_current_admin),
 ):
-    """List all registered users (admin-only)."""
+    """List all registered users.
+
+    Access is restricted to administrators and the response is serialized
+    through `UserResponse` so token fields and secrets are not exposed.
+    """
     return db.query(User).all()
