@@ -238,7 +238,8 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
                       className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity cursor-pointer"
                       onClick={(e) => handleSettingsClick(doc, e)}
                       disabled={doc.status !== "ready"}
-                      aria-label={`Open chunking settings for ${doc.original_name}`}
+                      aria-label="Open chunking settings"
+                      title={`Open chunking settings for ${doc.original_name}`}
                     >
                       <Settings className="w-3 h-3" />
                     </Button>
@@ -248,7 +249,8 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
                       className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0 cursor-pointer"
                       onClick={(e) => handleDelete(doc.id, e)}
                       disabled={deleting === doc.id}
-                      aria-label={`Delete ${doc.original_name}`}
+                      aria-label="Delete document"
+                      title={`Delete ${doc.original_name}`}
                     >
                       {deleting === doc.id ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
