@@ -70,6 +70,7 @@ export default function PDFViewer({
 
   const overlayRects = useMemo(() => {
     if (!highlightTarget || highlightTarget.page !== currentPage) return [];
+
     return (highlightTarget.rects ?? []).map((rect) => {
       if (rect.unit === "percent" || isNormalizedRect(rect)) {
         return {
@@ -102,7 +103,9 @@ export default function PDFViewer({
     setLoadedPageKey(pageKey);
   };
 
-  const handlePageLoadSuccess = (page: { getViewport: (options: { scale: number }) => { width: number; height: number } }) => {
+  const handlePageLoadSuccess = (page: {
+    getViewport: (options: { scale: number }) => { width: number; height: number };
+  }) => {
     const viewport = page.getViewport({ scale });
     setPageDimensions({ width: viewport.width, height: viewport.height });
   };
@@ -122,13 +125,13 @@ export default function PDFViewer({
           </Button>
 
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const input = e.currentTarget.querySelector('input');
+            onSubmit={(event) => {
+              event.preventDefault();
+              const input = event.currentTarget.querySelector("input");
               const value = input?.value ?? "";
-              const num = parseInt(String(value).trim());
-              if (!isNaN(num) && num >= 1 && num <= totalPages) {
-                onPageChange(num);
+              const pageNumber = parseInt(String(value).trim(), 10);
+              if (!Number.isNaN(pageNumber) && pageNumber >= 1 && pageNumber <= totalPages) {
+                onPageChange(pageNumber);
               }
             }}
             className="flex items-center gap-1 text-xs"
@@ -157,7 +160,7 @@ export default function PDFViewer({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => setScale((s) => Math.max(0.5, s - 0.15))}
+            onClick={() => setScale((current) => Math.max(0.5, current - 0.15))}
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </Button>
@@ -168,7 +171,7 @@ export default function PDFViewer({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => setScale((s) => Math.min(2.5, s + 0.15))}
+            onClick={() => setScale((current) => Math.min(2.5, current + 0.15))}
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </Button>
@@ -177,7 +180,7 @@ export default function PDFViewer({
 
       <div className="flex-1 overflow-auto relative">
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         )}
@@ -193,6 +196,7 @@ export default function PDFViewer({
                 renderTextLayer={false}
               />
             </Document>
+
             <div className="absolute inset-0 pointer-events-none">
               {overlayRects.map((style, index) => (
                 <div
