@@ -6,6 +6,9 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 
+CHAT_QUERY_RATE_LIMIT = "15/minute"
+
+
 def rate_limit_key_func(request: Request) -> str:
     """Use authenticated user id when available, otherwise fall back to client IP."""
     authorization = request.headers.get("authorization", "")

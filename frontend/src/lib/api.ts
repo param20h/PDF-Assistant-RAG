@@ -39,7 +39,7 @@ class ApiClient {
     };
 
     const authToken = token || this.getToken();
-    if (authToken) {
+    if (authToken && authToken !== "cookie") {
       headers["Authorization"] = `Bearer ${authToken}`;
     }
 
@@ -48,7 +48,11 @@ class ApiClient {
 
   private async fetchWithConnectionError(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     try {
-      return await fetch(input, init);
+      const mergedInit = {
+        credentials: "include" as const,
+        ...init,
+      };
+      return await fetch(input, mergedInit);
     } catch (error) {
       if (error instanceof TypeError) {
         throw new Error(CONNECTION_ERROR_MESSAGE);
@@ -191,29 +195,6 @@ class ApiClient {
       const newToken = await this.tryRefreshToken();
       if (newToken) {
         return this.post<T>(path, body, { ...options, token: newToken, _skipRefresh: true });
-      }
-    }
-
-    if (!res.ok) {
-      throw new Error(await this.getErrorMessage(res, res.statusText || "Request failed"));
-    }
-
-    return res.json();
-  }
-
-  async put<T>(path: string, body?: unknown, options?: FetchOptions): Promise<T> {
-    const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
-      method: "PUT",
-      headers: this.getHeaders(options?.token),
-      body: body ? JSON.stringify(body) : undefined,
-      ...options,
-    });
-
-    // Auto-refresh on 401
-    if (res.status === 401 && !options?._skipRefresh) {
-      const newToken = await this.tryRefreshToken();
-      if (newToken) {
-        return this.put<T>(path, body, { ...options, token: newToken, _skipRefresh: true });
       }
     }
 

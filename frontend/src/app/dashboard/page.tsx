@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { toast } from "sonner";
 import { api, CONNECTION_ERROR_BANNER_MESSAGE, CONNECTION_ERROR_MESSAGE } from "@/lib/api";
 import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
@@ -41,6 +42,8 @@ const PDFViewer = dynamic(() => import("@/components/document/PDFViewer"), {
 });
 
 export interface DocInfo {
+  chunk_size?: number;
+  chunk_overlap?: number;
   summary: string;
   id: string;
   original_name: string;
@@ -53,20 +56,22 @@ export interface DocInfo {
 }
 
 export default function DashboardPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, initialized } = useAuth();
   const router = useRouter();
 
   const [documents, setDocuments] = useState<DocInfo[]>([]);
+  const prevDocsRef = useRef<Record<string, string>>({});
   const [activeDoc, setActiveDoc] = useState<DocInfo | null>(null);
   const [pdfPage, setPdfPage] = useState(1);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
   const [connectionError, setConnectionError] = useState("");
+  const [documentsLoading, setDocumentsLoading] = useState(true);
 
-    // Auth guard
+  // Auth guard
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [user, loading, router]);
+    if (initialized && !user) router.replace("/login");
+  }, [user, initialized, router]);
 
   // Intercept dashboard if Hugging Face token configuration is missing
   useEffect(() => {
@@ -82,6 +87,7 @@ export default function DashboardPage() {
 
   // Load documents
   const loadDocuments = useCallback(async () => {
+    setDocumentsLoading(true);
     try {
       const data = await api.get<{ documents?: DocInfo[]; items?: DocInfo[] }>(
         "/api/v1/documents/"
@@ -95,6 +101,8 @@ export default function DashboardPage() {
           ? CONNECTION_ERROR_BANNER_MESSAGE
           : `⚠️ ${message}`
       );
+    } finally {
+      setDocumentsLoading(false);
     }
   }, []);
 
@@ -104,6 +112,25 @@ export default function DashboardPage() {
       await loadDocuments();
     })();
   }, [user, loadDocuments]);
+
+  // Ingest status change toast notification handler
+  useEffect(() => {
+    const prev = prevDocsRef.current;
+    const nextPrevDocs: Record<string, string> = {};
+    (documents || []).forEach((doc) => {
+      nextPrevDocs[doc.id] = doc.status;
+
+      const oldStatus = prev[doc.id];
+      if (oldStatus && oldStatus !== doc.status) {
+        if (doc.status === "ready") {
+          toast.success(`🎉 Ingestion complete: '${doc.original_name}' is ready!`);
+        } else if (doc.status === "failed") {
+          toast.error(`❌ Ingestion failed for '${doc.original_name}': ${doc.error_message || "Unknown error"}`);
+        }
+      }
+    });
+    prevDocsRef.current = nextPrevDocs;
+  }, [documents]);
 
   // Poll for processing status
   useEffect(() => {
@@ -116,7 +143,7 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [documents, loadDocuments]);
 
-  if (loading || !user) {
+  if (!initialized || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse-glow w-12 h-12 rounded-full bg-primary/20" />
@@ -129,6 +156,7 @@ export default function DashboardPage() {
     <DocumentSidebar
       documents={documents}
       activeDoc={activeDoc}
+      loading={documentsLoading}
       onSelectDoc={(doc) => {
         setActiveDoc(doc);
         setPdfPage(1);

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -12,20 +13,47 @@ import {
   FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
+import { Settings } from "lucide-react";
+import DocumentSettings from "./DocumentSettings";
+import { toast } from "sonner";
 
 interface Props {
   documents: DocInfo[];
   activeDoc: DocInfo | null;
+  loading?: boolean;
   onSelectDoc: (doc: DocInfo) => void;
   onDocumentsChange: () => void;
 }
 
-export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc, onDocumentsChange }: Props) {
+function DocumentListSkeleton() {
+  return (
+    <div className="space-y-2 pb-3" aria-hidden="true">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={index} className="rounded-lg border border-sidebar-border/60 p-2.5">
+          <div className="flex items-start gap-2.5">
+            <Skeleton className="mt-0.5 h-4 w-4 rounded-full bg-sidebar-accent" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-4/5 bg-sidebar-accent" />
+              <Skeleton className="h-3 w-full bg-sidebar-accent/80" />
+              <div className="flex gap-2">
+                <Skeleton className="h-3 w-10 bg-sidebar-accent/70" />
+                <Skeleton className="h-3 w-12 bg-sidebar-accent/70" />
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function DocumentSidebar({ documents = [], activeDoc, loading = false, onSelectDoc, onDocumentsChange }: Props) {
   const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [settingsDoc, setSettingsDoc] = useState<DocInfo | null>(null);
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -38,15 +66,20 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
 
         try {
           for (let i = 0; i < acceptedFiles.length; i++) {
+            const file = acceptedFiles[i];
             const formData = new FormData();
-            formData.append("file", acceptedFiles[i]);
+            formData.append("file", file);
+            
+            toast.info(`⏳ Uploading '${file.name}'...`);
             await api.postForm("/api/v1/documents/upload", formData);
             setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
+            toast.success(`📤 '${file.name}' uploaded successfully! Ingestion started.`);
           }
           onDocumentsChange();
         } catch (err) {
           const message = err instanceof Error ? err.message : t("documents.uploadFailed");
           setUploadError(message);
+          toast.error(`❌ Upload failed: ${message}`);
         } finally {
           setUploading(false);
           setUploadProgress(0);
@@ -79,6 +112,11 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
     } finally {
       setDeleting(null);
     }
+  };
+
+  const handleSettingsClick = (doc: DocInfo, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering document selection
+    setSettingsDoc(doc); 
   };
 
   const statusIcon = (status: string) => {
@@ -141,12 +179,16 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
       {/* ── Documents List ──────────────────────────── */}
       <div className="px-3 pt-3 pb-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          {t("documents.documentsTitle", { count: documents.length })}
+          {loading
+            ? t("documents.documentsTitle", { count: "..." })
+            : t("documents.documentsTitle", { count: documents.length })}
         </h3>
       </div>
 
-      <ScrollArea className="flex-1 px-3 overflow-auto">
-        {documents.length === 0 ? (
+      <ScrollArea className="flex-1 px-3 overflow-auto" aria-busy={loading}>
+        {loading ? (
+          <DocumentListSkeleton />
+        ) : documents.length === 0 ? (
           <div className="text-center py-12">
             <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
             <p className="text-sm text-muted-foreground">{t("documents.noDocuments")}</p>
@@ -201,25 +243,52 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
                       )}
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                    onClick={(e) => handleDelete(doc.id, e)}
-                    disabled={deleting === doc.id}
-                  >
-                    {deleting === doc.id ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-3 h-3 text-destructive" />
-                    )}
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0"> 
+                    {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */} 
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      onClick={(e) => handleSettingsClick(doc, e)}
+                      disabled={doc.status !== "ready"}
+                    >
+                      <Settings className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                      onClick={(e) => handleDelete(doc.id, e)}
+                      disabled={deleting === doc.id}
+                    >
+                      {deleting === doc.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3 h-3 text-destructive" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </button>
             ))}
           </div>
         )}
       </ScrollArea>
+      {/* Settings Modal */}
+      {/* The DocumentSettings component is rendered here and controlled by the settingsDoc state. When a user clicks the settings button for a document, it sets that document in settingsDoc, which opens the modal. The modal can then call onDocumentsChange to refresh the list after saving settings. */}
+      {settingsDoc && (
+        <DocumentSettings
+          document={settingsDoc} // Pass the selected document to the document settings component
+          open={!!settingsDoc} // Open when settingsDoc is not null
+          onOpenChange={(open) => { // Close the modal when open is false
+            if (!open) setSettingsDoc(null); // Clear the settingsDoc state to close the modal
+          }}
+          onSettingsSaved={() => { // Refresh documents after saving settings
+            onDocumentsChange(); // Refresh the document list to reflect any changes
+            setSettingsDoc(null); // Close the settings modal after saving
+          }}
+        />
+      )}
     </div>
   );
 }

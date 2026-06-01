@@ -123,6 +123,7 @@ class User(Base):
     messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+    drive_connections = relationship("DriveConnection", back_populates="user", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):
@@ -133,10 +134,12 @@ class ApiKey(Base):
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
-    key_prefix = Column(String(10), nullable=False)
+    name = Column(String(100), nullable=False, default="default")
+    key_prefix = Column(String(20), nullable=False)
     hashed_key = Column(String(255), nullable=False, unique=True, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    last_used = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="api_keys")
@@ -174,7 +177,15 @@ class Document(Base):
     status = Column(String(20), default="pending")          # pending | processing | ready | failed
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    summary = Column(Text, nullable=True)
+    last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
+    summary = Column(Text, nullable=True)  # Optional summary of the document's content
+    chunk_size = Column(Integer, nullable=True)   # if NULL, use global default from settings
+    chunk_overlap = Column(Integer, nullable=True) # if NULL, use global default from settings
+    drive_file_id = Column(String(255), unique=True, nullable=True, index=True)
+    drive_folder_id = Column(String(255), nullable=True, index=True)
+    drive_synced_at = Column(DateTime, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime, nullable=True)
 
     # Relationships
     owner = relationship("User", back_populates="documents")
@@ -206,8 +217,8 @@ class ChatMessage(Base):
 class DriveConnection(Base):
     __tablename__ = "drive_connections"
 
-    id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
     folder_id = Column(String(255), nullable=False, index=True)
     credentials_json = Column(Text, nullable=True)
     service_account_file = Column(String(500), nullable=True)

@@ -8,7 +8,6 @@ export interface AuthUser {
   username: string;
   email: string;
   is_admin: boolean;
-  hf_token?: string;
   created_at: string;
 }
 
@@ -24,7 +23,6 @@ interface AuthStore {
   initializeAuth: () => Promise<void>;
   syncTokensRefreshed: (detail?: { accessToken?: string; user?: AuthUser | null }) => void;
   syncLoggedOut: () => void;
-  setHfToken: (hfToken: string) => Promise<void>;
 }
 
 const getStoredToken = () =>
@@ -90,7 +88,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     });
   },
 
-  logout() {
+  async logout() {
+    try {
+      await api.post("/api/v1/auth/logout");
+    } catch {
+      // Ignore network errors on logout
+    }
     clearStoredTokens();
     set({
       token: null,
@@ -105,16 +108,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (initialized) return;
 
     const storedToken = token ?? getStoredToken();
-    if (!storedToken) {
-      set({ token: null, user: null, loading: false, initialized: true });
-      return;
-    }
-
-    set({ token: storedToken, loading: true });
+    set({ loading: true });
 
     try {
-      const user = await api.get<AuthUser>("/api/v1/auth/me", { token: storedToken });
-      set({ user, token: storedToken, loading: false, initialized: true });
+      const user = await api.get<AuthUser>(
+        "/api/v1/auth/me",
+        storedToken ? { token: storedToken } : undefined
+      );
+      set({
+        user,
+        token: storedToken || "cookie",
+        loading: false,
+        initialized: true,
+      });
     } catch {
       clearStoredTokens();
       set({ user: null, token: null, loading: false, initialized: true });
@@ -139,10 +145,5 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       loading: false,
       initialized: true,
     });
-  },
-
-  async setHfToken(hfToken: string) {
-    const response = await api.put<AuthUser>("/api/v1/auth/hf-token", { hf_token: hfToken });
-    set({ user: response });
   },
 }));

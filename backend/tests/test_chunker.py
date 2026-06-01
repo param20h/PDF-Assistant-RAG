@@ -5,7 +5,7 @@ import types
 import pytest
 
 from app.rag import chunker
-from app.rag.chunker import chunk_document, get_page_count
+from app.rag.chunker import _table_to_markdown, chunk_document, get_page_count
 
 
 def test_txt_extraction_and_chunking(tmp_path):
@@ -41,6 +41,22 @@ def test_get_page_count_for_txt_returns_one(tmp_path):
     assert get_page_count(str(file_path)) == 1
 
 
+def test_table_to_markdown_cleans_cells_and_escapes_pipes():
+    rows = [
+        ["Name", "Age", "Role"],
+        [" Asha\nRao ", 24, "Admin | Owner"],
+        [None, "  ", None],
+        ["Ravi", 28],
+    ]
+
+    assert _table_to_markdown(rows) == "\n".join([
+        "| Name | Age | Role |",
+        "| --- | --- | --- |",
+        "| Asha Rao | 24 | Admin \\| Owner |",
+        "| Ravi | 28 |  |",
+    ])
+
+
 def test_pdf_table_detection_separates_table_from_paragraph(monkeypatch):
     class FakeTable:
         bbox = (40, 90, 300, 160)
@@ -49,17 +65,20 @@ def test_pdf_table_detection_separates_table_from_paragraph(monkeypatch):
             return [["Name", "Amount"], ["Alpha", "$10"]]
 
     class FakePage:
+        width = 400
+        height = 200
+
         def find_tables(self):
             return [FakeTable()]
 
         def extract_words(self):
             return [
-                {"text": "Intro", "x0": 40, "x1": 70, "top": 20, "bottom": 30},
-                {"text": "paragraph", "x0": 75, "x1": 140, "top": 20, "bottom": 30},
-                {"text": "Name", "x0": 45, "x1": 80, "top": 100, "bottom": 110},
+                {"text": "Intro", "x0": 40,  "x1": 70, "top": 20, "bottom": 30},
+                {"text": "paragraph", "x0":  75, "x1": 140, "top": 20, "bottom": 30},
+                {"text": "Name", "x0": 45,  "x1": 80, "top": 100, "bottom": 110},
                 {"text": "Amount", "x0": 160, "x1": 220, "top": 100, "bottom": 110},
-                {"text": "Alpha", "x0": 45, "x1": 85, "top": 125, "bottom": 135},
-                {"text": "$10", "x0": 160, "x1": 185, "top": 125, "bottom": 135},
+                {"text": "Alpha", "x0": 45,  "x1": 85, "top": 125, "bottom": 135},
+                {"text": "$10", "x0": 160,  "x1": 185, "top": 125, "bottom": 135},
             ]
 
     class FakePdf:
@@ -82,6 +101,6 @@ def test_pdf_table_detection_separates_table_from_paragraph(monkeypatch):
     assert chunks[0]["text"] == "Intro paragraph"
     assert "Name" not in chunks[0]["text"]
     assert chunks[1]["chunk_type"] == "table"
-    assert chunks[1]["bbox"] == "[40.0, 90.0, 300.0, 160.0]"
+    assert chunks[1]["bbox"] == "[0.1, 0.45, 0.75, 0.8]"
     assert "| Name | Amount |" in chunks[1]["text"]
     assert "| Alpha | $10 |" in chunks[1]["text"]

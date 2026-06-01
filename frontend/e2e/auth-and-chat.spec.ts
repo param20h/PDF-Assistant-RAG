@@ -28,7 +28,13 @@ const uploadedDocument = {
 
 async function mockDashboardApis(page: Page, documents: typeof uploadedDocument[] = []) {
   await page.route("**/api/v1/auth/me", async (route) => {
-    await route.fulfill({ json: user });
+    const headers = route.request().headers();
+    const hasAuth = headers["authorization"] || headers["cookie"];
+    if (hasAuth) {
+      await route.fulfill({ json: user });
+    } else {
+      await route.fulfill({ status: 401, json: { detail: "Not authenticated" } });
+    }
   });
 
   await page.route("**/api/v1/documents/", async (route) => {
@@ -128,8 +134,9 @@ test("uploads a document and chats with it", async ({ page }) => {
     buffer: Buffer.from("hello world"),
   });
 
-  await expect(page.getByText("notes.txt")).toBeVisible();
-  await page.getByText("notes.txt").click();
+  const documentButton = page.getByRole("button", { name: /notes\.txt/ });
+  await expect(documentButton).toBeVisible();
+  await documentButton.click();
   await expect(page.getByText("Ask about your document")).toBeVisible();
 
   await page.locator("#chat-input").fill("Summarize this document");
