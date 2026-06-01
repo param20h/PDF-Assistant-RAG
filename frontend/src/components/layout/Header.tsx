@@ -11,6 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import {
   Brain,
@@ -19,12 +25,12 @@ import {
   PanelRightClose,
   PanelRightOpen,
   LogOut,
-  Moon,
-  Sun,
   Menu,
   X,
+  Palette,
+  Briefcase, 
+  ChevronDown
 } from "lucide-react";
-import { Briefcase, ChevronDown } from "lucide-react";
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
 import { useTheme } from "next-themes";
@@ -58,9 +64,6 @@ export default function Header({
   const [sheetOpen, setSheetOpen] = useState(false);
   const workspace = useWorkspaceStore((s) => s.workspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
-
-  const isDark = theme === "dark";
-  const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
   const handleLogout = () => {
     logout();
@@ -137,18 +140,6 @@ export default function Header({
             )}
           </Button>
 
-          {mounted && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={toggleTheme}
-              title={isDark ? "Light mode" : "Dark mode"}
-            >
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
-          )}
-
           {/* Workspace switcher */}
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
@@ -175,7 +166,7 @@ export default function Header({
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
               <Avatar className="w-6 h-6">
-                <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
+                <AvatarFallback className="text-[10px] bg-primary text-primary-foreground">
                   {user?.username?.slice(0, 2).toUpperCase() || "U"}
                 </AvatarFallback>
               </Avatar>
@@ -186,6 +177,24 @@ export default function Header({
                 <p className="text-sm font-medium">{user?.username}</p>
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="cursor-pointer">
+                  <Palette className="w-4 h-4 mr-2" />
+                  Theme
+                </DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup value={mounted ? theme : "dark"} onValueChange={setTheme}>
+                      <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="ocean">Ocean</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="forest">Forest</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="sunset">Sunset</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive cursor-pointer"

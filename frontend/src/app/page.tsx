@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { FileText, MessageSquare, Brain, Shield, Zap, Search } from "lucide-react";
+import { FileText, MessageSquare, Brain, Shield, Zap, Search, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import ContributorsPanel from "@/components/layout/ContributorsPanel";
@@ -13,6 +14,19 @@ export default function HomePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    // Force only light/dark mode on the home page
+    if (mounted && theme !== "light" && theme !== "dark") {
+      setTheme("dark");
+    }
+  }, [mounted, theme, setTheme]);
 
   useEffect(() => {
     if (!loading && user) {
@@ -29,7 +43,19 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      {mounted && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-4 right-4 z-50 rounded-full"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          title="Toggle theme"
+        >
+          {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+        </Button>
+      )}
+
       {/* ── Hero ────────────────────────────────────── */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-20">
         {/* Glow effect */}
