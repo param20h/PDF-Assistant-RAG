@@ -29,6 +29,8 @@ httpx
 PyMuPDF
 pdfplumber
 python-docx
+pytesseract
+Pillow
 
 # LangChain & RAG
 langchain

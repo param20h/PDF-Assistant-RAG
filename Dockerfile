@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+﻿# syntax=docker/dockerfile:1
 
 # --------------------------------------------------------
 # Stage 1: Build Next.js frontend assets
@@ -59,6 +59,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libmagic1 \
+    tesseract-ocr \
+    tesseract-ocr-eng \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 

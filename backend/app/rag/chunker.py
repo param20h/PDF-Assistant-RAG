@@ -3,7 +3,6 @@ Smart document chunking using LangChain's RecursiveCharacterTextSplitter.
 Supports PDF, DOCX, TXT, and Markdown files with page-level metadata.
 """
 import json
-import re
 import fitz  # PyMuPDF
 import docx
 from typing import List, Dict, Any
@@ -47,19 +46,12 @@ def _words_to_text(words: List[Dict[str, Any]], line_tolerance: float = 3.0) -> 
     return "\n".join(line for line in text_lines if line.strip())
 
 
-def _clean_table_cell(cell: Any) -> str:
-    """Normalize extracted table cell text for Markdown serialization."""
-    if cell is None:
-        return ""
-    return re.sub(r"\s+", " ", str(cell)).strip().replace("|", "\\|")
-
-
 def _table_to_markdown(rows: List[List[Any]]) -> str:
     """Serialize extracted table rows into Markdown for retrieval."""
     cleaned_rows = [
-        [_clean_table_cell(cell) for cell in row]
+        ["" if cell is None else str(cell).replace("\n", " ").strip() for cell in row]
         for row in rows
-        if row and any(_clean_table_cell(cell) for cell in row)
+        if row and any(cell is not None and str(cell).strip() for cell in row)
     ]
     if not cleaned_rows:
         return ""
@@ -68,7 +60,7 @@ def _table_to_markdown(rows: List[List[Any]]) -> str:
     normalized = [row + [""] * (width - len(row)) for row in cleaned_rows]
 
     def fmt(row: List[str]) -> str:
-        return "| " + " | ".join(row) + " |"
+        return "| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |"
 
     header = normalized[0]
     separator = ["---"] * width
@@ -97,6 +89,28 @@ def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
                 "page": page_num + 1,
                 "chunk_type": "text",
             })
+        else:
+            # Fallback to OCR
+            try:
+                import pytesseract
+                from PIL import Image
+                import io
+                import logging
+
+                pix = page.get_pixmap(dpi=300)
+                img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+                ocr_text = pytesseract.image_to_string(img).strip()
+
+                if ocr_text:
+                    pages.append({
+                        "text": ocr_text,
+                        "page": page_num + 1,
+                        "chunk_type": "text",
+                        "ocr": True,
+                    })
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"OCR fallback failed for page {page_num + 1}: {e}")
 
     doc.close()
     return pages
@@ -126,23 +140,34 @@ def extract_pdf_with_tables(filepath: str) -> List[Dict[str, Any]]:
                     "page": page_num,
                     "chunk_type": "text",
                 })
+            elif not tables:
+                # Fallback to OCR for scanned image pages
+                try:
+                    import pytesseract
+                    import logging
+                    
+                    img = page.to_image(resolution=300).original.convert("RGB")
+                    ocr_text = pytesseract.image_to_string(img).strip()
+                    
+                    if ocr_text:
+                        pages.append({
+                            "text": ocr_text,
+                            "page": page_num,
+                            "chunk_type": "text",
+                            "ocr": True,
+                        })
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"OCR fallback failed for page {page_num}: {e}")
 
             for table_index, table in enumerate(tables):
                 table_text = _table_to_markdown(table.extract() or [])
                 if table_text.strip():
-                    # Normalize table bbox: [x0/W, y0/H, x1/W, y1/H]
-                    W, H = float(page.width), float(page.height)
-                    normalized_bbox = [
-                        round(float(table.bbox[0]) / W, 4),
-                        round(float(table.bbox[1]) / H, 4),
-                        round(float(table.bbox[2]) / W, 4),
-                        round(float(table.bbox[3]) / H, 4),
-                    ]
                     pages.append({
                         "text": table_text,
                         "page": page_num,
                         "chunk_type": "table",
-                        "bbox": json.dumps(normalized_bbox),
+                        "bbox": json.dumps([round(float(value), 2) for value in table.bbox]),
                         "table_index": table_index,
                     })
 
@@ -192,12 +217,10 @@ def extract_txt(filepath: str) -> List[Dict[str, Any]]:
 
     return [{"text": text, "page": 1}] if text.strip() else []
 
-# Change the chunk_document function input to take a file path and optional chunk size and overlap parameters. 
-def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = None) -> List[Dict[str, Any]]:
+
+def chunk_document(filepath: str) -> List[Dict[str, Any]]:
     """
     Load a document, extract text per page, and split into semantic chunks.
-    Accepts a file path and optional chunk size and overlap parameters. 
-    If chunk size and overlap are not provided, defaults from settings will be used.
     Returns list of dicts with 'text', 'page', and 'chunk_index'.
     """
     ext = filepath.rsplit(".", 1)[-1].lower()
@@ -217,102 +240,57 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
 
     if not pages:
         return []
-    
-    # Set chunk size and chunk overlap with defaults if not provided
-    if not chunk_size:
-        chunk_size = settings.CHUNK_SIZE
-    if not chunk_overlap:
-        chunk_overlap = settings.CHUNK_OVERLAP
 
     # ── LangChain recursive splitter ─────────────────
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size, # Allow custom chunk size to be passed in for embedding
-        chunk_overlap=chunk_overlap, # Allow custom chunk overlap to be passed in for embedding
+        chunk_size=settings.CHUNK_SIZE,
+        chunk_overlap=settings.CHUNK_OVERLAP,
         separators=["\n\n", "\n", ". ", " ", ""],
         length_function=len,
     )
 
     all_chunks = []
     chunk_index = 0
-    pdf_doc = None
 
-    if ext == "pdf":
-        try:
-            pdf_doc = fitz.open(filepath)
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Could not open PDF with fitz for bbox extraction: {e}")
+    for page_data in pages:
+        text = page_data["text"]
+        page_num = page_data["page"]
+        chunk_type = page_data.get("chunk_type", "text")
 
-    try:
-        for page_data in pages:
-            text = page_data["text"]
-            page_num = page_data["page"]
-            chunk_type = page_data.get("chunk_type", "text")
+        if chunk_type == "table":
+            all_chunks.append({
+                "text": text.strip(),
+                "page": page_num,
+                "chunk_index": chunk_index,
+                "chunk_type": "table",
+                "bbox": page_data.get("bbox", ""),
+                "table_index": page_data.get("table_index", 0),
+            })
+            chunk_index += 1
+            continue
 
-            if chunk_type == "table":
+        # Split this page's text
+        splits = splitter.split_text(text)
+
+        for split_text in splits:
+            if split_text.strip():
                 all_chunks.append({
-                    "text": text.strip(),
+                    "text": split_text.strip(),
                     "page": page_num,
                     "chunk_index": chunk_index,
-                    "chunk_type": "table",
-                    "bbox": page_data.get("bbox", ""),
-                    "table_index": page_data.get("table_index", 0),
+                    "chunk_type": chunk_type,
                 })
                 chunk_index += 1
-                continue
 
-            # Split this page's text
-            splits = splitter.split_text(text)
-
-            for split_text in splits:
-                if split_text.strip():
-                    chunk = {
-                        "text": split_text.strip(),
-                        "page": page_num,
-                        "chunk_index": chunk_index,
-                        "chunk_type": chunk_type,
-                    }
-
-                    # Extract bbox for PDF text chunks
-                    if pdf_doc and page_num <= len(pdf_doc):
-                        try:
-                            page_obj = pdf_doc[page_num - 1]
-                            # Use search_for to find the text on the page
-                            rects = page_obj.search_for(split_text.strip())
-                            if rects:
-                                W, H = float(page_obj.rect.width), float(page_obj.rect.height)
-                                # Rects can span multiple lines, we store them as a list of normalized bboxes
-                                norm_rects = [
-                                    [
-                                        round(r.x0 / W, 4),
-                                        round(r.y0 / H, 4),
-                                        round(r.x1 / W, 4),
-                                        round(r.y1 / H, 4)
-                                    ]
-                                    for r in rects
-                                ]
-                                chunk["bbox"] = json.dumps(norm_rects)
-                        except Exception as e:
-                            import logging
-                            logger = logging.getLogger(__name__)
-                            logger.warning(f"Bbox extraction error on page {page_num}: {e}")
-
-                    all_chunks.append(chunk)
-                    chunk_index += 1
-
-            # Attach any images that belong to this page after text chunks for the page
-            for img in [i for i in images if i["page"] == page_num]:
-                all_chunks.append({
-                    "text": "",
-                    "page": page_num,
-                    "chunk_index": chunk_index,
-                    "image_bytes": img["image_bytes"],
-                })
-                chunk_index += 1
-    finally:
-        if pdf_doc:
-            pdf_doc.close()
+        # Attach any images that belong to this page after text chunks for the page
+        for img in [i for i in images if i["page"] == page_num]:
+            all_chunks.append({
+                "text": "",
+                "page": page_num,
+                "chunk_index": chunk_index,
+                "image_bytes": img["image_bytes"],
+            })
+            chunk_index += 1
 
     return all_chunks
 
