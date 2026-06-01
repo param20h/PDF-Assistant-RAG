@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { SourceChunk } from "@/store/chat-store";
+import type { SourceBoundingBox, SourceChunk } from "@/store/chat-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +15,10 @@ const EXCERPT_THRESHOLD = 200;
 
 interface Props {
   sources: SourceChunk[];
-  onPageClick: (page: number) => void;
+  onPageClick: (payload: {
+    page: number;
+    highlightRects?: SourceBoundingBox[];
+  }) => void;
 }
 
 export default function SourceCard({ sources = [], onPageClick }: Props) {
@@ -61,7 +64,12 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
                   <Badge
                     variant="secondary"
                     className="text-[10px] h-5 cursor-pointer hover:bg-primary/20 transition-colors"
-                    onClick={() => onPageClick(src.page + 1)}
+                    onClick={() =>
+                      onPageClick({
+                        page: src.page + 1,
+                        highlightRects: src.highlightRects,
+                      })
+                    }
                   >
                     p.{src.page + 1} • {src.confidence}%
                   </Badge>
@@ -113,7 +121,12 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-[10px]"
-                    onClick={() => onPageClick(src.page + 1)}
+                    onClick={() =>
+                      onPageClick({
+                        page: src.page + 1,
+                        highlightRects: src.highlightRects,
+                      })
+                    }
                   >
                     <Eye className="w-3 h-3 mr-1" />
                     View

@@ -59,6 +59,16 @@ export default function DashboardPage() {
   const [documents, setDocuments] = useState<DocInfo[]>([]);
   const [activeDoc, setActiveDoc] = useState<DocInfo | null>(null);
   const [pdfPage, setPdfPage] = useState(1);
+  const [pdfHighlightTarget, setPdfHighlightTarget] = useState<{
+    page: number;
+    rects?: {
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+      unit?: "percent" | "pixels" | "pdf";
+    }[];
+  } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
   const [connectionError, setConnectionError] = useState("");
@@ -181,8 +191,14 @@ export default function DashboardPage() {
             <PDFViewer
               documentId={activeDoc.id}
               currentPage={pdfPage}
-              onPageChange={setPdfPage}
+              onPageChange={(page) => {
+                setPdfPage(page);
+                if (pdfHighlightTarget?.page !== page) {
+                  setPdfHighlightTarget(null);
+                }
+              }}
               totalPages={activeDoc.page_count}
+              highlightTarget={pdfHighlightTarget}
             />
           </div>
         )}

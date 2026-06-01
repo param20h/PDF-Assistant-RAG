@@ -4,16 +4,21 @@ import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api, API_BASE } from "@/lib/api";
-import { useChatStore, type ChatMsg, type SourceChunk } from "@/store/chat-store";
+import { useChatStore, type ChatMsg, type SourceBoundingBox, type SourceChunk } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import { Send, Loader2, Trash2, MessageSquare, Download } from "lucide-react";
 
+interface CitationTarget {
+  page: number;
+  highlightRects?: SourceBoundingBox[];
+}
+
 interface Props {
   activeDoc: DocInfo | null;
-  onCitationClick: (page: number) => void;
+  onCitationClick: (target: CitationTarget) => void;
 }
 
 export default function ChatPanel({ activeDoc, onCitationClick }: Props) {

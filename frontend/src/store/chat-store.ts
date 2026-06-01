@@ -2,12 +2,21 @@
 
 import { create } from "zustand";
 
+export interface SourceBoundingBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  unit?: "percent" | "pixels" | "pdf";
+}
+
 export interface SourceChunk {
   text: string;
   filename: string;
   page: number;
   score: number;
   confidence: number;
+  highlightRects?: SourceBoundingBox[];
 }
 
 export interface ChatMsg {
