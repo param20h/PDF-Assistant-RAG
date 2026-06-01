@@ -4,7 +4,7 @@ Auth API routes — register, login, and user profile.
 import re
 import secrets
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from langsmith import expect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -419,26 +419,48 @@ from typing import List
 import hashlib
 
 @router.post("/api-keys", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
-def create_api_key(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_api_key(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    body: dict = Body(None),
+):
     """Create a new API key for the authenticated user."""
-    raw_key = "rag_" + secrets.token_urlsafe(32)
+    name = (body or {}).get("name", "default")
+    raw_key = "pdf_rag_" + secrets.token_hex(24)
     hashed_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
-    
+
     api_key = ApiKey(
         user_id=user.id,
-        key_prefix=raw_key[:10],
+        name=name,
+        key_prefix=raw_key[:15],
         hashed_key=hashed_key,
+        is_active=True,
     )
     db.add(api_key)
     db.commit()
     db.refresh(api_key)
-    
-    return {"key": raw_key, "api_key": api_key}
+
+    return ApiKeyCreateResponse(
+        id=str(api_key.id),
+        name=api_key.name,
+        key_preview=api_key.key_prefix,
+        created_at=api_key.created_at,
+        raw_key=raw_key,
+    )
 
 @router.get("/api-keys", response_model=List[ApiKeyResponse])
 def list_api_keys(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """List all API keys for the authenticated user."""
-    return db.query(ApiKey).filter(ApiKey.user_id == user.id).all()
+    keys = db.query(ApiKey).filter(ApiKey.user_id == user.id, ApiKey.is_active == True).all()
+    return [
+        ApiKeyResponse(
+            id=str(k.id),
+            name=k.name,
+            key_preview=k.key_prefix,
+            created_at=k.created_at,
+        )
+        for k in keys
+    ]
 
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_api_key(key_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -446,7 +468,7 @@ def delete_api_key(key_id: str, user: User = Depends(get_current_user), db: Sess
     api_key = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.user_id == user.id).first()
     if not api_key:
         raise HTTPException(status_code=404, detail="API key not found")
-    
+
     db.delete(api_key)
     db.commit()
     return None

@@ -71,7 +71,99 @@ jobs:
           CHROMA_PERSIST_DIR: /tmp/chroma
         run: pytest backend/tests -v
 
-  # ── 2. Frontend Build Check ─────────────────────────────
+  # ── 2. CodeQL Static Security Analysis ──────────────────
+  codeql-analysis:
+    name: 🔎 CodeQL — Static Security Analysis (${{ matrix.language }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["python", "javascript-typescript"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-extended,security-and-quality
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+          output: ${{ runner.temp }}/codeql-results/${{ matrix.language }}
+          upload: false
+
+      - name: Fail on critical security findings
+        env:
+          SARIF_DIR: ${{ runner.temp }}/codeql-results/${{ matrix.language }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          sarif_dir = pathlib.Path(os.environ["SARIF_DIR"])
+          critical_findings = []
+
+          for sarif_path in sarif_dir.rglob("*.sarif"):
+              with sarif_path.open(encoding="utf-8") as handle:
+                  sarif = json.load(handle)
+
+              for run in sarif.get("runs", []):
+                  rule_severity = {
+                      rule.get("id"): float(
+                          rule.get("properties", {}).get(
+                              "security-severity",
+                              "0",
+                          )
+                      )
+                      for rule in run.get("tool", {})
+                      .get("driver", {})
+                      .get("rules", [])
+                      if rule.get("id")
+                  }
+
+                  for result in run.get("results", []):
+                      rule_id = result.get("ruleId")
+                      severity = rule_severity.get(rule_id, 0.0)
+                      if severity < 9.0:
+                          continue
+
+                      location = result.get("locations", [{}])[0].get(
+                          "physicalLocation",
+                          {},
+                      )
+                      artifact = location.get("artifactLocation", {}).get(
+                          "uri",
+                          "unknown file",
+                      )
+                      region = location.get("region", {})
+                      line = region.get("startLine", "?")
+                      message = result.get("message", {}).get("text", "")
+                      critical_findings.append(
+                          f"{rule_id} ({severity}) at {artifact}:{line} — {message}"
+                      )
+
+          if critical_findings:
+              print("Critical CodeQL security findings detected:")
+              for finding in critical_findings:
+                  print(f"- {finding}")
+              sys.exit(1)
+
+          print("No critical CodeQL security findings detected.")
+          PY
+
+  # ── 3. Frontend Build Check ─────────────────────────────
   frontend-check:
     name: ⚛️ Frontend — TypeScript & Build
     runs-on: ubuntu-latest
@@ -111,7 +203,7 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
 
-  # ── 3. PR Size Gate ─────────────────────────────────────
+  # ── 4. PR Size Gate ─────────────────────────────────────
   pr-size-check:
     name: 📏 PR Size Check
     runs-on: ubuntu-latest
