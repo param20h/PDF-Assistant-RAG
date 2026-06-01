@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -19,11 +20,34 @@ import { toast } from "sonner";
 interface Props {
   documents: DocInfo[];
   activeDoc: DocInfo | null;
+  loading?: boolean;
   onSelectDoc: (doc: DocInfo) => void;
   onDocumentsChange: () => void;
 }
 
-export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc, onDocumentsChange }: Props) {
+function DocumentListSkeleton() {
+  return (
+    <div className="space-y-2 pb-3" aria-hidden="true">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={index} className="rounded-lg border border-sidebar-border/60 p-2.5">
+          <div className="flex items-start gap-2.5">
+            <Skeleton className="mt-0.5 h-4 w-4 rounded-full bg-sidebar-accent" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-4/5 bg-sidebar-accent" />
+              <Skeleton className="h-3 w-full bg-sidebar-accent/80" />
+              <div className="flex gap-2">
+                <Skeleton className="h-3 w-10 bg-sidebar-accent/70" />
+                <Skeleton className="h-3 w-12 bg-sidebar-accent/70" />
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function DocumentSidebar({ documents = [], activeDoc, loading = false, onSelectDoc, onDocumentsChange }: Props) {
   const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -155,12 +179,16 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
       {/* ── Documents List ──────────────────────────── */}
       <div className="px-3 pt-3 pb-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          {t("documents.documentsTitle", { count: documents.length })}
+          {loading
+            ? t("documents.documentsTitle", { count: "..." })
+            : t("documents.documentsTitle", { count: documents.length })}
         </h3>
       </div>
 
-      <ScrollArea className="flex-1 px-3 overflow-auto">
-        {documents.length === 0 ? (
+      <ScrollArea className="flex-1 px-3 overflow-auto" aria-busy={loading}>
+        {loading ? (
+          <DocumentListSkeleton />
+        ) : documents.length === 0 ? (
           <div className="text-center py-12">
             <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
             <p className="text-sm text-muted-foreground">{t("documents.noDocuments")}</p>

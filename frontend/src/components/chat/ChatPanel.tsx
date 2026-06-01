@@ -6,6 +6,7 @@ import type { DocInfo } from "@/app/dashboard/page";
 import { api, API_BASE } from "@/lib/api";
 import { useChatStore, type ChatMsg, type SourceChunk } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
@@ -57,6 +58,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const input = useChatStore((state) => state.input);
   const streaming = useChatStore((state) => state.streaming);
   const isTyping = useChatStore((state) => state.isTyping);
+  const historyLoading = useChatStore((state) => state.historyLoading);
   const activeSessionId = useChatStore((state) => state.activeSessionId);
   const setMessages = useChatStore((state) => state.setMessages);
   const setInput = useChatStore((state) => state.setInput);
@@ -73,6 +75,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  const showEmptyState = messages.length === 0 && !isTyping && !historyLoading;
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -397,8 +401,24 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   return (
     <div className="h-full flex flex-col">
       {/* ── Chat Messages ──────────────────────────── */}
-        <div className="flex-1 px-4 overflow-y-auto custom-scrollbar">
-          {messages.length === 0 && !isTyping ? (
+      <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" aria-busy={historyLoading}>
+        {historyLoading ? (
+          <div className="py-6 space-y-5 max-w-3xl mx-auto" aria-label="Loading chat history">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className={cn("flex gap-3", index % 2 === 0 ? "justify-end" : "justify-start")}
+              >
+                {index % 2 !== 0 && <Skeleton className="mt-1 h-8 w-8 rounded-full" />}
+                <div className={cn("space-y-2", index % 2 === 0 ? "w-2/3" : "w-3/4")}>
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-5/6" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : showEmptyState ? (
           <div className="h-full flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
               <MessageSquare className="w-8 h-8 text-primary/60" />
