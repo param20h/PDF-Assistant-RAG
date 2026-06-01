@@ -21,9 +21,10 @@ interface Props {
   activeDoc: DocInfo | null;
   onSelectDoc: (doc: DocInfo) => void;
   onDocumentsChange: () => void;
+  loading?: boolean;
 }
 
-export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc, onDocumentsChange }: Props) {
+export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc, onDocumentsChange, loading = false }: Props) {
   const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -160,7 +161,26 @@ export default function DocumentSidebar({ documents = [], activeDoc, onSelectDoc
       </div>
 
       <ScrollArea className="flex-1 px-3 overflow-auto">
-        {documents.length === 0 ? (
+        {documents.length === 0 ? loading ? (
+          <div className="space-y-2 pb-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="p-2.5 rounded-lg border border-transparent">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-3.5 h-3.5 rounded bg-muted/70 animate-pulse shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="h-4 w-3/4 rounded bg-muted/70 animate-pulse" />
+                    <div className="h-3 w-full rounded bg-muted/50 animate-pulse" />
+                    <div className="flex gap-2">
+                      <div className="h-2.5 w-12 rounded bg-muted/50 animate-pulse" />
+                      <div className="h-2.5 w-2 rounded bg-muted/50 animate-pulse" />
+                      <div className="h-2.5 w-16 rounded bg-muted/50 animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
           <div className="text-center py-12">
             <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
             <p className="text-sm text-muted-foreground">{t("documents.noDocuments")}</p>

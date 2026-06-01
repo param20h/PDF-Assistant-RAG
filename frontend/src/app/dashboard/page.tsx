@@ -66,6 +66,7 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
   const [connectionError, setConnectionError] = useState("");
+  const [loadingDocuments, setLoadingDocuments] = useState(true);
 
     // Auth guard
   useEffect(() => {
@@ -86,6 +87,7 @@ export default function DashboardPage() {
 
   // Load documents
   const loadDocuments = useCallback(async () => {
+    setLoadingDocuments(true);
     try {
       const data = await api.get<{ documents?: DocInfo[]; items?: DocInfo[] }>(
         "/api/v1/documents/"
@@ -99,6 +101,8 @@ export default function DashboardPage() {
           ? CONNECTION_ERROR_BANNER_MESSAGE
           : `⚠️ ${message}`
       );
+    } finally {
+      setLoadingDocuments(false);
     }
   }, []);
 
@@ -157,6 +161,7 @@ export default function DashboardPage() {
         setPdfPage(1);
       }}
       onDocumentsChange={loadDocuments}
+      loading={loadingDocuments}
     />
   );
 

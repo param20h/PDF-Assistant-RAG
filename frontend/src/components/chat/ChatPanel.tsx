@@ -67,6 +67,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const initialInputRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -105,7 +106,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   // Load history on activeSessionId or fallback to activeDoc change
   useEffect(() => {
     if (activeSessionId) {
-      fetchSessionHistory(activeSessionId);
+      setLoadingHistory(true);
+      fetchSessionHistory(activeSessionId).finally(() => setLoadingHistory(false));
       return;
     }
 
@@ -120,6 +122,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     const documentId = activeDoc.id;
     prevDocId.current = documentId;
     setMessages([]);
+    setLoadingHistory(true);
     let cancelled = false;
 
     api
@@ -141,6 +144,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       .catch(() => {
         if (cancelled || prevDocId.current !== documentId) return;
         setMessages([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
       });
 
     return () => {
@@ -398,7 +404,32 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     <div className="h-full flex flex-col">
       {/* ── Chat Messages ──────────────────────────── */}
         <div className="flex-1 px-4 overflow-y-auto custom-scrollbar">
-          {messages.length === 0 && !isTyping ? (
+          {loadingHistory ? (
+          <div className="py-4 space-y-4 max-w-3xl mx-auto w-full">
+            <div className="flex gap-3 py-3 justify-end">
+              <div className="max-w-[80%] rounded-xl rounded-br-sm px-4 py-3 space-y-2 bg-primary/20">
+                <div className="h-4 w-48 rounded bg-primary/30 animate-pulse" />
+                <div className="h-4 w-32 rounded bg-primary/30 animate-pulse" />
+              </div>
+              <div className="w-8 h-8 rounded-lg bg-primary/20 animate-pulse shrink-0 mt-0.5" />
+            </div>
+            <div className="flex gap-3 py-3 justify-start">
+              <div className="w-8 h-8 rounded-lg bg-primary/15 animate-pulse shrink-0 mt-0.5" />
+              <div className="max-w-[80%] rounded-xl rounded-bl-sm px-4 py-3 space-y-2 bg-card border border-border/50">
+                <div className="h-4 w-64 rounded bg-muted/70 animate-pulse" />
+                <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
+                <div className="h-4 w-56 rounded bg-muted/50 animate-pulse" />
+              </div>
+            </div>
+            <div className="flex gap-3 py-3 justify-start">
+              <div className="w-8 h-8 rounded-lg bg-primary/15 animate-pulse shrink-0 mt-0.5" />
+              <div className="max-w-[80%] rounded-xl rounded-bl-sm px-4 py-3 space-y-2 bg-card border border-border/50">
+                <div className="h-4 w-72 rounded bg-muted/70 animate-pulse" />
+                <div className="h-4 w-52 rounded bg-muted/50 animate-pulse" />
+              </div>
+            </div>
+          </div>
+        ) : messages.length === 0 && !isTyping ? (
           <div className="h-full flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
               <MessageSquare className="w-8 h-8 text-primary/60" />
