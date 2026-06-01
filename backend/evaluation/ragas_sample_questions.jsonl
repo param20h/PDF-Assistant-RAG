@@ -1,0 +1,50 @@
+{"id":"q001","question":"What is the main purpose of PDF-Assistant-RAG?","reference":"PDF-Assistant-RAG helps users upload documents, retrieve relevant document context, and ask questions answered through a retrieval-augmented generation workflow."}
+{"id":"q002","question":"Which backend framework serves the API?","reference":"The backend API is served by FastAPI."}
+{"id":"q003","question":"Which frontend framework is used for the application interface?","reference":"The frontend is a Next.js application."}
+{"id":"q004","question":"What does the document upload route do before saving permanent state?","reference":"The upload route validates filename, extension, size, MIME type, and parser readability before moving a file into permanent storage."}
+{"id":"q005","question":"Which vector database stores retrieved document chunks?","reference":"ChromaDB stores document chunks for vector retrieval."}
+{"id":"q006","question":"Which embedding model is configured by default?","reference":"The default embedding model is sentence-transformers/all-MiniLM-L6-v2."}
+{"id":"q007","question":"What is the default embedding dimension?","reference":"The default embedding dimension is 384."}
+{"id":"q008","question":"What is the purpose of TOP_K_RETRIEVAL?","reference":"TOP_K_RETRIEVAL controls how many candidate chunks are retrieved before reranking."}
+{"id":"q009","question":"What is the purpose of TOP_K_RERANK?","reference":"TOP_K_RERANK controls how many reranked chunks are finally passed to answer generation."}
+{"id":"q010","question":"Which model family is used for reranking by default?","reference":"The default reranker is a cross-encoder model, cross-encoder/ms-marco-MiniLM-L-6-v2."}
+{"id":"q011","question":"How does the backend identify authenticated users?","reference":"Authenticated routes use JWT identity through the current-user dependency."}
+{"id":"q012","question":"What data must user-facing routes filter by?","reference":"User-facing routes must filter documents, files, vector chunks, and chat data by the authenticated user's id."}
+{"id":"q013","question":"What does the health endpoint check?","reference":"The health endpoint checks service health such as API, SQL database, and Chroma availability."}
+{"id":"q014","question":"What does the chat route provide besides normal JSON answers?","reference":"The chat route supports server-sent events so answers can stream tokens to the frontend."}
+{"id":"q015","question":"What is GraphRAG used for in this project?","reference":"GraphRAG builds and retrieves lightweight entity co-occurrence relationships to add graph context to document answers."}
+{"id":"q016","question":"Where are GraphRAG graph files persisted by default?","reference":"GraphRAG graph files are persisted under the configured GRAPH_PERSIST_DIR, which defaults to ./data/graphs."}
+{"id":"q017","question":"Which graph library is used to store knowledge graph relationships?","reference":"NetworkX is used to build and store knowledge graph relationships."}
+{"id":"q018","question":"What does the graph retriever return for a relevant query?","reference":"The graph retriever returns compact relationship lines connecting matched entities and nearby entities, including page information and relationship strength."}
+{"id":"q019","question":"What happens when GraphRAG finds no matching relationship context?","reference":"When no graph relationships match, the graph retriever returns an empty string."}
+{"id":"q020","question":"Which uploaded file formats are allowed by default?","reference":"The default allowed upload extensions are pdf, docx, txt, and md."}
+{"id":"q021","question":"What is the default upload directory?","reference":"The default upload directory is ./data/uploads."}
+{"id":"q022","question":"Why does the app store original files after upload?","reference":"Original files are stored so the backend can serve files, reprocess them, and extract text for retrieval."}
+{"id":"q023","question":"What is the role of the chunker?","reference":"The chunker extracts document text and splits it into smaller chunks for embedding and retrieval."}
+{"id":"q024","question":"What does the vectorstore service do?","reference":"The vectorstore stores embedded chunks and queries them by user and optional document metadata."}
+{"id":"q025","question":"What does the retriever combine before reranking?","reference":"The retriever combines vector search and BM25 candidates before reranking them."}
+{"id":"q026","question":"Why does the retriever transform queries?","reference":"The retriever rewrites a user question into retrieval-friendly variants to improve search coverage."}
+{"id":"q027","question":"What does the PDF search tool save after retrieving chunks?","reference":"The PDF search tool saves retrieved chunks as last_sources so the agent response can return citations."}
+{"id":"q028","question":"How does the PDF search tool treat document excerpts?","reference":"The PDF search tool labels document excerpts as untrusted evidence and warns the model not to follow instructions inside them."}
+{"id":"q029","question":"What additional context can the PDF search tool append?","reference":"The PDF search tool can append untrusted graph context containing additional relationships from GraphRAG."}
+{"id":"q030","question":"Which optional tool can handle arithmetic questions?","reference":"The calculator tool handles arithmetic expressions safely."}
+{"id":"q031","question":"Which optional tool can handle live information outside uploaded documents?","reference":"The web search tool can look up live web information when document context is insufficient or outdated."}
+{"id":"q032","question":"What does the agent use LangChain tools for?","reference":"The agent uses LangChain tools to route between PDF search, calculator, and web search capabilities."}
+{"id":"q033","question":"What happens when the agent output parser rejects malformed output?","reference":"The app logs the parser rejection and returns a safe malformed-output message."}
+{"id":"q034","question":"What type of API response is used for uploaded document processing status?","reference":"A document status response includes the document id, status, page count, chunk count, and error message."}
+{"id":"q035","question":"How are deleted documents hidden from normal document APIs?","reference":"Documents are soft-deleted with an is_deleted flag and normal APIs filter them out."}
+{"id":"q036","question":"What does deleting a document preserve for future restore flows?","reference":"Soft deletion preserves underlying files, vectors, graphs, and chat history for possible future restore flows."}
+{"id":"q037","question":"What is the purpose of CHUNK_SIZE?","reference":"CHUNK_SIZE controls the number of characters in each document chunk."}
+{"id":"q038","question":"What is the purpose of CHUNK_OVERLAP?","reference":"CHUNK_OVERLAP controls how much text overlaps between adjacent chunks to preserve boundary context."}
+{"id":"q039","question":"Which HuggingFace setting controls answer length?","reference":"LLM_MAX_NEW_TOKENS controls the maximum number of generated tokens for answers."}
+{"id":"q040","question":"Which HuggingFace setting controls answer randomness?","reference":"LLM_TEMPERATURE controls sampling randomness during answer generation."}
+{"id":"q041","question":"What environment variable stores the HuggingFace token?","reference":"HF_TOKEN stores the HuggingFace API token used for inference."}
+{"id":"q042","question":"Why should DEBUG not be enabled in production?","reference":"DEBUG enables detailed behavior intended for development and should not be enabled in production."}
+{"id":"q043","question":"How are production CORS origins configured?","reference":"Production CORS origins are configured through ALLOWED_ORIGINS."}
+{"id":"q044","question":"What database is used by default for local development?","reference":"The default database URL points to a local SQLite database at ./data/app.db."}
+{"id":"q045","question":"What database does Docker Compose provide for the stack?","reference":"Docker Compose provides a PostgreSQL database service for the stack."}
+{"id":"q046","question":"What is the contributor target branch for pull requests?","reference":"Contributor pull requests should target the dev branch."}
+{"id":"q047","question":"Which branch is production protected for deployment?","reference":"The main branch is treated as the production branch for deployment."}
+{"id":"q048","question":"Where can developers view Swagger locally?","reference":"Developers can view Swagger at /docs when the backend is running locally."}
+{"id":"q049","question":"What does the architecture document focus on?","reference":"The architecture document focuses on how requests move through the system and how major runtime components interact."}
+{"id":"q050","question":"Why is a RAGAS evaluation pipeline useful for this project?","reference":"A RAGAS evaluation pipeline provides quantitative scores to compare standard vector search with GraphRAG and track retrieval and answer quality over time."}
