@@ -136,7 +136,7 @@ class User(Base):
     hf_token = Column(EncryptedString, nullable=True)
 
     # Relationships
- feat/workspace-invite-api
+ 
     documents = relationship(
         "Document",
         back_populates="owner",
@@ -163,7 +163,7 @@ class User(Base):
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     drive_connections = relationship("DriveConnection", back_populates="user", cascade="all, delete-orphan")
- dev
+
 
 
 class ApiKey(Base):
@@ -246,7 +246,7 @@ class Document(Base):
     # pending | processing | ready | failed
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
- feat/workspace-invite-api
+
     last_accessed_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
@@ -264,7 +264,7 @@ class Document(Base):
     drive_synced_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
- dev
+
 
     # Relationships
     owner = relationship("User", back_populates="documents")
