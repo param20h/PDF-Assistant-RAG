@@ -18,6 +18,7 @@ from app.database import get_db
 from app.metrics import record_query_response_time
 from app.models import User, ChatMessage, Document, SharedMessage, ChatSession
 from app.rate_limit import CHAT_QUERY_RATE_LIMIT, limiter
+from app.rag.security import UnsafePromptError, validate_user_input
 from app.schemas import (
     ChatRequest,
     ChatResponse,
@@ -291,6 +292,11 @@ def ask_question(
     """Ask a question with RAG retrieval and return the complete answer."""
     started_at = time.perf_counter()
     try:
+        try:
+            validate_user_input(payload.question)
+        except UnsafePromptError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
         # Validate document exists if specified
         if payload.document_id:
             doc = db.query(Document).filter(
@@ -359,6 +365,11 @@ def ask_question_stream(
     db: Session = Depends(get_db),
 ):
     """Ask a question and stream the answer using Server-Sent Events."""
+    try:
+        validate_user_input(payload.question)
+    except UnsafePromptError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     # Validate document
     if payload.document_id:
         doc = db.query(Document).filter(
