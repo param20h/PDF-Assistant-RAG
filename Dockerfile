@@ -58,9 +58,6 @@ WORKDIR /app
 # Runtime-only system packages. Build tools stay in python-builder.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    libmagic1 \
-    tesseract-ocr \
-    tesseract-ocr-eng \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
