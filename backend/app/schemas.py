@@ -61,6 +61,7 @@ class HFTokenUpdate(BaseModel):
 
 class ApiKeyResponse(BaseModel):
     id: str
+    name: str
     key_preview: str
     created_at: datetime
 
@@ -68,8 +69,15 @@ class ApiKeyResponse(BaseModel):
         from_attributes = True
 
 
-class ApiKeyCreateResponse(ApiKeyResponse):
+class ApiKeyCreateResponse(BaseModel):
+    id: str
+    name: str
+    key_preview: str
+    created_at: datetime
     raw_key: str
+
+    class Config:
+        from_attributes = True
 
 
 class UserResponse(BaseModel):
