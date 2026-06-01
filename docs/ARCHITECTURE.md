@@ -52,7 +52,8 @@ sequenceDiagram
     participant UI as Frontend
     participant API as FastAPI documents route
     participant DB as SQL metadata
-    participant Worker as Background task
+    participant Redis as Redis broker
+    participant Worker as Celery worker
     participant Files as Upload storage
     participant Vector as ChromaDB
 
@@ -60,8 +61,9 @@ sequenceDiagram
     API->>API: Validate filename, extension, size, MIME, and parser readability
     API->>Files: Persist original file under the user's upload directory
     API->>DB: Create document row with processing status
-    API-->>UI: 202 Accepted with document metadata
-    API->>Worker: Queue ingestion task
+    API->>Redis: Queue Celery ingestion task
+    API-->>UI: 202 Accepted with document metadata and task_id
+    Redis->>Worker: Deliver ingestion task
     Worker->>Files: Read saved document
     Worker->>Worker: Extract pages, chunk text, build graph summary data
     Worker->>Vector: Store chunks with document and user metadata
@@ -70,9 +72,9 @@ sequenceDiagram
 
 The upload route is intentionally strict before it writes long-lived state:
 extension checks, size checks, MIME checks, and parser checks happen before the
-file is moved into permanent storage. The background task owns expensive work
-such as text extraction, chunking, embedding, graph building, and summary
-generation.
+file is moved into permanent storage. Celery uses Redis as the broker/result
+backend, and the worker owns expensive work such as text extraction, chunking,
+embedding, graph building, and summary generation.
 
 ## Chat And Retrieval Flow
 

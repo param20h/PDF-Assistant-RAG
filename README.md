@@ -362,6 +362,8 @@ DATABASE_URL=sqlite:///./data/app.db
 HF_TOKEN=hf_your_huggingface_token_here
 UPLOAD_DIR=./data/uploads
 CHROMA_PERSIST_DIR=./data/chroma_db
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/1
 ```
 
 > Get your free HuggingFace token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
@@ -410,7 +412,7 @@ npm run dev
 
 ```bash
 docker compose up --build
-# → Full stack at http://localhost:7860
+# → FastAPI, Redis, Celery worker, and Postgres at http://localhost:7860
 ```
 
 <br/>
@@ -499,6 +501,8 @@ docker compose up --build
 | `JWT_EXPIRY_HOURS` | ❌ | `72` | JWT token lifetime in hours before re-login is required. | — |
 | `GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID used by FastAPI to verify ID tokens. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID exposed to the Next.js Google sign-in button. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `CELERY_BROKER_URL` | ❌ | `redis://localhost:6379/0` | Redis broker URL used by FastAPI to queue document ingestion jobs. | Redis |
+| `CELERY_RESULT_BACKEND` | ❌ | `redis://localhost:6379/1` | Redis backend URL used by Celery to store task state/results. | Redis |
 | `UPLOAD_DIR` | ❌ | `./data/uploads` | Local directory for storing uploaded documents. | — |
 | `MAX_FILE_SIZE_MB` | ❌ | `50` | Maximum allowed upload file size in MB. | — |
 | `ALLOWED_EXTENSIONS` | ❌ | `pdf,docx,txt,md` | Comma-separated list of permitted file extensions. | — |

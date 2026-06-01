@@ -1,7 +1,7 @@
 import types
 
 from app.models import Document
-from app.routes.documents import _ingest_document
+from app.services.document_ingestion import ingest_document
 
 
 def test_api_health(client):
@@ -56,9 +56,9 @@ def test_ingest_document_builds_and_saves_graph(db_session, monkeypatch, tmp_pat
     chunks = [{"text": "OpenAI works with Microsoft.", "page": 1, "chunk_index": 0}]
     saved = {}
 
-    monkeypatch.setattr("app.routes.documents.get_page_count", lambda filepath: 1)
-    monkeypatch.setattr("app.routes.documents.chunk_document", lambda filepath: chunks)
-    monkeypatch.setattr("app.routes.documents.store_chunks", lambda **kwargs: len(chunks))
+    monkeypatch.setattr("app.services.document_ingestion.get_page_count", lambda filepath: 1)
+    monkeypatch.setattr("app.services.document_ingestion.chunk_document", lambda filepath: chunks)
+    monkeypatch.setattr("app.services.document_ingestion.store_chunks", lambda **kwargs: len(chunks))
     monkeypatch.setattr("app.database.SessionLocal", lambda: db_session)
 
     fake_summary = types.ModuleType("app.rag.summarizer")
@@ -76,7 +76,7 @@ def test_ingest_document_builds_and_saves_graph(db_session, monkeypatch, tmp_pat
         ),
     )
 
-    _ingest_document(
+    ingest_document(
         document_id=document_id,
         filepath=str(tmp_path / "graph.txt"),
         original_name=document.original_name,

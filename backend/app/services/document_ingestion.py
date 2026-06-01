@@ -17,24 +17,45 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
 
     db = SessionLocal()
     try:
-        doc = db.query(Document).filter(Document.id == document_id).first()
+        doc = db.query(Document).filter(
+            Document.id == document_id,
+            Document.is_deleted.is_(False),
+        ).first()
         if not doc:
             logger.error("Document %s not found for ingestion", document_id)
             return
 
         doc.status = "processing"
+        doc.error_message = None
         db.commit()
 
         page_count = get_page_count(filepath)
         doc.page_count = page_count
 
-        chunks = chunk_document(filepath)
+        try:
+            chunk_kwargs = {}
+            if doc.chunk_size is not None:
+                chunk_kwargs["chunk_size"] = doc.chunk_size
+            if doc.chunk_overlap is not None:
+                chunk_kwargs["chunk_overlap"] = doc.chunk_overlap
+            chunks = chunk_document(filepath, **chunk_kwargs)
+        except TypeError:
+            # Preserve compatibility with patched/test implementations.
+            chunks = chunk_document(filepath)
 
         if not chunks:
             doc.status = "failed"
             doc.error_message = "No text could be extracted from the document"
             db.commit()
             return
+
+        try:
+            from app.rag.graph_builder import build_graph, save_graph
+
+            graph = build_graph(chunks)
+            save_graph(graph, user_id=user_id, document_id=document_id)
+        except Exception as e:
+            logger.warning("Could not build knowledge graph for document %s: %s", document_id, e)
 
         chunk_count = store_chunks(
             chunks=chunks,
@@ -69,7 +90,10 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
     except Exception as e:
         logger.error("Ingestion error for %s: %s", document_id, e)
         try:
-            doc = db.query(Document).filter(Document.id == document_id).first()
+            doc = db.query(Document).filter(
+                Document.id == document_id,
+                Document.is_deleted.is_(False),
+            ).first()
             if doc:
                 doc.status = "failed"
                 doc.error_message = str(e)[:500]

@@ -1,6 +1,20 @@
 version: '3.8'
 
 services:
+  # Redis broker/result backend for Celery document processing
+  redis:
+    image: redis:7-alpine
+    container_name: pdf_rag_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   # ── PostgreSQL Database ──────────────────────────────────
   postgres:
     image: postgres:16-alpine
@@ -34,10 +48,15 @@ services:
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
       - HF_TOKEN=${HF_TOKEN}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
-      - UPLOAD_DIR=./data/uploads
-      - CHROMA_PERSIST_DIR=./data/chroma_db
+      - UPLOAD_DIR=/app/data/uploads
+      - CHROMA_PERSIST_DIR=/app/data/chroma_db
+      - GRAPH_PERSIST_DIR=/app/data/graphs
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -46,6 +65,31 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # Celery worker for document extraction, chunking, embeddings, and vector storage
+  worker:
+    build: .
+    container_name: pdf_rag_worker
+    command: >
+      sh -c "cd /app/backend &&
+      celery -A app.celery_app.celery_app worker --loglevel=info"
+    volumes:
+      - app_data:/app/data
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
+      - HF_TOKEN=${HF_TOKEN}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
+      - UPLOAD_DIR=/app/data/uploads
+      - CHROMA_PERSIST_DIR=/app/data/chroma_db
+      - GRAPH_PERSIST_DIR=/app/data/graphs
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
   # ── pgAdmin (optional — for local DB inspection) ─────────
   pgadmin:
