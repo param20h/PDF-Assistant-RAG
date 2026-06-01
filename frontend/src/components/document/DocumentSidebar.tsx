@@ -251,6 +251,7 @@ export default function DocumentSidebar({ documents = [], activeDoc, loading = f
                       className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                       onClick={(e) => handleSettingsClick(doc, e)}
                       disabled={doc.status !== "ready"}
+                      aria-label={t("documents.settingsLabel", { defaultValue: "Document settings" })}
                     >
                       <Settings className="w-3 h-3" />
                     </Button>
@@ -260,6 +261,7 @@ export default function DocumentSidebar({ documents = [], activeDoc, loading = f
                       className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-pointer"
                       onClick={(e) => handleDelete(doc.id, e)}
                       disabled={deleting === doc.id}
+                      aria-label={t("documents.deleteLabel", { defaultValue: `Delete ${doc.original_name}` })}
                     >
                       {deleting === doc.id ? (
                         <Loader2 className="w-3 h-3 animate-spin" />

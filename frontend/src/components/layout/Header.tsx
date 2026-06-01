@@ -96,7 +96,7 @@ export default function Header({
             size="icon"
             className="h-8 w-8 md:hidden"
             onClick={() => setSheetOpen(true)}
-            title="Open sidebar"
+            aria-label="Open sidebar"
           >
             <Menu className="w-4 h-4" />
           </Button>
@@ -107,7 +107,7 @@ export default function Header({
             size="icon"
             className="h-8 w-8 hidden md:inline-flex"
             onClick={onToggleSidebar}
-            title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+            aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
           >
             {sidebarOpen ? (
               <PanelLeftClose className="w-4 h-4" />
@@ -133,7 +133,7 @@ export default function Header({
             size="icon"
             className="h-8 w-8"
             onClick={onToggleViewer}
-            title={viewerOpen ? "Close viewer" : "Open viewer"}
+            aria-label={viewerOpen ? "Close viewer" : "Open viewer"}
           >
             {viewerOpen ? (
               <PanelRightClose className="w-4 h-4" />
@@ -148,7 +148,7 @@ export default function Header({
               size="icon"
               className="h-8 w-8"
               onClick={toggleTheme}
-              title={isDark ? "Light mode" : "Dark mode"}
+              aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             >
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
@@ -156,7 +156,10 @@ export default function Header({
 
           {/* Workspace switcher */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
+            <DropdownMenuTrigger
+              className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer"
+              aria-label="Switch workspace"
+            >
               {workspaceLoading ? (
                 <>
                   <Skeleton className="h-4 w-4 rounded-sm" />

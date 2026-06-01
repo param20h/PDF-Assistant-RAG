@@ -401,7 +401,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   return (
     <div className="h-full flex flex-col">
       {/* ── Chat Messages ──────────────────────────── */}
-      <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" aria-busy={historyLoading}>
+      <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" role="log" aria-live="polite" aria-label={t("chat.messagesLabel", { defaultValue: "Chat messages" })} aria-busy={historyLoading}>
         {historyLoading ? (
           <div className="py-6 space-y-5 max-w-3xl mx-auto" aria-label="Loading chat history">
             {Array.from({ length: 4 }).map((_, index) => (
@@ -487,6 +487,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                   }
                 }}
                 className="text-muted-foreground hover:text-foreground font-semibold px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
+                aria-label={isRecording ? t("chat.stop", { defaultValue: "Stop recording" }) : "Dismiss notification"}
               >
                 {isRecording ? t("chat.stop", { defaultValue: "Stop" }) : "✕"}
               </button>
@@ -509,6 +510,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 disabled={streaming}
                 className="min-h-[44px] max-h-32 resize-none bg-background/50 border-border/50 pr-10"
                 rows={1}
+                aria-label={t("chat.inputLabel", { defaultValue: "Chat input" })}
               />
               <Button
                 id="mic-btn"
@@ -523,7 +525,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
                     : "hover:text-primary hover:bg-accent"
                 )}
-                title={
+                aria-label={
                   isRecording
                     ? t("chat.stopRecording", { defaultValue: "Stop recording" })
                     : t("chat.startRecording", { defaultValue: "Start recording" })
@@ -543,6 +545,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               onClick={handleSend}
               disabled={!input.trim() || streaming}
               className="h-[44px] w-[44px]"
+              aria-label={t("chat.sendMessage", { defaultValue: "Send message" })}
             >
               {streaming ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -560,34 +563,37 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     size="icon"
                     onClick={() => setShowExportMenu((v) => !v)}
                     className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
-                    title={t("chat.exportTitle")}
+                    aria-label={t("chat.exportTitle", { defaultValue: "Export chat" })}
                   >
                     <Download className="w-4 h-4" />
                   </Button>
                   {showExportMenu && (
-                    <div className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50">
+                    <div className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50" role="menu" aria-label={t("chat.exportTitle", { defaultValue: "Export chat" })}>
                       <button
                         id="export-md-btn"
                         onClick={() => handleExport("md")}
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        role="menuitem"
                       >
-                        <span className="text-base">📝</span>
+                        <span className="text-base" aria-hidden="true">📝</span>
                         {t("chat.markdown")}
                       </button>
                       <button
                         id="export-txt-btn"
                         onClick={() => handleExport("txt")}
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        role="menuitem"
                       >
-                        <span className="text-base">📄</span>
+                        <span className="text-base" aria-hidden="true">📄</span>
                         {t("chat.plainText")}
                       </button>
                       <button
                         id="export-pdf-btn"
                         onClick={() => handleExport("pdf")}
                         className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        role="menuitem"
                       >
-                        <span className="text-base">📕</span>
+                        <span className="text-base" aria-hidden="true">📕</span>
                         {t("chat.pdf")}
                       </button>
                     </div>
@@ -599,6 +605,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                   size="icon"
                   onClick={handleClear}
                   className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
+                  aria-label={t("chat.clearHistory", { defaultValue: "Clear chat history" })}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
