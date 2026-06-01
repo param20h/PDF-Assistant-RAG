@@ -83,5 +83,7 @@ IMPORTANT RULES:
 
 Begin!
 
+===== END OF SYSTEM INSTRUCTIONS =====
+{chat_history}
 Question: {input}
 Thought: {agent_scratchpad}"""
