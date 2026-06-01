@@ -6,7 +6,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X } from "lucide-react";
+import { Brain, User, Copy, Check, Share2, Link2, X,Play,Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -55,6 +55,7 @@ export default function MessageBubble({ message }: Props) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const [shareFailed, setShareFailed] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -94,6 +95,23 @@ export default function MessageBubble({ message }: Props) {
       }, 2000);
     }
   };
+  
+  const handleSpeech = () => {
+  if (!message.content) return;
+
+  if (isSpeaking) {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    return;
+  }
+
+  const utterance = new SpeechSynthesisUtterance(message.content);
+
+  utterance.onstart = () => setIsSpeaking(true);
+  utterance.onend = () => setIsSpeaking(false);
+
+  window.speechSynthesis.speak(utterance);
+};
 
   return (
     <div
@@ -159,7 +177,22 @@ export default function MessageBubble({ message }: Props) {
                   )}
                 </Button>
               </>
+              
             )}
+            <Button
+  type="button"
+  variant="ghost"
+  size="icon-xs"
+  className="absolute top-2 right-16 text-muted-foreground hover:text-foreground"
+  onClick={handleSpeech}
+  aria-label={isSpeaking ? "Pause speech" : "Play speech"}
+>
+  {isSpeaking ? (
+    <Pause className="w-3.5 h-3.5" />
+  ) : (
+    <Play className="w-3.5 h-3.5" />
+  )}
+</Button>
             <div className={`prose-chat text-sm ${message.content ? "pr-14" : ""}`}>
               {message.content ? (
                 <ReactMarkdown
