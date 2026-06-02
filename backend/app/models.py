@@ -297,10 +297,8 @@ class ChatMessage(Base):
     )
     role = Column(String(20), nullable=False)  # "user" | "assistant"
     content = Column(Text, nullable=False)
-    sources_json = Column(
-        Text,
-        nullable=True,
-    )  # JSON representation of retrieved sources
+    sources_json = Column(Text, nullable=True)  # JSON representation of retrieved sources
+    feedback = Column(String(10), nullable=True)  # "up" | "down"
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships

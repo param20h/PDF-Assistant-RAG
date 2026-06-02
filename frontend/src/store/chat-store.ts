@@ -16,6 +16,7 @@ export interface ChatMsg {
   role: "user" | "assistant";
   content: string;
   sources: SourceChunk[];
+  feedback?: "up" | "down" | null;
   isStreaming?: boolean;
 }
 
