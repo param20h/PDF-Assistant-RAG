@@ -172,11 +172,16 @@ class ChatResponse(BaseModel):
     document_id: Optional[str] = None
 
 
+class FeedbackRequest(BaseModel):
+    feedback: Optional[str] = Field(None, pattern="^(up|down)?$")
+
+
 class ChatMessageResponse(BaseModel):
     id: str
     role: str
     content: str
     sources: List[SourceChunk] = []
+    feedback: Optional[str] = None
     created_at: datetime
 
     class Config:
