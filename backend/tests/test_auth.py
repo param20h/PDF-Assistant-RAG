@@ -122,3 +122,14 @@ def test_hf_token_appears_in_user_response(client, auth_headers, user, db_sessio
     stored_token = row[0]
     assert stored_token is not None
     assert stored_token != "hf_persist_token"
+
+
+def test_update_user_info_rejects_duplicate_email(client, auth_headers, other_user):
+    response = client.put(
+        "/api/v1/auth/update",
+        json={"email": other_user.email},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Email already exists"
