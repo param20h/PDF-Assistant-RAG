@@ -30,7 +30,9 @@ import {
   X,
   Palette,
   Briefcase, 
-  ChevronDown
+  ChevronDown,
+  Sun,
+  Moon
 } from "lucide-react";
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
