@@ -21,8 +21,8 @@ def test_generate_answer_appends_graph_context_without_changing_sources(monkeypa
     mock_pdf_tool = MagicMock()
     mock_pdf_tool.last_sources = chunks
 
-    # Mock get_agent_executor to return our mocks
-    monkeypatch.setattr(agent, "get_agent_executor", lambda *args, **kwargs: (mock_executor, mock_pdf_tool))
+    # Mock get_agent_executor to return our mocks (3 values: executor, pdf_tool, formatted_history)
+    monkeypatch.setattr(agent, "get_agent_executor", lambda *args, **kwargs: (mock_executor, mock_pdf_tool, ""))
 
     result = agent.generate_answer("How are OpenAI and Microsoft related?", "user-1", "doc-1")
 
@@ -36,7 +36,7 @@ def test_generate_answer_appends_graph_context_without_changing_sources(monkeypa
             "confidence": 100.0,
         }
     ]
-    mock_executor.invoke.assert_called_once_with({"input": "How are OpenAI and Microsoft related?"})
+    mock_executor.invoke.assert_called_once_with({"input": "How are OpenAI and Microsoft related?", "chat_history": ""})
 
 
 def test_generate_answer_stream_appends_graph_context(monkeypatch):
@@ -64,7 +64,7 @@ def test_generate_answer_stream_appends_graph_context(monkeypatch):
     mock_pdf_tool = MagicMock()
     mock_pdf_tool.last_sources = chunks
 
-    monkeypatch.setattr(agent, "get_agent_executor", lambda *args, **kwargs: (mock_executor, mock_pdf_tool))
+    monkeypatch.setattr(agent, "get_agent_executor", lambda *args, **kwargs: (mock_executor, mock_pdf_tool, ""))
 
     events = list(agent.generate_answer_stream("OpenAI Microsoft", "user-1", "doc-1"))
 

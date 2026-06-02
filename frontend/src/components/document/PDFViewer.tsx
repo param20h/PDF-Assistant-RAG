@@ -130,6 +130,7 @@ export default function PDFViewer({
               setPageInput(String(newPage));
             }}
             disabled={currentPage <= 1}
+            aria-label="Go to previous PDF page"
           >
             <ChevronLeft className="w-4 h-4" />
           </Button>
@@ -145,11 +146,14 @@ export default function PDFViewer({
               }
             }}
             className="flex items-center gap-1 text-xs"
+            aria-label="PDF page navigation"
           >
             <Input
               value={pageInput}
               onChange={(e) => setPageInput(e.target.value)}
               className="w-10 h-7 text-center text-xs p-0 bg-background/50"
+              aria-label={`PDF page number, current page ${currentPage} of ${totalPages}`}
+              inputMode="numeric"
             />
             <span className="text-muted-foreground">/ {totalPages}</span>
           </form>
@@ -164,6 +168,7 @@ export default function PDFViewer({
               setPageInput(String(newPage));
             }}
             disabled={currentPage >= totalPages}
+            aria-label="Go to next PDF page"
           >
             <ChevronRight className="w-4 h-4" />
           </Button>
@@ -175,6 +180,7 @@ export default function PDFViewer({
             size="icon"
             className="h-7 w-7"
             onClick={() => setScale((current) => Math.max(0.5, current - 0.15))}
+            aria-label="Zoom out PDF"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </Button>
@@ -186,6 +192,7 @@ export default function PDFViewer({
             size="icon"
             className="h-7 w-7"
             onClick={() => setScale((current) => Math.min(2.5, current + 0.15))}
+            aria-label="Zoom in PDF"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </Button>

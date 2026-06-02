@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { SourceBoundingBox, SourceChunk } from "@/store/chat-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,7 @@ interface Props {
 export default function SourceCard({ sources = [], onPageClick }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [excerptOpen, setExcerptOpen] = useState<Set<number>>(new Set());
+  const sourceListId = useId();
 
   if (sources.length === 0) return null;
 
@@ -111,7 +112,11 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
   return (
     <div className="rounded-lg border border-border/50 bg-card/50 overflow-hidden">
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-controls={sourceListId}
+        aria-label={`${expanded ? "Collapse" : "Expand"} ${sources.length} cited source${sources.length > 1 ? "s" : ""}`}
         className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-accent/30 transition-colors"
       >
         <span className="flex items-center gap-1.5 text-muted-foreground">
@@ -134,16 +139,20 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
 
             return (
               <Tooltip key={i}>
-                <TooltipTrigger className="inline-flex">
+                <TooltipTrigger
+                  type="button"
+                  className="inline-flex"
+                  onClick={() =>
+                    onPageClick({
+                      page: src.page + 1,
+                      highlightRects: src.highlightRects,
+                    })
+                  }
+                  aria-label={`Go to source page ${src.page + 1}. Confidence ${badgeMeta.label}`}
+                >
                   <Badge
                     variant="outline"
                     className={`text-[10px] h-5 cursor-pointer hover:bg-primary/20 transition-colors ${badgeMeta.className}`}
-                    onClick={() =>
-                      onPageClick({
-                        page: src.page + 1,
-                        highlightRects: src.highlightRects,
-                      })
-                    }
                   >
                     p.{src.page + 1} - {badgeMeta.label}
                   </Badge>
@@ -168,7 +177,7 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
       )}
 
       {expanded && (
-        <div className="border-t border-border/30">
+        <div id={sourceListId} className="border-t border-border/30">
           {sources.map((src, i) => (
             <div
               key={i}
@@ -195,6 +204,7 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
                       highlightRects: src.highlightRects,
                     })
                   }
+                  aria-label={`View source page ${src.page + 1}`}
                 >
                   <Eye className="w-3 h-3 mr-1" />
                   View
@@ -209,7 +219,9 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
               </p>
               {src.text.length > EXCERPT_THRESHOLD && (
                 <button
+                  type="button"
                   onClick={() => toggleExcerpt(i)}
+                  aria-expanded={excerptOpen.has(i)}
                   className="mt-1.5 flex items-center gap-1 text-[10px] text-primary/70 hover:text-primary transition-colors"
                 >
                   <TextQuote className="w-3 h-3" />
