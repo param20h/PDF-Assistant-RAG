@@ -10,6 +10,8 @@ import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatSessionSidebar from "@/components/chat/ChatSessionSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
+import DocumentComparison from "@/components/document/DocumentComparison";
+
 function PDFViewerSkeleton() {
   return (
     <div
@@ -65,6 +67,7 @@ export default function DashboardPage() {
   const [pdfPage, setPdfPage] = useState(1);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
+  const [comparisonMode, setComparisonMode] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(true);
 
@@ -153,16 +156,33 @@ export default function DashboardPage() {
 
   // Shared sidebar content — used by both desktop panel and mobile sheet
   const sidebarContent = (
-    <DocumentSidebar
-      documents={documents}
-      activeDoc={activeDoc}
-      loading={documentsLoading}
-      onSelectDoc={(doc) => {
-        setActiveDoc(doc);
-        setPdfPage(1);
-      }}
-      onDocumentsChange={loadDocuments}
-    />
+    <div className="flex flex-col h-full">
+      <DocumentSidebar
+        documents={documents}
+        activeDoc={activeDoc}
+        loading={documentsLoading}
+        onSelectDoc={(doc) => {
+          setActiveDoc(doc);
+          setPdfPage(1);
+          setComparisonMode(false);
+        }}
+        onDocumentsChange={loadDocuments}
+      />
+      {documents.length >= 2 && (
+        <div className="p-4 border-t border-border/50">
+          <button
+            onClick={() => setComparisonMode(!comparisonMode)}
+            className={`w-full py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+              comparisonMode 
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" 
+                : "bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
+            }`}
+          >
+            {comparisonMode ? "Exit Comparison" : "Compare Documents"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 
   return (
@@ -192,30 +212,41 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── Left-Center: Chat Sessions Sidebar ──── */}
-        <ChatSessionSidebar />
-
-        {/* ── Center: Chat Panel ──────────────────────────────────── */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          <ChatPanel
-            activeDoc={activeDoc}
-            onCitationClick={(page) => {
-              setPdfPage(page);
-              if (!viewerOpen) setViewerOpen(true);
-            }}
-          />
-        </div>
-
-        {/* ── Right: PDF Viewer — hidden on mobile ────────────────── */}
-        {viewerOpen && activeDoc && activeDoc.original_name.endsWith(".pdf") && (
-          <div className="hidden md:block w-[480px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
-            <PDFViewer
-              documentId={activeDoc.id}
-              currentPage={pdfPage}
-              onPageChange={setPdfPage}
-              totalPages={activeDoc.page_count}
+        {comparisonMode ? (
+          <div className="flex-1 min-w-0">
+            <DocumentComparison 
+              documents={documents} 
+              onClose={() => setComparisonMode(false)} 
             />
           </div>
+        ) : (
+          <>
+            {/* ── Left-Center: Chat Sessions Sidebar ──── */}
+            <ChatSessionSidebar />
+
+            {/* ── Center: Chat Panel ──────────────────────────────────── */}
+            <div className="flex-1 min-w-0 flex flex-col">
+              <ChatPanel
+                activeDoc={activeDoc}
+                onCitationClick={(page) => {
+                  setPdfPage(page);
+                  if (!viewerOpen) setViewerOpen(true);
+                }}
+              />
+            </div>
+
+            {/* ── Right: PDF Viewer — hidden on mobile ────────────────── */}
+            {viewerOpen && activeDoc && activeDoc.original_name.endsWith(".pdf") && (
+              <div className="hidden md:block w-[480px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
+                <PDFViewer
+                  documentId={activeDoc.id}
+                  currentPage={pdfPage}
+                  onPageChange={setPdfPage}
+                  totalPages={activeDoc.page_count}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
