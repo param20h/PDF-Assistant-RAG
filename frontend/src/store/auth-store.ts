@@ -8,6 +8,7 @@ export interface AuthUser {
   username: string;
   email: string;
   is_admin: boolean;
+  hf_token?: string;
   created_at: string;
 }
 
@@ -23,6 +24,7 @@ interface AuthStore {
   initializeAuth: () => Promise<void>;
   syncTokensRefreshed: (detail?: { accessToken?: string; user?: AuthUser | null }) => void;
   syncLoggedOut: () => void;
+  setHfToken: (hfToken: string) => Promise<void>;
 }
 
 const getStoredToken = () =>
@@ -145,5 +147,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       loading: false,
       initialized: true,
     });
+  },
+
+  async setHfToken(hfToken: string) {
+    const response = await api.put<AuthUser>("/api/v1/auth/hf-token", { hf_token: hfToken });
+    set({ user: response });
   },
 }));

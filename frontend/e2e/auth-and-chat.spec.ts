@@ -60,7 +60,7 @@ test("logs in with email and password", async ({ page }) => {
   await page.goto("/login");
   await page.locator("#login-email").fill(user.email);
   await page.locator("#login-password").fill("password123");
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.locator("#sign-in-btn").click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText("No documents yet")).toBeVisible();

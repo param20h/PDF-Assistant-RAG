@@ -29,6 +29,7 @@ import { Briefcase, ChevronDown } from "lucide-react";
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
 import { useTheme } from "next-themes";
+import HuggingFaceTokenModal from "@/components/auth/HuggingFaceTokenModal";
 
 import { useSyncExternalStore } from "react";
 
@@ -199,6 +200,10 @@ export default function Header({
               <div className="px-3 py-2">
                 <p className="text-sm font-medium">{user?.username}</p>
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+              </div>
+              <DropdownMenuSeparator />
+              <div className="px-1 py-0.5">
+                <HuggingFaceTokenModal />
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem

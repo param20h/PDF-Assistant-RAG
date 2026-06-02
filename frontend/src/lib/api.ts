@@ -205,6 +205,29 @@ class ApiClient {
     return res.json();
   }
 
+  async put<T>(path: string, body?: unknown, options?: FetchOptions): Promise<T> {
+    const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
+      method: "PUT",
+      headers: this.getHeaders(options?.token),
+      body: body ? JSON.stringify(body) : undefined,
+      ...options,
+    });
+
+    // Auto-refresh on 401
+    if (res.status === 401 && !options?._skipRefresh) {
+      const newToken = await this.tryRefreshToken();
+      if (newToken) {
+        return this.put<T>(path, body, { ...options, token: newToken, _skipRefresh: true });
+      }
+    }
+
+    if (!res.ok) {
+      throw new Error(await this.getErrorMessage(res, res.statusText || "Request failed"));
+    }
+
+    return res.json();
+  }
+
   async postForm<T>(path: string, formData: FormData, options?: FetchOptions): Promise<T> {
     const token = options?.token || this.getToken();
     const headers: HeadersInit = {};
