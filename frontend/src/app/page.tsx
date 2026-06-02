@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { FileText, MessageSquare, Brain, Shield, Zap, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import ContributorsPanel from "@/components/layout/ContributorsPanel";
+import OpenSourceBadge from "@/components/layout/OpenSourceBadge";
 
 export default function HomePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && user) {
@@ -51,17 +54,29 @@ export default function HomePage() {
             accurate, cited insights powered by advanced AI retrieval.
           </p>
 
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-4 justify-center flex-wrap">
             <Link href="/register">
               <Button size="lg" className="px-8 text-base h-12">
                 Get Started Free
               </Button>
             </Link>
+
             <Link href="/login">
               <Button size="lg" variant="outline" className="px-8 text-base h-12">
                 Sign In
               </Button>
             </Link>
+
+            <a
+              href="/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open Developer API Swagger documentation"
+            >
+              <Button size="lg" variant="secondary" className="px-8 text-base h-12">
+                Developer API
+              </Button>
+            </a>
           </div>
         </div>
 
@@ -113,9 +128,27 @@ export default function HomePage() {
       </div>
 
       {/* ── Footer ──────────────────────────────────── */}
-      <footer className="text-center py-6 text-xs text-muted-foreground border-t border-border/50">
-        Built with FastAPI • LangChain • ChromaDB • HuggingFace • Next.js
+      <footer className="py-8 text-xs text-muted-foreground border-t border-border/50">
+        <div className="max-w-4xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <span>Built with FastAPI • LangChain • ChromaDB • HuggingFace • Next.js</span>
+          <div className="flex items-center gap-4">
+            <Link href="/privacy" className="hover:text-foreground transition-colors">
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className="hover:text-foreground transition-colors">
+              Terms of Service
+            </Link>
+          </div>
+        </div>
       </footer>
+
+      {/* Hall of Fame Modal */}
+      {hallOfFameOpen && (
+        <ContributorsPanel onClose={() => setHallOfFameOpen(false)} />
+      )}
+
+      {/* Open Source floating badge */}
+      <OpenSourceBadge onOpenHallOfFame={() => setHallOfFameOpen(true)} />
     </div>
   );
 }

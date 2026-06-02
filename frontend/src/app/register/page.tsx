@@ -1,16 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Brain, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
+import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 
 export default function RegisterPage() {
   const { register } = useAuth();
+  const { t } = useTranslation();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -18,6 +21,10 @@ export default function RegisterPage() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const handleGoogleSuccess = useCallback(() => {
+    router.replace("/dashboard");
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +35,7 @@ export default function RegisterPage() {
       await register(username, email, password);
       router.replace("/dashboard");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Registration failed";
+      const message = err instanceof Error ? err.message : t("register.fallbackError");
       setError(message);
     } finally {
       setLoading(false);
@@ -46,11 +53,18 @@ export default function RegisterPage() {
               <Brain className="w-6 h-6 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
-          <CardDescription>Start analyzing documents with AI</CardDescription>
+          <CardTitle className="text-2xl font-bold">{t("register.title")}</CardTitle>
+          <CardDescription>{t("register.description")}</CardDescription>
         </CardHeader>
 
         <CardContent>
+          <div className="mb-4">
+            <GoogleSignInButton
+              onError={setError}
+              onSuccess={handleGoogleSuccess}
+            />
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
@@ -59,7 +73,7 @@ export default function RegisterPage() {
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Username</label>
+              <label className="text-sm font-medium">{t("common.username")}</label>
               <Input
                 id="reg-username"
                 type="text"
@@ -73,7 +87,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email</label>
+              <label className="text-sm font-medium">{t("common.email")}</label>
               <Input
                 id="reg-email"
                 type="email"
@@ -86,12 +100,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Password</label>
+              <label className="text-sm font-medium">{t("common.password")}</label>
               <div className="relative">
                 <Input
                   id="reg-password"
                   type={showPw ? "text" : "password"}
-                  placeholder="Minimum 6 characters"
+                  placeholder={t("register.passwordPlaceholder")}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -112,18 +126,18 @@ export default function RegisterPage() {
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  Creating account...
+                  {t("register.submitting")}
                 </span>
               ) : (
-                "Create Account"
+                t("register.submit")
               )}
             </Button>
           </form>
 
           <p className="text-center text-sm text-muted-foreground mt-6">
-            Already have an account?{" "}
+            {t("register.hasAccount")}{" "}
             <Link href="/login" className="text-primary hover:underline font-medium">
-              Sign in
+              {t("register.signIn")}
             </Link>
           </p>
         </CardContent>

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 
 settings = get_settings()
 security = HTTPBearer()
@@ -30,20 +30,34 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ── JWT Token ────────────────────────────────────────
 
-def create_token(user_id: str) -> str:
-    """Create a JWT token with user_id as the subject."""
+def create_access_token(user_id) -> str:
+    """Create a JWT access token with user_id as the subject."""
     payload = {
-        "sub": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRY_HOURS),
+        "sub": str(user_id),
+        "type": "access",
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_ACCESS_EXPIRY_MINUTES),
         "iat": datetime.now(timezone.utc),
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def decode_token(token: str) -> Optional[str]:
+def create_refresh_token(user_id) -> str:
+    """Create a JWT refresh token with user_id as the subject."""
+    payload = {
+        "sub": str(user_id),
+        "type": "refresh",
+        "exp": datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_EXPIRY_DAYS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_token(token: str, token_type: str = "access") -> Optional[str]:
     """Decode JWT and return user_id, or None if invalid."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != token_type:
+            return None
         return payload.get("sub")
     except jwt.ExpiredSignatureError:
         return None
@@ -53,12 +67,39 @@ def decode_token(token: str) -> Optional[str]:
 
 # ── FastAPI Dependencies ─────────────────────────────
 
+import hashlib
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
-    """Dependency: extract and validate user from JWT bearer token."""
+    """Dependency: extract and validate user from JWT bearer token or API key."""
     token = credentials.credentials
+
+    # Check if token is an API key
+    if token.startswith("pdf_rag_"):
+        hashed = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        from app.models import ApiKey
+        api_key = db.query(ApiKey).filter(ApiKey.hashed_key == hashed, ApiKey.is_active == True).first()
+        if not api_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid API key",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        api_key.last_used_at = datetime.now(timezone.utc)
+        db.commit()
+
+        user = api_key.user
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found for this API key",
+            )
+        return user
+
+    # Otherwise, process as JWT
     user_id = decode_token(token)
 
     if not user_id:
@@ -79,11 +120,39 @@ def get_current_user(
     return user
 
 
+def _is_admin_user(user: User) -> bool:
+    """
+    Check if a user has administrative privileges.
+    Supports both the modern 'role' field and the legacy 'is_admin' boolean.
+    """
+    if not user:
+        return False
+    
+    # We check the role first (it can be an Enum or a plain string depending on the environment)
+    role_check = (user.role == UserRole.admin) or (str(user.role) == "admin")
+    
+    # Fallback to the legacy is_admin flag
+    return role_check or bool(user.is_admin)
+
+
 def get_admin_user(user: User = Depends(get_current_user)) -> User:
-    """Dependency: require admin privileges."""
-    if not user.is_admin:
+    """
+    FastAPI dependency that restricts access to administrators only.
+    Raises 403 Forbidden if the user lacks sufficient permissions.
+    """
+    if not _is_admin_user(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
     return user
+
+
+async def get_current_admin(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """
+    Alias for get_admin_user to maintain compatibility with existing routes.
+    Ensures the requesting user has administrative rights.
+    """
+    return get_admin_user(current_user)
