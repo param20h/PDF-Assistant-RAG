@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import type { SourceChunk } from "@/store/chat-store";
+import type { SourceBoundingBox, SourceChunk } from "@/store/chat-store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,7 +86,10 @@ const MetricBadge = ({
 
 interface Props {
   sources: SourceChunk[];
-  onPageClick: (page: number) => void;
+  onPageClick: (payload: {
+    page: number;
+    highlightRects?: SourceBoundingBox[];
+  }) => void;
 }
 
 export default function SourceCard({ sources = [], onPageClick }: Props) {
@@ -96,12 +99,12 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
 
   if (sources.length === 0) return null;
 
-  const toggleExcerpt = (i: number) => {
+  const toggleExcerpt = (index: number) => {
     const next = new Set(excerptOpen);
-    if (next.has(i)) {
-      next.delete(i);
+    if (next.has(index)) {
+      next.delete(index);
     } else {
-      next.add(i);
+      next.add(index);
     }
     setExcerptOpen(next);
   };
@@ -139,7 +142,12 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
                 <TooltipTrigger
                   type="button"
                   className="inline-flex"
-                  onClick={() => onPageClick(src.page + 1)}
+                  onClick={() =>
+                    onPageClick({
+                      page: src.page + 1,
+                      highlightRects: src.highlightRects,
+                    })
+                  }
                   aria-label={`Go to source page ${src.page + 1}. Confidence ${badgeMeta.label}`}
                 >
                   <Badge
@@ -190,7 +198,12 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
                   variant="ghost"
                   size="sm"
                   className="h-6 shrink-0 px-2 text-[10px]"
-                  onClick={() => onPageClick(src.page + 1)}
+                  onClick={() =>
+                    onPageClick({
+                      page: src.page + 1,
+                      highlightRects: src.highlightRects,
+                    })
+                  }
                   aria-label={`View source page ${src.page + 1}`}
                 >
                   <Eye className="w-3 h-3 mr-1" />
