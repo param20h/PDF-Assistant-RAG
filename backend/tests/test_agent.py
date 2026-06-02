@@ -20,7 +20,7 @@ def mock_agent_executor():
     with patch("app.rag.agent.get_agent_executor") as mock_get:
         executor = MagicMock()
         pdf_tool = MagicMock()
-        mock_get.return_value = (executor, pdf_tool)
+        mock_get.return_value = (executor, pdf_tool, "")
         yield executor, pdf_tool
 
 def test_generate_answer_success(mock_agent_executor, mock_retriever):
@@ -47,7 +47,7 @@ def test_generate_answer_success(mock_agent_executor, mock_retriever):
     assert result["sources"][0]["filename"] == "test.pdf"
     assert result["sources"][0]["text"] == "This is a test chunk."
     
-    executor.invoke.assert_called_once_with({"input": "test question"})
+    executor.invoke.assert_called_once_with({"input": "test question", "chat_history": ""})
 
 def test_generate_answer_empty_retrieval(mock_agent_executor, mock_retriever):
     executor, pdf_tool = mock_agent_executor
@@ -58,7 +58,7 @@ def test_generate_answer_empty_retrieval(mock_agent_executor, mock_retriever):
 
     assert result["answer"] == "I don't know."
     assert len(result["sources"]) == 0
-    executor.invoke.assert_called_once_with({"input": "test question"})
+    executor.invoke.assert_called_once_with({"input": "test question", "chat_history": ""})
 
 def test_generate_answer_stream_success(mock_agent_executor, mock_retriever):
     executor, pdf_tool = mock_agent_executor
