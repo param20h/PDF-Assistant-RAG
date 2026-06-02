@@ -258,6 +258,28 @@ class ApiClient {
     return res.json();
   }
 
+  async patch<T>(path: string, body?: unknown, options?: FetchOptions): Promise<T> {
+    const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
+      method: "PATCH",
+      headers: this.getHeaders(options?.token),
+      body: body ? JSON.stringify(body) : undefined,
+      ...options,
+    });
+
+    if (res.status === 401 && !options?._skipRefresh) {
+      const newToken = await this.tryRefreshToken();
+      if (newToken) {
+        return this.patch<T>(path, body, { ...options, token: newToken, _skipRefresh: true });
+      }
+    }
+
+    if (!res.ok) {
+      throw new Error(await this.getErrorMessage(res, res.statusText || "Request failed"));
+    }
+
+    return res.json();
+  }
+
   async delete<T>(path: string, options?: FetchOptions): Promise<T> {
     const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
       method: "DELETE",

@@ -85,17 +85,18 @@ test("creates an account from the signup form", async ({ page }) => {
   await expect(page.getByText("No documents yet")).toBeVisible();
 });
 
-test("uploads a document and chats with it", async ({ page }) => {
+test("uploads a PDF document and chats with it", async ({ page }) => {
   const documents: typeof uploadedDocument[] = [];
+  const pdfDoc = { ...uploadedDocument, original_name: "test.pdf" };
   const markdownAnswer = [
-    "A short summary.",
+    "A short summary of the PDF.",
     "",
     "| Field | Value |",
     "| --- | --- |",
-    "| Pages | 1 |",
+    "| Format | PDF |",
     "",
     "```ts",
-    "const answer = 42;",
+    "const isPdf = true;",
     "```",
   ].join("\n");
 
@@ -107,8 +108,8 @@ test("uploads a document and chats with it", async ({ page }) => {
   await mockDashboardApis(page, documents);
 
   await page.route("**/api/v1/documents/upload", async (route) => {
-    documents.push(uploadedDocument);
-    await route.fulfill({ status: 202, json: uploadedDocument });
+    documents.push(pdfDoc);
+    await route.fulfill({ status: 202, json: pdfDoc });
   });
 
   await page.route("**/api/v1/chat/history/doc-1", async (route) => {
@@ -128,23 +129,73 @@ test("uploads a document and chats with it", async ({ page }) => {
   });
 
   await page.goto("/dashboard");
+  
+  // Upload as a PDF
   await page.locator('input[type="file"]').setInputFiles({
-    name: "notes.txt",
-    mimeType: "text/plain",
-    buffer: Buffer.from("hello world"),
+    name: "test.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\n%..."),
   });
 
-  const documentButton = page.getByRole("button", { name: /notes\.txt/ });
+  const documentButton = page.getByRole("button", { name: /test\.pdf/ });
   await expect(documentButton).toBeVisible();
   await documentButton.click();
   await expect(page.getByText("Ask about your document")).toBeVisible();
 
-  await page.locator("#chat-input").fill("Summarize this document");
+  await page.locator("#chat-input").fill("Summarize this PDF");
   await page.locator("#send-btn").click();
 
-  await expect(page.getByText("Summarize this document")).toBeVisible();
-  await expect(page.getByText("A short summary.")).toBeVisible();
+  await expect(page.getByText("Summarize this PDF")).toBeVisible();
+  await expect(page.getByText("A short summary of the PDF.")).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Field" })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "Pages" })).toBeVisible();
-  await expect(page.getByText("const answer = 42;")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Format" })).toBeVisible();
+  await expect(page.getByText("const isPdf = true;")).toBeVisible();
+});
+
+test("deletes a document successfully", async ({ page }) => {
+  const documents = [{ ...uploadedDocument, original_name: "test.pdf" }];
+  
+  await page.addInitScript(() => {
+    localStorage.setItem("token", "access-token");
+    localStorage.setItem("refresh_token", "refresh-token");
+  });
+
+  await mockDashboardApis(page, documents);
+
+  await page.route("**/api/v1/documents/doc-1", async (route) => {
+    expect(route.request().method()).toBe("DELETE");
+    documents.pop();
+    await route.fulfill({ status: 200, json: { message: "deleted" } });
+  });
+
+  await page.goto("/dashboard");
+  const documentButton = page.getByRole("button", { name: /test\.pdf/ });
+  await expect(documentButton).toBeVisible();
+  
+  // Handle confirm dialog (must be registered BEFORE click)
+  page.on('dialog', dialog => dialog.accept());
+
+  // Delete the document
+  await documentButton.hover();
+  // Find the button with Trash2 icon
+  await page.locator('button.shrink-0:has(svg.lucide-trash2)').click();
+
+  await expect(page.getByText("No documents yet")).toBeVisible();
+});
+
+test("logs out successfully", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("token", "access-token");
+    localStorage.setItem("refresh_token", "refresh-token");
+  });
+
+  await mockDashboardApis(page);
+
+  await page.goto("/dashboard");
+  await page.getByRole("button", { name: "tester" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+
+  await expect(page).toHaveURL(/\/login$/);
+  const token = await page.evaluate(() => localStorage.getItem("token"));
+  expect(token).toBeNull();
 });

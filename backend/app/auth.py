@@ -2,7 +2,7 @@
 JWT authentication — register, login, and token verification.
 """
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Any
 
 import jwt
 import bcrypt
@@ -59,6 +59,32 @@ def decode_token(token: str, token_type: str = "access") -> Optional[str]:
         if payload.get("type") != token_type:
             return None
         return payload.get("sub")
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
+def create_invite_token(inviter_id: str, email: str, workspace_name: str) -> str:
+    """Create a time-bound workspace invitation JWT."""
+    payload: dict[str, Any] = {
+        "sub": inviter_id,
+        "email": email,
+        "workspace_name": workspace_name,
+        "type": "invite",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=settings.INVITE_TOKEN_EXPIRY_HOURS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_invite_token(token: str) -> Optional[dict[str, Any]]:
+    """Decode a workspace invite JWT and return its payload if valid."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "invite":
+            return None
+        return payload
     except jwt.ExpiredSignatureError:
         return None
     except jwt.InvalidTokenError:

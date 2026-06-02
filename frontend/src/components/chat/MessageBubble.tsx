@@ -6,8 +6,9 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause } from "lucide-react";
+import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useChatStore } from "@/store/chat-store";
 
 interface Props {
   message: ChatMsg;
@@ -68,6 +69,9 @@ export default function MessageBubble({ message }: Props) {
     };
   }, []);
 
+  const [feedbackState, setFeedbackState] = useState<"up" | "down" | null>(message.feedback ?? null);
+  const setMessages = useChatStore((s) => s.setMessages);
+
   const handleCopy = async () => {
     if (!message.content) return;
     try {
@@ -107,7 +111,6 @@ export default function MessageBubble({ message }: Props) {
   const handleSpeech = () => {
     if (!message.content || message.isStreaming) return;
 
-    // Already speaking — cancel ചെയ്യും
     if (isSpeaking) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
@@ -127,11 +130,25 @@ export default function MessageBubble({ message }: Props) {
       utteranceRef.current = null;
     };
 
-    // Chrome bug fix: onstart reliable അല്ല, speak() മുൻപ് set ചെയ്യണം
     setIsSpeaking(true);
     window.speechSynthesis.speak(utterance);
   };
 
+  const handleFeedback = async (value: "up" | "down") => {
+    const next = feedbackState === value ? null : value;
+    setFeedbackState(next);
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === message.id ? { ...msg, feedback: next } : msg)),
+    );
+    try {
+      await api.patch(`/api/v1/chat/feedback/${message.id}`, { feedback: next });
+    } catch {
+      setFeedbackState(message.feedback ?? null);
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === message.id ? { ...msg, feedback: message.feedback } : msg)),
+      );
+    }
+  };
   return (
     <div
       className={`flex gap-3 py-3 animate-fade-in-up ${isUser ? "justify-end" : "justify-start"}`}
@@ -207,6 +224,27 @@ export default function MessageBubble({ message }: Props) {
                     Copied!
                   </div>
                 )}
+
+                {/* Play / Pause button */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
+                    isSpeaking
+                      ? "opacity-100"
+                      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                  }`}
+                  onClick={handleSpeech}
+                  disabled={message.isStreaming}
+                  aria-label={isSpeaking ? "Stop speech" : "Play speech"}
+                >
+                  {isSpeaking ? (
+                    <Pause className="w-3.5 h-3.5 text-primary" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5" />
+                  )}
+                </Button>
               </>
             )}
 
@@ -230,6 +268,35 @@ export default function MessageBubble({ message }: Props) {
                 <span className="inline-block w-0.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
               )}
             </div>
+            {!message.isStreaming && !isUser && (
+              <div className="flex items-center gap-1 pt-2 border-t border-border/40 mt-3">
+                <span className="text-[11px] text-muted-foreground/60 mr-1">Was this helpful?</span>
+                <button
+                  type="button"
+                  onClick={() => handleFeedback("up")}
+                  className={`p-1 rounded transition-colors ${
+                    feedbackState === "up"
+                      ? "text-emerald-500 bg-emerald-500/10"
+                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
+                  }`}
+                  aria-label="Thumbs up"
+                >
+                  <ThumbsUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFeedback("down")}
+                  className={`p-1 rounded transition-colors ${
+                    feedbackState === "down"
+                      ? "text-red-500 bg-red-500/10"
+                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
+                  }`}
+                  aria-label="Thumbs down"
+                >
+                  <ThumbsDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

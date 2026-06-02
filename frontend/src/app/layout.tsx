@@ -33,6 +33,7 @@ export default function RootLayout({
           defaultTheme="dark"
           enableSystem={false}
           disableTransitionOnChange
+          themes={["light", "dark", "ocean", "forest", "sunset"]}
         >
           <AuthProvider>
             <I18nProvider>
