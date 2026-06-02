@@ -396,6 +396,7 @@ def ask_question_stream(
 
     # Resolve or create session
     session_id = payload.session_id
+    session = None
     if not session_id:
         session = db.query(ChatSession).filter(ChatSession.user_id == user.id).first()
         if not session:
@@ -404,6 +405,13 @@ def ask_question_stream(
             db.commit()
             db.refresh(session)
         session_id = session.id
+    else:
+        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+
+    # Auto-title session if it has a generic name
+    if session and (session.title == "Default Chat" or session.title.startswith("Chat ")):
+        session.title = (payload.question[:40] + "...") if len(payload.question) > 40 else payload.question
+        db.commit()
 
     # Save user message immediately
     _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
