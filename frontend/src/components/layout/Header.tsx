@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -62,6 +63,7 @@ export default function Header({
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const workspace = useWorkspaceStore((s) => s.workspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
 
@@ -72,6 +74,7 @@ export default function Header({
 
   const fetchDocumentsForWorkspace = async (id: string) => {
     // Placeholder: simulate fetching documents for the selected workspace
+    setWorkspaceLoading(true);
     try {
       // Attempt a real API call if available; otherwise this will fail silently
       const res = await api.get(`/api/v1/documents?workspace=${encodeURIComponent(id)}`).catch(() => null);
@@ -80,6 +83,8 @@ export default function Header({
       // e.g. documentStore.setDocuments(res || [])
     } catch (err) {
       console.warn("Failed to fetch documents for workspace", id, err);
+    } finally {
+      setWorkspaceLoading(false);
     }
   };
 
@@ -143,9 +148,18 @@ export default function Header({
           {/* Workspace switcher */}
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
-              <Briefcase className="w-4 h-4" />
-              <span className="text-sm hidden sm:inline">{WORKSPACES.find((w) => w.id === workspace)?.label}</span>
-              <ChevronDown className="w-3 h-3" />
+              {workspaceLoading ? (
+                <>
+                  <Skeleton className="h-4 w-4 rounded-sm" />
+                  <Skeleton className="hidden h-4 w-16 sm:block" />
+                </>
+              ) : (
+                <>
+                  <Briefcase className="w-4 h-4" />
+                  <span className="text-sm hidden sm:inline">{WORKSPACES.find((w) => w.id === workspace)?.label}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </>
+              )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
               {WORKSPACES.map((w) => (
