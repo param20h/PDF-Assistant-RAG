@@ -67,3 +67,5 @@ pypdf
 reportlab
 crawl4ai
 ddgs
+pytesseract
+Pillow

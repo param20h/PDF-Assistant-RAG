@@ -97,6 +97,28 @@ def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
                 "page": page_num + 1,
                 "chunk_type": "text",
             })
+        else:
+            # Fallback to OCR for scanned pages
+            try:
+                import pytesseract
+                from PIL import Image
+                import io
+                import logging
+
+                pix = page.get_pixmap(dpi=300)
+                img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+                ocr_text = pytesseract.image_to_string(img).strip()
+
+                if ocr_text:
+                    pages.append({
+                        "text": ocr_text,
+                        "page": page_num + 1,
+                        "chunk_type": "text",
+                        "ocr": True,
+                    })
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"OCR fallback failed for page {page_num + 1}: {e}")
 
     doc.close()
     return pages
@@ -126,6 +148,26 @@ def extract_pdf_with_tables(filepath: str) -> List[Dict[str, Any]]:
                     "page": page_num,
                     "chunk_type": "text",
                 })
+            elif not tables:
+                # Fallback to OCR for scanned image pages
+                try:
+                    import pytesseract
+                    import logging
+                    from PIL import Image
+                    
+                    img = page.to_image(resolution=300).original.convert("RGB")
+                    ocr_text = pytesseract.image_to_string(img).strip()
+                    
+                    if ocr_text:
+                        pages.append({
+                            "text": ocr_text,
+                            "page": page_num,
+                            "chunk_type": "text",
+                            "ocr": True,
+                        })
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"OCR fallback failed for page {page_num}: {e}")
 
             for table_index, table in enumerate(tables):
                 table_text = _table_to_markdown(table.extract() or [])
