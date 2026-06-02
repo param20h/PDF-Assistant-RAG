@@ -17,6 +17,7 @@ export interface SourceChunk {
   page: number;
   score?: number;
   confidence?: number;
+  highlightRects?: SourceBoundingBox[];
 }
 
 export interface ChatMsg {

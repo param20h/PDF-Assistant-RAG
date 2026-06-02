@@ -56,9 +56,9 @@ export default function PDFViewer({
   highlightTarget,
 }: Props) {
   const [scale, setScale] = useState(1.0);
-  const [, setLoading] = useState(true);
   const [pageInput, setPageInput] = useState(String(currentPage));
   const [prevCurrentPage, setPrevCurrentPage] = useState(currentPage);
+  const viewerRef = useRef<HTMLDivElement>(null);
 
   // Sync page input state with current page prop updates during render phase
   if (currentPage !== prevCurrentPage) {
@@ -75,15 +75,7 @@ export default function PDFViewer({
     httpHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
   };
 
-  const handlePageSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const num = parseInt(pageInput.trim());
-    if (!isNaN(num) && num >= 1 && num <= totalPages) {
-      onPageChange(num);
-    } else {
-      setPageInput(String(currentPage));
-    }
-  }, [highlightTarget?.page, currentPage, onPageChange]);
+
 
   useEffect(() => {
     if (viewerRef.current && highlightTarget?.page === currentPage) {
@@ -122,9 +114,7 @@ export default function PDFViewer({
     });
   }, [highlightTarget, currentPage]);
 
-  const handleDocumentLoadSuccess = () => {
-    setLoadedPageKey(pageKey);
-  };
+
 
   return (
     <div className="h-full flex flex-col bg-background" ref={viewerRef}>
@@ -147,18 +137,18 @@ export default function PDFViewer({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              const input = event.currentTarget.querySelector("input");
-              const value = input?.value ?? "";
-              const pageNumber = parseInt(String(value).trim(), 10);
+              const pageNumber = parseInt(pageInput.trim(), 10);
               if (!Number.isNaN(pageNumber) && pageNumber >= 1 && pageNumber <= totalPages) {
                 onPageChange(pageNumber);
+              } else {
+                setPageInput(String(currentPage));
               }
             }}
             className="flex items-center gap-1 text-xs"
           >
             <Input
-              key={currentPage}
-              defaultValue={String(currentPage)}
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value)}
               className="w-10 h-7 text-center text-xs p-0 bg-background/50"
             />
             <span className="text-muted-foreground">/ {totalPages}</span>
@@ -206,10 +196,8 @@ export default function PDFViewer({
       <div className="flex-1 overflow-auto bg-muted/30 flex justify-center items-start p-4 relative w-full">
         <Document
           file={fileConfig}
-          onLoadSuccess={() => setLoading(false)}
           onLoadError={(err) => {
             console.error("PDF load error:", err);
-            setLoading(false);
           }}
           loading={
             <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
@@ -235,17 +223,28 @@ export default function PDFViewer({
           }
           className="shadow-md border border-border bg-card max-w-full"
         >
-          <Page
-            pageNumber={currentPage}
-            scale={scale}
-            renderAnnotationLayer={false}
-            renderTextLayer={true}
-            loading={
-              <div className="flex items-center justify-center p-8">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              </div>
-            }
-          />
+          <div className="relative">
+            <Page
+              pageNumber={currentPage}
+              scale={scale}
+              renderAnnotationLayer={false}
+              renderTextLayer={true}
+              loading={
+                <div className="flex items-center justify-center p-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                </div>
+              }
+            />
+            <div className="absolute inset-0 pointer-events-none z-10">
+              {overlayRects.map((style, index) => (
+                <div
+                  key={index}
+                  className="absolute bg-yellow-400/40 rounded-sm border border-yellow-300/50"
+                  style={style}
+                />
+              ))}
+            </div>
+          </div>
         </Document>
       </div>
     </div>

@@ -138,21 +138,20 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
                   <Badge
                     variant="outline"
                     className={`text-[10px] h-5 cursor-pointer hover:bg-primary/20 transition-colors ${badgeMeta.className}`}
-                    onClick={() => onPageClick(src.page + 1)}
+                    onClick={() =>
+                      onPageClick({
+                        page: src.page + 1,
+                        highlightRects: src.highlightRects,
+                      })
+                    }
                   >
                     p.{src.page + 1} - {badgeMeta.label}
                   </Badge>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-[10px]"
-                  onClick={() =>
-                    onPageClick({
-                      page: source.page + 1,
-                      highlightRects: source.highlightRects,
-                    })
-                  }
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  align="center"
+                  className="max-w-xs p-2"
                 >
                   <div className="mb-1 flex flex-wrap gap-1">
                     <MetricBadge label="Score" value={src.score} />
@@ -190,7 +189,12 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
                   variant="ghost"
                   size="sm"
                   className="h-6 shrink-0 px-2 text-[10px]"
-                  onClick={() => onPageClick(src.page + 1)}
+                  onClick={() =>
+                    onPageClick({
+                      page: src.page + 1,
+                      highlightRects: src.highlightRects,
+                    })
+                  }
                 >
                   <Eye className="w-3 h-3 mr-1" />
                   View
