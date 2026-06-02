@@ -368,6 +368,36 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/1
 
 > Get your free HuggingFace token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 
+#### Email Verification Setup
+
+Password registration requires email verification before users can log in. To send real verification emails, add SMTP settings to `backend/.env`:
+
+```env
+FRONTEND_URL=http://localhost:3000
+EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS=24
+MAIL_USERNAME=your_smtp_username
+MAIL_PASSWORD=your_smtp_or_gmail_app_password
+MAIL_FROM=your_sender_email@example.com
+MAIL_SERVER=smtp.example.com
+MAIL_PORT=587
+MAIL_STARTTLS=True
+MAIL_SSL_TLS=False
+```
+
+For Gmail, enable 2-Step Verification on the sender Google account, create a 16-character App Password from Google Account > Security > App passwords, then use:
+
+```env
+MAIL_USERNAME=yourgmail@gmail.com
+MAIL_PASSWORD=your_16_character_app_password
+MAIL_FROM=yourgmail@gmail.com
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_STARTTLS=True
+MAIL_SSL_TLS=False
+```
+
+Without SMTP settings in a non-production environment, registration returns a local verification link so contributors can test the flow without private email credentials. With SMTP configured, the same link is sent by email.
+
 ### 3. Set up crawl4ai (URL Upload Feature)
 
 The URL upload feature (`POST /api/v1/documents/urlupload`) uses **crawl4ai** with a Playwright browser to crawl web pages. `crawl4ai-setup` handles the Playwright browser installation automatically — run it once after `pip install`:
@@ -496,7 +526,7 @@ docker compose up --build
 | `HF_CLIENT_ID` | ❌ | — | HuggingFace OAuth client ID. Required only for Hugging Face sign-in. | [HuggingFace Developer Settings](https://huggingface.co/settings/connected-applications) |
 | `HF_CLIENT_SECRET` | ❌ | — | HuggingFace OAuth client secret. Required only for Hugging Face sign-in. | [HuggingFace Developer Settings](https://huggingface.co/settings/connected-applications) |
 | `HF_REDIRECT_URI` | ❌ | `http://localhost:8000/api/v1/auth/callback/huggingface` | HuggingFace OAuth callback redirect URI. | — |
-| `FRONTEND_URL` | ❌ | `http://localhost:3000` | Frontend URL to redirect to after OAuth callback finishes. | — |
+| `FRONTEND_URL` | ❌ | `http://localhost:3000` | Public frontend URL used for OAuth redirects and email verification links. | Your deployed frontend URL |
 | `ENVIRONMENT` | ❌ | `development` | Runtime mode. Set to `production` for deployment to lock CORS. | — |
 | `DEBUG` | ❌ | `False` | Enable debug mode with detailed error pages. Never enable in production. | — |
 | `ALLOWED_ORIGINS` | ❌ | `http://localhost:3000,http://localhost:7860` | Comma-separated CORS origins (only enforced in production). | Your deployed domain(s) |
@@ -505,6 +535,14 @@ docker compose up --build
 | `JWT_EXPIRY_HOURS` | ❌ | `72` | JWT token lifetime in hours before re-login is required. | — |
 | `GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID used by FastAPI to verify ID tokens. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID exposed to the Next.js Google sign-in button. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS` | ❌ | `24` | Email verification token lifetime in hours. | — |
+| `MAIL_USERNAME` | ❌ | — | SMTP username for account verification emails. | SMTP provider or Gmail App Password setup |
+| `MAIL_PASSWORD` | ❌ | — | SMTP password or Gmail 16-character App Password. | SMTP provider or Gmail App Password setup |
+| `MAIL_FROM` | ❌ | — | Sender email address for verification emails. | Verified sender address |
+| `MAIL_SERVER` | ❌ | — | SMTP server hostname, for example `smtp.gmail.com`. | SMTP provider |
+| `MAIL_PORT` | ❌ | `587` | SMTP server port. | SMTP provider |
+| `MAIL_STARTTLS` | ❌ | `True` | Enable STARTTLS for SMTP. | SMTP provider |
+| `MAIL_SSL_TLS` | ❌ | `False` | Enable SSL/TLS for SMTP. | SMTP provider |
 | `CELERY_BROKER_URL` | ❌ | `redis://localhost:6379/0` | Redis broker URL used by FastAPI to queue document ingestion jobs. | Redis |
 | `CELERY_RESULT_BACKEND` | ❌ | `redis://localhost:6379/1` | Redis backend URL used by Celery to store task state/results. | Redis |
 | `UPLOAD_DIR` | ❌ | `./data/uploads` | Local directory for storing uploaded documents. | — |

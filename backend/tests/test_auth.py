@@ -10,9 +10,9 @@ def test_register_success(client):
 
     assert response.status_code == 201
     payload = response.json()
-    assert payload["access_token"]
-    assert payload["refresh_token"]
-    assert payload["user"]["email"] == "newuser@example.com"
+    assert payload["message"] == "Registration successful. Please check your email to verify your account before logging in."
+    assert payload["email"] == "newuser@example.com"
+    assert payload["verification_url"].startswith("/verify-email?token=")
 
 
 def test_register_duplicate_email_or_username_conflict(client):

@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     HF_CLIENT_SECRET: str = ""
     HF_REDIRECT_URI: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+
+    # ── Email verification ───────────────────────────────
+    MAIL_USERNAME: str = ""
+    MAIL_PASSWORD: str = ""
+    MAIL_FROM: str = ""
+    MAIL_SERVER: str = ""
+    MAIL_PORT: int = 587
+    MAIL_STARTTLS: bool = True
+    MAIL_SSL_TLS: bool = False
 
     # Google Drive background sync
     DRIVE_SYNC_ENABLED: bool = False
