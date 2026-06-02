@@ -1,12 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import dynamic from "next/dynamic";
-import { api } from "@/lib/api";
 import type { DocInfo } from "@/app/dashboard/page";
-import { Loader2, Columns, X, ArrowLeftRight } from "lucide-react";
+import { Columns, X, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 
 const PDFViewer = dynamic(() => import("./PDFViewer"), {
   ssr: false,
@@ -19,17 +17,13 @@ interface Props {
 }
 
 export default function DocumentComparison({ documents, onClose }: Props) {
-  const [doc1, setDoc1] = useState<DocInfo | null>(null);
-  const [doc2, setDoc2] = useState<DocInfo | null>(null);
+  const [doc1Id, setDoc1Id] = useState<string | null>(documents.length >= 2 ? documents[0].id : null);
+  const [doc2Id, setDoc2Id] = useState<string | null>(documents.length >= 2 ? documents[1].id : null);
   const [page1, setPage1] = useState(1);
   const [page2, setPage2] = useState(1);
 
-  useEffect(() => {
-    if (documents.length >= 2) {
-      setDoc1(documents[0]);
-      setDoc2(documents[1]);
-    }
-  }, [documents]);
+  const doc1 = documents.find(d => d.id === doc1Id) || (documents.length > 0 ? documents[0] : null);
+  const doc2 = documents.find(d => d.id === doc2Id) || (documents.length > 1 ? documents[1] : null);
 
   if (documents.length < 2) {
     return (
@@ -67,7 +61,7 @@ export default function DocumentComparison({ documents, onClose }: Props) {
             <select
               className="w-full bg-transparent text-sm font-bold focus:outline-none cursor-pointer"
               value={doc1?.id || ""}
-              onChange={(e) => setDoc1(documents.find(d => d.id === e.target.value) || null)}
+              onChange={(e) => setDoc1Id(e.target.value)}
             >
               {documents.map(d => (
                 <option key={d.id} value={d.id}>{d.original_name}</option>
@@ -92,7 +86,7 @@ export default function DocumentComparison({ documents, onClose }: Props) {
             <select
               className="w-full bg-transparent text-sm font-bold focus:outline-none cursor-pointer"
               value={doc2?.id || ""}
-              onChange={(e) => setDoc2(documents.find(d => d.id === e.target.value) || null)}
+              onChange={(e) => setDoc2Id(e.target.value)}
             >
               {documents.map(d => (
                 <option key={d.id} value={d.id}>{d.original_name}</option>
