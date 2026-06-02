@@ -207,6 +207,27 @@ export default function MessageBubble({ message }: Props) {
                     Copied!
                   </div>
                 )}
+
+                {/* Play / Pause button */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
+                    isSpeaking
+                      ? "opacity-100"
+                      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                  }`}
+                  onClick={handleSpeech}
+                  disabled={message.isStreaming}
+                  aria-label={isSpeaking ? "Stop speech" : "Play speech"}
+                >
+                  {isSpeaking ? (
+                    <Pause className="w-3.5 h-3.5 text-primary" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5" />
+                  )}
+                </Button>
               </>
             )}
 
