@@ -117,6 +117,8 @@ class User(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, nullable=True, index=True)
     hf_token = Column(EncryptedString, nullable=True)
+    display_name = Column(String(120), nullable=True)
+    avatar_url = Column(String(500), nullable=True)
 
     # Relationships
     documents = relationship("Document", back_populates="owner", cascade="all, delete-orphan")

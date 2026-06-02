@@ -30,3 +30,9 @@ Thumbs.db
 *.log
 static/
 .planning/
+
+venv/
+__pycache__/
+*.pyc
+uploads/
+.env
