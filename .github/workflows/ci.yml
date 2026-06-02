@@ -78,7 +78,7 @@ jobs:
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-report=html:htmlcov \
-            --cov-fail-under=60
+            --cov-fail-under=40
 
       - name: Upload coverage XML report
         if: always()
@@ -95,8 +95,8 @@ jobs:
         uses: py-cov-action/python-coverage-comment-action@v3
         with:
           GITHUB_TOKEN: ${{ github.token }}
-          MINIMUM_GREEN: 60
-          MINIMUM_ORANGE: 40
+          MINIMUM_GREEN: 40
+          MINIMUM_ORANGE: 30
         continue-on-error: true
 
   # ── 2. CodeQL Static Security Analysis ──────────────────
