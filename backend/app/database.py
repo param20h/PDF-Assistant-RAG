@@ -110,6 +110,25 @@ def _migrate_schema():
                     "Migration skipped (may already exist): %s.%s", table, column
                 )
 
+    # Migrate chat_messages
+    try:
+        existing_chat_columns = {c["name"] for c in inspector.get_columns("chat_messages")}
+    except Exception:
+        existing_chat_columns = set()
+    chat_migrations = [
+        ("chat_messages", "feedback", "ALTER TABLE chat_messages ADD COLUMN feedback VARCHAR(10)"),
+    ]
+    for table, column, ddl in chat_migrations:
+        if column not in existing_chat_columns:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+                logger.info("Migration: added column %s.%s", table, column)
+            except Exception:
+                logger.warning(
+                    "Migration skipped (may already exist): %s.%s", table, column
+                )
+
 
 
 def init_db():

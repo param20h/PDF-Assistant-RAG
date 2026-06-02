@@ -61,7 +61,10 @@ jobs:
         run: |
           python -c "import sys; sys.path.insert(0, 'backend'); from app.config import get_settings; get_settings(); print('Config imports OK')"
 
-      - name: Run backend pytest suite
+      - name: Install pytest-cov
+        run: pip install pytest-cov
+
+      - name: Run backend pytest suite with coverage
         env:
           SECRET_KEY: ci-dummy-secret
           DATABASE_URL: sqlite:///./ci_test.db
@@ -69,7 +72,32 @@ jobs:
           HF_TOKEN: ci-dummy-token
           UPLOAD_DIR: /tmp/uploads
           CHROMA_PERSIST_DIR: /tmp/chroma
-        run: pytest backend/tests -v
+        run: |
+          pytest backend/tests -v \
+            --cov=backend/app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-fail-under=40
+
+      - name: Upload coverage XML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          retention-days: 7
+
+      - name: Coverage summary comment (PR only)
+        if: github.event_name == 'pull_request'
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: 40
+          MINIMUM_ORANGE: 30
+        continue-on-error: true
 
   # ── 2. CodeQL Static Security Analysis ──────────────────
   codeql-analysis:
