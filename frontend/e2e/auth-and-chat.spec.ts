@@ -131,8 +131,9 @@ test("uploads a PDF document and chats with it", async ({ page }) => {
     buffer: Buffer.from("%PDF-1.4\n%..."),
   });
 
-  await expect(page.getByText("test.pdf")).toBeVisible();
-  await page.getByText("test.pdf").click();
+  const documentButton = page.getByRole("button", { name: /test\.pdf/ });
+  await expect(documentButton).toBeVisible();
+  await documentButton.click();
   await expect(page.getByText("Ask about your document")).toBeVisible();
 
   await page.locator("#chat-input").fill("Summarize this PDF");
@@ -146,37 +147,32 @@ test("uploads a PDF document and chats with it", async ({ page }) => {
 });
 
 test("deletes a document successfully", async ({ page }) => {
-  const pdfDoc = { ...uploadedDocument, original_name: "test.pdf" };
+  const documents = [{ ...uploadedDocument, original_name: "test.pdf" }];
   
   await page.addInitScript(() => {
     localStorage.setItem("token", "access-token");
     localStorage.setItem("refresh_token", "refresh-token");
   });
 
-  await mockDashboardApis(page, [pdfDoc]);
+  await mockDashboardApis(page, documents);
 
   await page.route("**/api/v1/documents/doc-1", async (route) => {
     expect(route.request().method()).toBe("DELETE");
-    await route.fulfill({ status: 204 });
+    documents.pop();
+    await route.fulfill({ status: 200, json: { message: "deleted" } });
   });
 
-  // Mock empty list after deletion
-  await page.route("**/api/v1/documents/", async (route) => {
-    if (route.request().method() === "GET") {
-        await route.fulfill({ json: { items: [], total: 0, page: 1, pages: 0 } });
-    }
-  }, { times: 1 });
-
   await page.goto("/dashboard");
-  await expect(page.getByText("test.pdf")).toBeVisible();
+  const documentButton = page.getByRole("button", { name: /test\.pdf/ });
+  await expect(documentButton).toBeVisible();
   
   // Handle confirm dialog (must be registered BEFORE click)
   page.on('dialog', dialog => dialog.accept());
 
   // Delete the document
-  await page.getByText("test.pdf").hover();
+  await documentButton.hover();
   // Find the button with Trash2 icon
-  await page.locator('button:has(svg.lucide-trash2)').click();
+  await page.locator('button.shrink-0:has(svg.lucide-trash2)').click();
 
   await expect(page.getByText("No documents yet")).toBeVisible();
 });
