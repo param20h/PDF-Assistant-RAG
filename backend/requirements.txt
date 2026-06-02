@@ -65,5 +65,5 @@ python-magic; sys_platform != "win32"
 python-docx
 pypdf
 reportlab
-crawl4ai
+# crawl4ai
 ddgs

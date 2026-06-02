@@ -12,6 +12,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import {
   Brain,
@@ -20,12 +26,14 @@ import {
   PanelRightClose,
   PanelRightOpen,
   LogOut,
-  Moon,
-  Sun,
   Menu,
   X,
+  Palette,
+  Briefcase, 
+  ChevronDown,
+  Sun,
+  Moon
 } from "lucide-react";
-import { Briefcase, ChevronDown } from "lucide-react";
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
 import { useTheme } from "next-themes";
@@ -203,7 +211,7 @@ export default function Header({
               aria-label={`Open user menu for ${user?.username ?? "current user"}`}
             >
               <Avatar className="w-6 h-6">
-                <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
+                <AvatarFallback className="text-[10px] bg-primary text-primary-foreground">
                   {user?.username?.slice(0, 2).toUpperCase() || "U"}
                 </AvatarFallback>
               </Avatar>
