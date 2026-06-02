@@ -23,7 +23,7 @@ FROM python:3.11-slim AS python-builder
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libmagic1 \
     --no-install-recommends && \
@@ -34,7 +34,10 @@ RUN python -m venv "$VIRTUAL_ENV"
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt && \
-    python -m spacy download en_core_web_sm
+    python -m spacy download en_core_web_sm && \
+    pip cache purge && \
+    find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + && \
+    find /opt/venv -type f -name "*.pyc" -delete
 
 # --------------------------------------------------------
 # Stage 3: Runtime image with only app code and artifacts
@@ -53,7 +56,7 @@ RUN useradd -m -u 1000 appuser
 WORKDIR /app
 
 # Runtime-only system packages. Build tools stay in python-builder.
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libmagic1 \
     --no-install-recommends && \
@@ -62,7 +65,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=python-builder /opt/venv /opt/venv
 
 # Copy backend code
-COPY backend/app ./backend/app
+COPY backend/app ./app
 COPY backend/__init__.py ./backend/__init__.py
 
 # Copy frontend build from stage 1
@@ -72,14 +75,11 @@ COPY --from=frontend-builder /app/frontend/out ./frontend/out
 RUN mkdir -p /app/data/uploads /app/data/chroma_db /app/data/graphs /app/data/huggingface && \
     chown -R appuser:appuser /app
 
-# Copy entrypoint
-COPY start.sh ./start.sh
-RUN chmod +x start.sh
-
 # Switch to non-root user
 USER appuser
 
 # HuggingFace Spaces requires port 7860
 EXPOSE 7860
 
-CMD ["./start.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+
