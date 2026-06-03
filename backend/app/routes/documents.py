@@ -20,7 +20,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User, Document
-from app.schemas import DocumentResponse, DocumentListResponse, DocumentStatusResponse, ChunkSettings, UploadUrl
+from app.schemas import (
+    DocumentResponse,
+    DocumentListResponse,
+    DocumentStatusResponse,
+    DocumentRename,
+    ChunkSettings,
+    UploadUrl,
+)
 from app.auth import get_current_user
 from app.config import get_settings
 from app.tasks import process_document
@@ -415,6 +422,34 @@ def list_documents(
         page=page,
         pages=pages
     )
+
+
+@router.patch("/{document_id}", response_model=DocumentResponse)
+def rename_document(
+    document_id: str,
+    rename: DocumentRename,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Rename an uploaded document without changing its stored file or vector data.
+    """
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.is_deleted.is_(False),
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if str(doc.user_id) != str(user.id):
+        raise HTTPException(status_code=403, detail="You do not have permission to rename this document")
+
+    doc.original_name = rename.name
+    db.commit()
+    db.refresh(doc)
+
+    return DocumentResponse.model_validate(doc)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
