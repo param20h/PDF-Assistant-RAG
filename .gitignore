@@ -8,6 +8,7 @@ __pycache__/
 # Data (runtime generated)
 data/
 *.db
+backend/evaluation/ragas_results.json
 
 # Environment
 .env

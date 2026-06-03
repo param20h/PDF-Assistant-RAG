@@ -532,6 +532,12 @@ docker compose up --build
 |---------|-------------|
 | `uvicorn app.main:app --reload` | Start FastAPI with hot reload |
 | `uvicorn app.main:app --port 8000` | Start FastAPI on port 8000 |
+| `python scripts/run_ragas_eval.py --user-id <user-id>` | Run the 50-question RAGAS comparison for vector search vs GraphRAG |
+
+The RAGAS script reads `backend/evaluation/ragas_sample_questions.jsonl`,
+generates answers from standard vector contexts and vector-plus-GraphRAG
+contexts, then writes aggregate scores to `backend/evaluation/ragas_results.json`.
+Pass `--document-id <document-id>` to evaluate one indexed document.
 
 ### Frontend (`frontend/`)
 
