@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useTranslation } from "react-i18next";
@@ -10,9 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Brain, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
+import HuggingFaceSignInButton from "@/components/auth/HuggingFaceSignInButton";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, initialized } = useAuth();
   const { t } = useTranslation();
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -20,6 +21,13 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (initialized && user) {
+      router.replace("/dashboard");
+    }
+  }, [user, initialized, router]);
 
   const handleGoogleSuccess = useCallback(() => {
     router.replace("/dashboard");
@@ -58,11 +66,23 @@ export default function LoginPage() {
         </CardHeader>
 
         <CardContent>
-          <div className="mb-4">
+          <div className="flex flex-col gap-2.5 mb-4">
+            <HuggingFaceSignInButton onError={setError} />
             <GoogleSignInButton
               onError={setError}
               onSuccess={handleGoogleSuccess}
             />
+          </div>
+
+          <div className="relative my-5">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border/40" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2.5 text-muted-foreground text-[10px] tracking-wider font-semibold">
+                Or continue with
+              </span>
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -107,7 +127,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
+            <Button id="sign-in-btn" type="submit" className="w-full h-11 text-base" disabled={loading}>
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />

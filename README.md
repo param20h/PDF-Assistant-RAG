@@ -362,6 +362,8 @@ DATABASE_URL=sqlite:///./data/app.db
 HF_TOKEN=hf_your_huggingface_token_here
 UPLOAD_DIR=./data/uploads
 CHROMA_PERSIST_DIR=./data/chroma_db
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/1
 ```
 
 > Get your free HuggingFace token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
@@ -410,7 +412,7 @@ npm run dev
 
 ```bash
 docker compose up --build
-# → Full stack at http://localhost:7860
+# → FastAPI, Redis, Celery worker, and Postgres at http://localhost:7860
 ```
 
 <br/>
@@ -491,6 +493,10 @@ docker compose up --build
 |---|---|---|---|---|
 | `SECRET_KEY` | ✅ | — | JWT signing & session secret. Use a strong random string. | Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `HF_TOKEN` | ✅ | — | HuggingFace API token for LLM inference via Inference API. | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (free) |
+| `HF_CLIENT_ID` | ❌ | — | HuggingFace OAuth client ID. Required only for Hugging Face sign-in. | [HuggingFace Developer Settings](https://huggingface.co/settings/connected-applications) |
+| `HF_CLIENT_SECRET` | ❌ | — | HuggingFace OAuth client secret. Required only for Hugging Face sign-in. | [HuggingFace Developer Settings](https://huggingface.co/settings/connected-applications) |
+| `HF_REDIRECT_URI` | ❌ | `http://localhost:8000/api/v1/auth/callback/huggingface` | HuggingFace OAuth callback redirect URI. | — |
+| `FRONTEND_URL` | ❌ | `http://localhost:3000` | Frontend URL to redirect to after OAuth callback finishes. | — |
 | `ENVIRONMENT` | ❌ | `development` | Runtime mode. Set to `production` for deployment to lock CORS. | — |
 | `DEBUG` | ❌ | `False` | Enable debug mode with detailed error pages. Never enable in production. | — |
 | `ALLOWED_ORIGINS` | ❌ | `http://localhost:3000,http://localhost:7860` | Comma-separated CORS origins (only enforced in production). | Your deployed domain(s) |
@@ -499,6 +505,8 @@ docker compose up --build
 | `JWT_EXPIRY_HOURS` | ❌ | `72` | JWT token lifetime in hours before re-login is required. | — |
 | `GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID used by FastAPI to verify ID tokens. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID exposed to the Next.js Google sign-in button. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `CELERY_BROKER_URL` | ❌ | `redis://localhost:6379/0` | Redis broker URL used by FastAPI to queue document ingestion jobs. | Redis |
+| `CELERY_RESULT_BACKEND` | ❌ | `redis://localhost:6379/1` | Redis backend URL used by Celery to store task state/results. | Redis |
 | `UPLOAD_DIR` | ❌ | `./data/uploads` | Local directory for storing uploaded documents. | — |
 | `MAX_FILE_SIZE_MB` | ❌ | `50` | Maximum allowed upload file size in MB. | — |
 | `ALLOWED_EXTENSIONS` | ❌ | `pdf,docx,txt,md` | Comma-separated list of permitted file extensions. | — |
@@ -524,6 +532,12 @@ docker compose up --build
 |---------|-------------|
 | `uvicorn app.main:app --reload` | Start FastAPI with hot reload |
 | `uvicorn app.main:app --port 8000` | Start FastAPI on port 8000 |
+| `python scripts/run_ragas_eval.py --user-id <user-id>` | Run the 50-question RAGAS comparison for vector search vs GraphRAG |
+
+The RAGAS script reads `backend/evaluation/ragas_sample_questions.jsonl`,
+generates answers from standard vector contexts and vector-plus-GraphRAG
+contexts, then writes aggregate scores to `backend/evaluation/ragas_results.json`.
+Pass `--document-id <document-id>` to evaluate one indexed document.
 
 ### Frontend (`frontend/`)
 

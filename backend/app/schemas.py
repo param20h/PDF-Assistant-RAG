@@ -119,6 +119,7 @@ class DocumentResponse(BaseModel):
     error_message: Optional[str] = None
     uploaded_at: datetime
     summary: Optional[str] = None # New field for document summary
+    task_id: Optional[str] = None
 
     class Config:
         from_attributes = True

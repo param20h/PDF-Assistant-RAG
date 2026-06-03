@@ -39,7 +39,7 @@ class ApiClient {
     };
 
     const authToken = token || this.getToken();
-    if (authToken) {
+    if (authToken && authToken !== "cookie") {
       headers["Authorization"] = `Bearer ${authToken}`;
     }
 
@@ -48,7 +48,11 @@ class ApiClient {
 
   private async fetchWithConnectionError(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     try {
-      return await fetch(input, init);
+      const mergedInit = {
+        credentials: "include" as const,
+        ...init,
+      };
+      return await fetch(input, mergedInit);
     } catch (error) {
       if (error instanceof TypeError) {
         throw new Error(CONNECTION_ERROR_MESSAGE);

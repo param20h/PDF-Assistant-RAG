@@ -37,6 +37,7 @@ import {
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
 import { useTheme } from "next-themes";
+import HuggingFaceTokenModal from "@/components/auth/HuggingFaceTokenModal";
 
 import { useSyncExternalStore } from "react";
 
@@ -223,7 +224,14 @@ export default function Header({
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
+              <div className="px-1 py-0.5">
+                <HuggingFaceTokenModal />
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive cursor-pointer"
+                onClick={handleLogout}
+              >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign out
               </DropdownMenuItem>

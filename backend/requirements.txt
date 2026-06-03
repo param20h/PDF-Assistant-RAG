@@ -38,6 +38,7 @@ langchain-huggingface
 langchain-text-splitters
 langsmith
 rank-bm25
+ragas>=0.3.0
 
 # Embeddings & ML
 sentence-transformers
@@ -56,6 +57,7 @@ huggingface-hub
 gunicorn
 slowapi
 prometheus-fastapi-instrumentator
+celery[redis]
 
 # File Validation
 #sudo apt-get install libmagic1 // for Debian/Ubuntu

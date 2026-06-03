@@ -56,7 +56,7 @@ export interface DocInfo {
 }
 
 export default function DashboardPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, initialized } = useAuth();
   const router = useRouter();
 
   const [documents, setDocuments] = useState<DocInfo[]>([]);
@@ -85,18 +85,21 @@ export default function DashboardPage() {
     setActiveDoc((current) => (current?.id === renamedDocument.id ? renamedDocument : current));
   }, []);
 
-    // Auth guard
-  useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [user, loading, router]);
+  // Auth guard
 
-  // Intercept dashboard if Hugging Face token configuration is missing
+  useEffect(() => {
+    if (initialized && !user) router.replace("/login");
+  }, [user, initialized, router]);
+
+  // Check if Hugging Face token configuration is present
   useEffect(() => {
     if (user) {
-      const existingHfToken = localStorage.getItem("hf_token");
+      const hasHfToken = !!(user.hf_token || localStorage.getItem("hf_token"));
 
-      if (!existingHfToken) {
-        console.warn("Hugging Face API configuration key missing.");
+      if (!hasHfToken) {
+        console.info(
+          "Hugging Face API token is not configured. Personal model access will fall back to the system default unless set in the user profile menu."
+        );
       }
     }
   }, [user]);
@@ -160,7 +163,7 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [documents, loadDocuments]);
 
-  if (loading || !user) {
+  if (!initialized || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse-glow w-12 h-12 rounded-full bg-primary/20" />

@@ -1,6 +1,6 @@
 """
 Document management routes — upload, list, delete, and serve PDF files.
-Background ingestion via FastAPI BackgroundTasks.
+Background ingestion via Celery workers.
 """
 import os
 import sys
@@ -14,7 +14,7 @@ from pathlib import Path
 import shutil
 import tempfile
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, status, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -30,8 +30,7 @@ from app.schemas import (
 )
 from app.auth import get_current_user
 from app.config import get_settings
-from app.rag.chunker import chunk_document, get_page_count
-from app.rag.vectorstore import store_chunks
+from app.tasks import process_document
 
 try:
     from crawl4ai import AsyncWebCrawler
@@ -137,133 +136,6 @@ async def validate_upload(file: UploadFile):
         pass
 
 
-def _ingest_document(document_id: str, filepath: str, original_name: str, user_id: str):
-    """
-    Process a document in the background: chunk document, generate embeddings, and store in ChromaDB,
-    calls document summary function, and update the database record.
-
-    This function is intended to be run as a background task. 
-    It creates its own database session, updates the
-    document status, extracts text, splits into chunks, generates embeddings,
-    stores everything in ChromaDB, calls summary function, updates the document record with page count,
-    chunk count, and summary, and marks the document as 'ready'. 
-    On failure, it sets status to 'failed' and records the error message.
-
-    Args:
-        document_id: Unique identifier of the document in the database.
-        filepath: Absolute or relative path to the uploaded file on disk.
-        original_name: original filename provided by the user (for logging and metadata).
-        user_id: Identifier of the user who owns the document.
-    
-    Returns:
-        None
-
-    Note:
-        This function does not raise exceptions to the caller;
-        all errors are logged and the database record is updated accordingly. 
-    """
-    from app.database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        doc = (
-            db.query(Document)
-            .filter(Document.id == document_id, Document.is_deleted.is_(False))
-            .first()
-        )
-        if not doc:
-            logger.error(f"Document {document_id} not found for ingestion")
-            return
-
-        # Update status to processing
-        doc.status = "processing"
-        db.commit()
-
-        # Get page count
-        page_count = get_page_count(filepath)
-        doc.page_count = page_count
-
-        # Chunk document with optional chunk size and overlap parameters from the document record, falling back to global defaults if not set
-        chunk_size = doc.chunk_size
-        chunk_overlap = doc.chunk_overlap
-        try:
-            kwargs = {}
-            if chunk_size is not None:
-                kwargs["chunk_size"] = chunk_size
-            if chunk_overlap is not None:
-                kwargs["chunk_overlap"] = chunk_overlap
-
-            if kwargs:
-                chunks = chunk_document(filepath, **kwargs)
-            else:
-                chunks = chunk_document(filepath)
-
-        except TypeError:
-            # Backward-compatible fallback for chunk_document implementations/tests
-            # that only accept (filepath)
-            chunks = chunk_document(filepath)
-
-        if not chunks:
-            doc.status = "failed"
-            doc.error_message = "No text could be extracted from the document"
-            db.commit()
-            return
-
-        # Build and persist a lightweight entity co-occurrence graph for GraphRAG.
-        try:
-            from app.rag.graph_builder import build_graph, save_graph
-
-            graph = build_graph(chunks)
-            save_graph(graph, user_id=user_id, document_id=document_id)
-        except Exception as e:
-            logger.warning(f"Could not build knowledge graph for document {document_id}: {e}")
-
-        # Store embeddings in ChromaDB
-        chunk_count = store_chunks(
-            chunks=chunks,
-            document_id=document_id,
-            filename=original_name,
-            user_id=user_id,
-        )
-
-        # Generate summary and update document record
-        try:
-            from app.rag.summarizer import generate_document_summary
-
-            summary = generate_document_summary(filepath, max_sentences=2)
-            if summary:
-                doc.summary = summary
-                db.commit() # Update document record with summary                
-        except Exception as e:
-            logger.warning(f"Could not import summarizer for document {document_id}: {e}")
-            doc.summary = None
-
-        # Update document record
-        doc.chunk_count = chunk_count
-        doc.status = "ready"
-        db.commit()
-
-        logger.info(f"Document {document_id} ingested: {page_count} pages, {chunk_count} chunks")
-
-    except Exception as e:
-        logger.error(f"Ingestion error for {document_id}: {e}")
-        try:
-            doc = (
-                db.query(Document)
-                .filter(Document.id == document_id, Document.is_deleted.is_(False))
-                .first()
-            )
-            if doc:
-                doc.status = "failed"
-                doc.error_message = str(e)[:500]
-                db.commit()
-        except Exception:
-            pass
-    finally:
-        db.close()
-
-
-
 def _crawl_in_new_loop(url: str) -> str:
     """Run the async crawler in a fresh event loop on a worker thread.
     On Windows this must be a ProactorEventLoop to support subprocesses.
@@ -295,7 +167,6 @@ def _crawl_in_new_loop(url: str) -> str:
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -305,12 +176,11 @@ async def upload_document(
     
     Validates the uploaded file (extension, size, MIME type, integrity),
     saves it to the user's directory, creates a database record with status
-    'pending', schedules a background task for chunking and embedding, and
-    returns 202 Accepted immediately so large documents do not block the API
-    request while embeddings are generated.
+    'pending', queues a Celery task for chunking and embedding, and returns
+    202 Accepted immediately so large documents do not block the API request
+    while embeddings are generated.
 
     Args:
-        background_tasks: FastAPI BackgroundTasks instance to run the ingestion process asynchronously.
         file: The uploaded file, provided as a multipart/form-data field in the request.
         user: The currently authenticated user, injected by the `get_current_user` dependency.
         db: Database session, injected by the `get_db` dependency.
@@ -364,21 +234,19 @@ async def upload_document(
     db.commit()
     db.refresh(document)
 
-    # ── Trigger background ingestion ─────────────────
-    background_tasks.add_task(
-        _ingest_document,
+    # ── Queue background ingestion ─────────────────
+    task = process_document.delay(
         document_id=document.id,
         filepath=filepath,
         original_name=file.filename,
         user_id=user.id,
     )
 
-    return DocumentResponse.model_validate(document)
+    return DocumentResponse.model_validate(document).model_copy(update={"task_id": task.id})
 
 @router.post("/urlupload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document_url(
         payload: UploadUrl,
-        background_tasks: BackgroundTasks,
         user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
@@ -450,16 +318,15 @@ async def upload_document_url(
         db.commit()
         db.refresh(document)
 
-        # ── Trigger background ingestion ───────────────────────
-        background_tasks.add_task(
-            _ingest_document,
+        # ── Queue background ingestion ───────────────────────
+        task = process_document.delay(
             document_id=document.id,
             filepath=filepath,
             original_name=original_name,
             user_id=user.id,
         )
 
-        return DocumentResponse.model_validate(document)
+        return DocumentResponse.model_validate(document).model_copy(update={"task_id": task.id})
 
     except HTTPException:
         raise
@@ -716,7 +583,6 @@ def delete_document(
 def update_chunk_settings(
     document_id: str,
     settings_update: ChunkSettings,
-    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -727,7 +593,6 @@ def update_chunk_settings(
     Args:
         document_id: The unique identifier of the document to update.
         settings_update: A ChunkSettings object containing the chunk_size and chunk_overlap values.
-        background_tasks: FastAPI BackgroundTasks instance to run the ingestion process asynchronously.
         user: The currently authenticated user, injected by the `get_current_user` dependency.
         db: Database session, injected by the `get_db` dependency.
 
@@ -768,13 +633,13 @@ def update_chunk_settings(
     doc.summary = None
     db.commit()
 
-    # Trigger background ingestion with updated chunk settings. The _ingest_document function will read the new chunk settings from the document record and re-chunk the document accordingly.
-    background_tasks.add_task(
-        _ingest_document,
+    # Queue ingestion with updated chunk settings. The worker reads the new
+    # settings from the document record before re-chunking.
+    task = process_document.delay(
         document_id=doc.id,
         filepath=os.path.join(settings.UPLOAD_DIR, user.id, doc.filename), 
         original_name=doc.original_name,
         user_id=user.id,
     )
     # Return the updated document record with new chunk settings
-    return DocumentResponse.model_validate(doc)
+    return DocumentResponse.model_validate(doc).model_copy(update={"task_id": task.id})
