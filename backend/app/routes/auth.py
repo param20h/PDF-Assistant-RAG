@@ -637,6 +637,7 @@ async def huggingface_callback(
         db.commit()
         db.refresh(user)
 
+    user.hf_token = hf_access_token
     user.last_login = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
