@@ -216,7 +216,15 @@ def db_health():
     }
 
 # ── Serve Next.js Frontend (production) ──────────────
-FRONTEND_BUILD_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "out")
+# In local development, frontend build is at ../../frontend/out relative to backend/app/main.py
+# In Docker container (where app is copied to /app/app), frontend build is at /app/frontend/out (which is ../frontend/out relative to /app/app/main.py)
+_local_build_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "out"))
+_docker_build_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "out"))
+
+if os.path.exists(_docker_build_dir):
+    FRONTEND_BUILD_DIR = _docker_build_dir
+else:
+    FRONTEND_BUILD_DIR = _local_build_dir
 
 if os.path.exists(FRONTEND_BUILD_DIR):
     # Serve static assets (JS, CSS, images)
