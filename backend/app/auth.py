@@ -6,7 +6,7 @@ from typing import Optional, Any
 
 import jwt
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Cookie
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,7 @@ from app.database import get_db
 from app.models import User, UserRole
 
 settings = get_settings()
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 # ── Password Hashing ─────────────────────────────────
@@ -96,11 +96,23 @@ def decode_invite_token(token: str) -> Optional[dict[str, Any]]:
 import hashlib
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    access_token: Optional[str] = Cookie(None),
     db: Session = Depends(get_db),
 ) -> User:
-    """Dependency: extract and validate user from JWT bearer token or API key."""
-    token = credentials.credentials
+    """Dependency: extract and validate user from JWT bearer token, API key, or secure cookie."""
+    token = None
+    if credentials:
+        token = credentials.credentials
+    elif access_token:
+        token = access_token
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     # Check if token is an API key
     if token.startswith("pdf_rag_"):

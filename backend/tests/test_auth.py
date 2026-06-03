@@ -122,3 +122,80 @@ def test_hf_token_appears_in_user_response(client, auth_headers, user, db_sessio
     stored_token = row[0]
     assert stored_token is not None
     assert stored_token != "hf_persist_token"
+
+
+from unittest.mock import patch, AsyncMock, MagicMock
+import urllib.parse
+
+def test_huggingface_login(client):
+    from app.config import get_settings
+    settings = get_settings()
+    settings.HF_CLIENT_ID = "test-client-id"
+    settings.HF_REDIRECT_URI = "http://localhost:8000/api/v1/auth/callback/huggingface"
+
+    response = client.get("/api/v1/auth/login/huggingface")
+    assert response.status_code == 200
+    data = response.json()
+    assert "url" in data
+    assert "test-client-id" in data["url"]
+    assert "oauth_state" in response.cookies
+
+
+@patch("httpx.AsyncClient.post")
+@patch("httpx.AsyncClient.get")
+def test_huggingface_callback_success(mock_get, mock_post, client):
+    from app.config import get_settings
+    settings = get_settings()
+    settings.HF_CLIENT_ID = "test-client-id"
+    settings.HF_CLIENT_SECRET = "test-client-secret"
+    settings.HF_REDIRECT_URI = "http://localhost:8000/api/v1/auth/callback/huggingface"
+
+    mock_post_resp = MagicMock()
+    mock_post_resp.status_code = 200
+    mock_post_resp.json.return_value = {"access_token": "hf-access-token"}
+    mock_post.return_value = mock_post_resp
+
+    mock_get_resp = MagicMock()
+    mock_get_resp.status_code = 200
+    mock_get_resp.json.return_value = {
+        "email": "hfuser@example.com",
+        "preferred_username": "hfuser"
+    }
+    mock_get.return_value = mock_get_resp
+
+    login_response = client.get("/api/v1/auth/login/huggingface")
+    state_cookie = login_response.cookies["oauth_state"]
+    url = login_response.json()["url"]
+    parsed = urllib.parse.urlparse(url)
+    queries = urllib.parse.parse_qs(parsed.query)
+    state_param = queries["state"][0]
+
+    client.cookies.set("oauth_state", state_cookie)
+    callback_response = client.get(
+        f"/api/v1/auth/callback/huggingface?code=hf-code&state={state_param}",
+        follow_redirects=False
+    )
+
+    assert callback_response.status_code == 307
+    assert "/dashboard" in callback_response.headers["location"]
+    assert "access_token" in callback_response.cookies
+    assert "refresh_token" in callback_response.cookies
+
+
+def test_huggingface_callback_invalid_state(client):
+    response = client.get(
+        "/api/v1/auth/callback/huggingface?code=hf-code&state=invalid-state",
+        cookies={"oauth_state": "actual-state"}
+    )
+    assert response.status_code == 400
+    assert "State verification failed" in response.json()["detail"]
+
+
+def test_huggingface_logout(client):
+    response = client.post(
+        "/api/v1/auth/logout",
+        cookies={"access_token": "token-value", "refresh_token": "refresh-value"}
+    )
+    assert response.status_code == 200
+    assert response.cookies.get("access_token") in (None, "")
+    assert response.cookies.get("refresh_token") in (None, "")

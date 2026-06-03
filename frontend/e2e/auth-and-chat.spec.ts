@@ -28,7 +28,13 @@ const uploadedDocument = {
 
 async function mockDashboardApis(page: Page, documents: typeof uploadedDocument[] = []) {
   await page.route("**/api/v1/auth/me", async (route) => {
-    await route.fulfill({ json: user });
+    const headers = route.request().headers();
+    const hasAuth = headers["authorization"] || headers["cookie"];
+    if (hasAuth) {
+      await route.fulfill({ json: user });
+    } else {
+      await route.fulfill({ status: 401, json: { detail: "Not authenticated" } });
+    }
   });
 
   await page.route("**/api/v1/documents/", async (route) => {
@@ -54,7 +60,7 @@ test("logs in with email and password", async ({ page }) => {
   await page.goto("/login");
   await page.locator("#login-email").fill(user.email);
   await page.locator("#login-password").fill("password123");
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.locator("#sign-in-btn").click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText("No documents yet")).toBeVisible();
