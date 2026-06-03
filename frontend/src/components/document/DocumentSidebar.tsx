@@ -183,13 +183,14 @@ export default function DocumentSidebar({
     }
   };
 
-  const handleRowKeyDown = (doc: DocInfo, e: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleDocumentKeyDown = (doc: DocInfo, e: React.KeyboardEvent) => {
     if (editingDocId === doc.id || doc.status !== "ready") return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onSelectDoc(doc);
     }
   };
+
 
   const statusIcon = (status: string) => {
     switch (status) {
@@ -226,6 +227,7 @@ export default function DocumentSidebar({
           className={`relative rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-all duration-200
             ${isDragActive ? "border-primary bg-primary/10 scale-[1.02]" : "border-sidebar-border hover:border-primary/40 hover:bg-sidebar-accent/50"}
             ${uploading ? "pointer-events-none opacity-60" : ""}`}
+          aria-label="Upload documents"
         >
           <input {...getInputProps()} />
           {uploading ? (
@@ -277,13 +279,16 @@ export default function DocumentSidebar({
                   key={doc.id}
                   role="button"
                   tabIndex={doc.status === "ready" ? 0 : -1}
+                  aria-disabled={doc.status !== "ready"}
+                  aria-current={activeDoc?.id === doc.id ? "true" : undefined}
+                  aria-label={`Select document ${doc.original_name}. Status: ${doc.status}`}
                   onClick={() => doc.status === "ready" && !isEditing && onSelectDoc(doc)}
-                  onKeyDown={(e) => handleRowKeyDown(doc, e)}
+                  onKeyDown={(e) => handleDocumentKeyDown(doc, e)}
                   className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
                     ${activeDoc?.id === doc.id
                       ? "bg-primary/15 border border-primary/30"
                       : "hover:bg-sidebar-accent border border-transparent"}
-                    ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer"}`}
+                    ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}`}
                 >
                   <div className="flex items-start gap-2.5">
                     {statusIcon(doc.status)}
@@ -307,6 +312,7 @@ export default function DocumentSidebar({
                           {doc.original_name}
                         </p>
                       )}
+
                     <p className="text-xs text-muted-foreground mt-1">
                       {doc.summary || "📄 No summary available"}
                     </p>
@@ -343,18 +349,22 @@ export default function DocumentSidebar({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity cursor-pointer"
                       onClick={(e) => handleSettingsClick(doc, e)}
                       disabled={doc.status !== "ready"}
+                      aria-label="Open chunking settings"
+                      title={`Open chunking settings for ${doc.original_name}`}
                     >
                       <Settings className="w-3 h-3" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0 cursor-pointer"
                       onClick={(e) => handleDelete(doc.id, e)}
                       disabled={deleting === doc.id}
+                      aria-label="Delete document"
+                      title={`Delete ${doc.original_name}`}
                     >
                       {deleting === doc.id ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -367,6 +377,8 @@ export default function DocumentSidebar({
                 </div>
               );
             })}
+
+
           </div>
         )}
       </ScrollArea>

@@ -82,7 +82,7 @@ function DocumentSettingsBody({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium">Chunk size</span>
+              <label htmlFor="chunk-size-slider" className="text-sm font-medium">Chunk size</label>
               <span
                 className="text-xs text-muted-foreground cursor-help"
                 title="Maximum characters per chunk. Larger chunks preserve more context but cost more."
@@ -94,12 +94,14 @@ function DocumentSettingsBody({
           </div>
           {/* The chunk size input is a range slider that allows users to select a value between 200 and 4000 characters. If the selected chunk size exceeds 3000 characters, a warning message is shown to inform users about potential increased processing time. */}
           <input
+            id="chunk-size-slider"
             type="range"
             min={200}
             max={4000}
             step={50}
             value={chunkSize}
             onChange={(e) => setChunkSize(Number(e.target.value))}
+            aria-valuetext={`${chunkSize} characters`}
             className="w-full accent-primary cursor-pointer"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -119,7 +121,7 @@ function DocumentSettingsBody({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium">Overlap</span>
+              <label htmlFor="chunk-overlap-slider" className="text-sm font-medium">Overlap</label>
               <span
                 className="text-xs text-muted-foreground cursor-help"
                 title="Characters overlapped between consecutive chunks. Helps maintain context across boundaries."
@@ -131,6 +133,7 @@ function DocumentSettingsBody({
           </div>
           {/* The chunk overlap input is a range slider that allows users to select a value between 0 and the maximum allowed based on the current chunk size. If the selected overlap exceeds half of the chunk size, a warning message is displayed to inform users about potential duplicate chunks. */}
           <input
+            id="chunk-overlap-slider"
             type="range"
             min={0}
             max={Math.max(0, chunkSize - 50)}
@@ -138,6 +141,7 @@ function DocumentSettingsBody({
             value={chunkOverlap}
             onChange={(e) => setChunkOverlap(Number(e.target.value))}
             disabled={chunkSize <= 50}
+            aria-valuetext={`${chunkOverlap} characters`}
             className="w-full accent-primary disabled:opacity-50 cursor-pointer"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -155,7 +159,7 @@ function DocumentSettingsBody({
 
         {/* If there is an error message in the state, it is displayed in a styled div with a red background and an alert icon. */}
         {error && (
-          <div className="p-2 rounded-md bg-destructive/10 text-sm text-destructive flex items-center gap-2">
+          <div role="alert" className="p-2 rounded-md bg-destructive/10 text-sm text-destructive flex items-center gap-2">
             <AlertCircle className="w-4 h-4" />
             {error}
           </div>

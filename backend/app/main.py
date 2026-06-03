@@ -164,12 +164,14 @@ from app.routes.documents import router as documents_router
 from app.routes.chat import router as chat_router
 from app.routes.github import router as github_router
 from app.routes.admin import router as admin_router
+from app.routes.workspaces import router as workspaces_router
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(documents_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(github_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
+app.include_router(workspaces_router, prefix="/api/v1")
 
 setup_prometheus_metrics(app)
 

@@ -2,7 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { Key, Plus, Trash2, Copy, Check } from "lucide-react";
 
@@ -74,7 +81,10 @@ export default function ApiKeyManager() {
     <Dialog onOpenChange={(open) => { if (!open) setNewKey(null); }}>
       <DialogTrigger
         render={
-          <button className="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground">
+          <button
+            className="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground"
+            aria-label="Open API key manager"
+          >
             <Key className="mr-2 h-4 w-4" />
             <span>API Keys</span>
           </button>
@@ -84,9 +94,9 @@ export default function ApiKeyManager() {
 
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold tracking-tight">API Keys</DialogTitle>
-          <p className="text-sm text-muted-foreground mt-1.5">
+          <DialogDescription className="text-sm text-muted-foreground mt-1.5">
             Manage API keys to access the RAG engine programmatically from your own applications or scripts.
-          </p>
+          </DialogDescription>
         </DialogHeader>
 
         {newKey && (
@@ -101,7 +111,12 @@ export default function ApiKeyManager() {
               <code className="flex-1 bg-background/80 border border-border/50 px-4 py-2.5 rounded-lg text-sm font-mono break-all text-foreground shadow-inner">
                 {newKey}
               </code>
-              <Button onClick={copyToClipboard} variant={copied ? "default" : "secondary"} className="shrink-0 shadow-sm">
+              <Button
+                onClick={copyToClipboard}
+                variant={copied ? "default" : "secondary"}
+                className="shrink-0 shadow-sm"
+                aria-label={copied ? "API key copied" : "Copy new API key"}
+              >
                 {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
                 {copied ? "Copied!" : "Copy"}
               </Button>
@@ -141,8 +156,9 @@ export default function ApiKeyManager() {
                       variant="ghost"
                       size="icon"
                       onClick={() => revokeKey(key.id)}
-                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
+                      className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all"
                       title="Revoke key"
+                      aria-label={`Revoke API key ${key.key_prefix}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>

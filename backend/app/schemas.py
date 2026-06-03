@@ -41,7 +41,21 @@ class UpdatePasswordResponse(BaseModel):
     id: str
     username: str
     email: EmailStr
-    password_changed:bool = True
+    password_changed: bool = True
+
+
+class WorkspaceInviteRequest(BaseModel):
+    email: EmailStr
+    workspace_name: str = Field(..., min_length=1, max_length=100)
+    message: Optional[str] = None
+
+
+class WorkspaceInviteResponse(BaseModel):
+    email: EmailStr
+    workspace_name: str
+    invite_link: str
+    expires_in_hours: int
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -184,11 +198,16 @@ class ChatResponse(BaseModel):
     document_id: Optional[str] = None
 
 
+class FeedbackRequest(BaseModel):
+    feedback: Optional[str] = Field(None, pattern="^(up|down)?$")
+
+
 class ChatMessageResponse(BaseModel):
     id: str
     role: str
     content: str
     sources: List[SourceChunk] = []
+    feedback: Optional[str] = None
     created_at: datetime
 
     class Config:
