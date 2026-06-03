@@ -14,7 +14,7 @@ from pathlib import Path
 import shutil
 import tempfile
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,7 @@ from app.schemas import (
 from app.auth import get_current_user
 from app.config import get_settings
 from app.tasks import process_document
+from app.services.document_ingestion import ingest_document
 
 try:
     from crawl4ai import AsyncWebCrawler
@@ -168,6 +169,7 @@ def _crawl_in_new_loop(url: str) -> str:
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
     file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -182,6 +184,7 @@ async def upload_document(
 
     Args:
         file: The uploaded file, provided as a multipart/form-data field in the request.
+        background_tasks: FastAPI BackgroundTasks instance for in-process fallback execution.
         user: The currently authenticated user, injected by the `get_current_user` dependency.
         db: Database session, injected by the `get_db` dependency.
 
@@ -235,18 +238,33 @@ async def upload_document(
     db.refresh(document)
 
     # ── Queue background ingestion ─────────────────
-    task = process_document.delay(
-        document_id=document.id,
-        filepath=filepath,
-        original_name=file.filename,
-        user_id=user.id,
-    )
+    task_id = None
+    try:
+        task = process_document.delay(
+            document_id=document.id,
+            filepath=filepath,
+            original_name=file.filename,
+            user_id=user.id,
+        )
+        task_id = task.id
+    except Exception as e:
+        logger.warning(f"Celery queue failed, falling back to background task: {e}")
+        if background_tasks:
+            background_tasks.add_task(
+                ingest_document,
+                document_id=document.id,
+                filepath=filepath,
+                original_name=file.filename,
+                user_id=user.id,
+            )
+        task_id = f"local_{uuid.uuid4().hex}"
 
-    return DocumentResponse.model_validate(document).model_copy(update={"task_id": task.id})
+    return DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
 
 @router.post("/urlupload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document_url(
         payload: UploadUrl,
+        background_tasks: BackgroundTasks = None,
         user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
@@ -319,14 +337,28 @@ async def upload_document_url(
         db.refresh(document)
 
         # ── Queue background ingestion ───────────────────────
-        task = process_document.delay(
-            document_id=document.id,
-            filepath=filepath,
-            original_name=original_name,
-            user_id=user.id,
-        )
+        task_id = None
+        try:
+            task = process_document.delay(
+                document_id=document.id,
+                filepath=filepath,
+                original_name=original_name,
+                user_id=user.id,
+            )
+            task_id = task.id
+        except Exception as e:
+            logger.warning(f"Celery queue failed, falling back to background task: {e}")
+            if background_tasks:
+                background_tasks.add_task(
+                    ingest_document,
+                    document_id=document.id,
+                    filepath=filepath,
+                    original_name=original_name,
+                    user_id=user.id,
+                )
+            task_id = f"local_{uuid.uuid4().hex}"
 
-        return DocumentResponse.model_validate(document).model_copy(update={"task_id": task.id})
+        return DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
 
     except HTTPException:
         raise
@@ -583,6 +615,7 @@ def delete_document(
 def update_chunk_settings(
     document_id: str,
     settings_update: ChunkSettings,
+    background_tasks: BackgroundTasks = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -593,6 +626,7 @@ def update_chunk_settings(
     Args:
         document_id: The unique identifier of the document to update.
         settings_update: A ChunkSettings object containing the chunk_size and chunk_overlap values.
+        background_tasks: FastAPI BackgroundTasks instance for in-process fallback execution.
         user: The currently authenticated user, injected by the `get_current_user` dependency.
         db: Database session, injected by the `get_db` dependency.
 
@@ -635,11 +669,26 @@ def update_chunk_settings(
 
     # Queue ingestion with updated chunk settings. The worker reads the new
     # settings from the document record before re-chunking.
-    task = process_document.delay(
-        document_id=doc.id,
-        filepath=os.path.join(settings.UPLOAD_DIR, user.id, doc.filename), 
-        original_name=doc.original_name,
-        user_id=user.id,
-    )
+    task_id = None
+    try:
+        task = process_document.delay(
+            document_id=doc.id,
+            filepath=os.path.join(settings.UPLOAD_DIR, user.id, doc.filename), 
+            original_name=doc.original_name,
+            user_id=user.id,
+        )
+        task_id = task.id
+    except Exception as e:
+        logger.warning(f"Celery queue failed, falling back to background task: {e}")
+        if background_tasks:
+            background_tasks.add_task(
+                ingest_document,
+                document_id=doc.id,
+                filepath=os.path.join(settings.UPLOAD_DIR, user.id, doc.filename), 
+                original_name=doc.original_name,
+                user_id=user.id,
+            )
+        task_id = f"local_{uuid.uuid4().hex}"
+
     # Return the updated document record with new chunk settings
-    return DocumentResponse.model_validate(doc).model_copy(update={"task_id": task.id})
+    return DocumentResponse.model_validate(doc).model_copy(update={"task_id": task_id})
