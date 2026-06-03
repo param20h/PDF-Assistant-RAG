@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     DRIVE_SYNC_INTERVAL_MINUTES: int = 60
     GOOGLE_SERVICE_ACCOUNT_FILE: str = ""
 
+    # Celery / Redis background processing
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
+    CELERY_TASK_TRACK_STARTED: bool = True
+
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 20

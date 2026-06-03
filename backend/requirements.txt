@@ -56,6 +56,7 @@ huggingface-hub
 gunicorn
 slowapi
 prometheus-fastapi-instrumentator
+celery[redis]
 
 # File Validation
 #sudo apt-get install libmagic1 // for Debian/Ubuntu
