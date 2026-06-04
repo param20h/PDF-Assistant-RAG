@@ -355,10 +355,10 @@ def update_user_info(payload:UserUpdate,
                 raise HTTPException(status_code=400, detail="Username already exists")
             user.username = payload.username
         if payload.email:
-            existing_user = db.execute(select(User).where(User.username == payload.email)).scalar_one_or_none()
+            existing_user = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
 
             if existing_user:
-                raise HTTPException(status_code=400, detail="Username already exists")
+                raise HTTPException(status_code=400, detail="Email already exists")
             user.email = payload.email
         db.commit()
         db.refresh(user)
