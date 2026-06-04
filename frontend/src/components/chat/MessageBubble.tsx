@@ -118,6 +118,7 @@ export default function MessageBubble({ message }: Props) {
       return;
     }
 
+    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(message.content);
     utteranceRef.current = utterance;
 
@@ -192,6 +193,28 @@ export default function MessageBubble({ message }: Props) {
                       <X className="w-3.5 h-3.5 text-destructive" />
                     ) : (
                       <Share2 className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                )}
+
+                {/* Speech button */}
+                {!message.isStreaming && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
+                      isSpeaking
+                        ? "opacity-100"
+                        : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                    }`}
+                    onClick={handleSpeech}
+                    aria-label={isSpeaking ? "Stop reading" : "Read response"}
+                  >
+                    {isSpeaking ? (
+                      <Pause className="w-3.5 h-3.5" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
                     )}
                   </Button>
                 )}
