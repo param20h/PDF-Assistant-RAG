@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api } from "@/lib/api";
@@ -9,13 +9,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
-  FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen,
+  FileText, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen,
 } from "lucide-react";
-import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
+import DocumentUpload from "./DocumentUpload";
 import { toast } from "sonner";
 
 interface Props {
@@ -58,59 +57,11 @@ export default function DocumentSidebar({
   onDocumentRenamed,
 }: Props) {
   const { t } = useTranslation();
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadError, setUploadError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
   const [settingsDoc, setSettingsDoc] = useState<DocInfo | null>(null);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
-
-  const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      if (acceptedFiles.length === 0) return;
-
-      void (async () => {
-        setUploadError("");
-        setUploading(true);
-        setUploadProgress(0);
-
-        try {
-          for (let i = 0; i < acceptedFiles.length; i++) {
-            const file = acceptedFiles[i];
-            const formData = new FormData();
-            formData.append("file", file);
-            
-            toast.info(`⏳ Uploading '${file.name}'...`);
-            await api.postForm("/api/v1/documents/upload", formData);
-            setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
-            toast.success(`📤 '${file.name}' uploaded successfully! Ingestion started.`);
-          }
-          onDocumentsChange();
-        } catch (err) {
-          const message = err instanceof Error ? err.message : t("documents.uploadFailed");
-          setUploadError(message);
-          toast.error(`❌ Upload failed: ${message}`);
-        } finally {
-          setUploading(false);
-          setUploadProgress(0);
-        }
-      })();
-    },
-    [onDocumentsChange, t]
-  );
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "application/pdf": [".pdf"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-      "text/plain": [".txt"],
-      "text/markdown": [".md"],
-    },
-    disabled: uploading,
-  });
 
   const handleDelete = async (docId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -215,40 +166,7 @@ export default function DocumentSidebar({
 
   return (
     <div className="h-full flex flex-col bg-sidebar">
-      {/* ── Upload Zone ─────────────────────────────── */}
-      <div className="p-3 border-b border-sidebar-border space-y-2">
-        {uploadError && (
-          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
-            {uploadError}
-          </div>
-        )}
-        <div
-          {...getRootProps()}
-          className={`relative rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-all duration-200
-            ${isDragActive ? "border-primary bg-primary/10 scale-[1.02]" : "border-sidebar-border hover:border-primary/40 hover:bg-sidebar-accent/50"}
-            ${uploading ? "pointer-events-none opacity-60" : ""}`}
-          aria-label="Upload documents"
-        >
-          <input {...getInputProps()} />
-          {uploading ? (
-            <div className="space-y-2">
-              <Loader2 className="w-5 h-5 mx-auto animate-spin text-primary" />
-              <p className="text-xs text-muted-foreground">{t("documents.uploading")}</p>
-              <Progress value={uploadProgress} className="h-1" />
-            </div>
-          ) : (
-            <>
-              <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
-              <p className="text-xs text-muted-foreground">
-                {isDragActive ? t("documents.dropHere") : t("documents.dropOrClick")}
-              </p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1">
-                {t("documents.uploadFormats")}
-              </p>
-            </>
-          )}
-        </div>
-      </div>
+      <DocumentUpload onDocumentsChange={onDocumentsChange} />
 
       {/* ── Documents List ──────────────────────────── */}
       <div className="px-3 pt-3 pb-1">

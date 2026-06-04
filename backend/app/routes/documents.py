@@ -32,6 +32,7 @@ from app.auth import get_current_user
 from app.config import get_settings
 from app.tasks import process_document
 from app.services.document_ingestion import ingest_document
+from app.rag.vectorstore import delete_document_chunks
 
 try:
     from crawl4ai import AsyncWebCrawler
@@ -225,6 +226,25 @@ async def upload_document(
 
     file_size = Path(filepath).stat().st_size
 
+    # ── Issue #20: duplicate check ────────────────────────────────────
+    existing = db.scalar(
+        select(Document).where(
+            Document.original_name == file.filename,
+            Document.user_id == user.id,
+        )
+    )
+    if existing:
+        Path(filepath).unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "conflict": True,
+                "existing_id": existing.id,
+                "original_name": existing.original_name,
+            },
+        )
+    # ── end duplicate check ───────────────────────────────────────────
+
     # ── Create database record ───────────────────────
     document = Document(
         user_id=user.id,
@@ -260,6 +280,88 @@ async def upload_document(
         task_id = f"local_{uuid.uuid4().hex}"
 
     return DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
+
+
+@router.put("/{doc_id}/replace", status_code=status.HTTP_202_ACCEPTED)
+async def replace_document(
+    doc_id: str,
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # ── 1. Fetch the existing document row ───────────────────────────
+    document = db.scalar(
+        select(Document).where(
+            Document.id == doc_id,
+            Document.user_id == user.id,
+        )
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # ── 2. Block replace while processing ────────────────────────────
+    if document.status == "processing":
+        raise HTTPException(
+            status_code=423,
+            detail="This document is still being processed. Please wait before replacing it.",
+        )
+
+    # ── 3. Delete old file from disk ─────────────────────────────────
+    old_path = os.path.join(settings.UPLOAD_DIR, user.id, document.filename)
+    if os.path.exists(old_path):
+        os.remove(old_path)
+
+    # ── 4. Purge old vectors from ChromaDB ───────────────────────────
+    try:
+        delete_document_chunks(str(doc_id), str(user.id))
+    except Exception:
+        pass
+
+    # ── 5. Save new file to disk ─────────────────────────────────────
+    ext = os.path.splitext(file.filename)[1].lower()
+    new_filename = f"{user.id}_{doc_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}{ext}"
+    user_dir = os.path.join(settings.UPLOAD_DIR, user.id)
+    os.makedirs(user_dir, exist_ok=True)
+    new_path = os.path.join(user_dir, new_filename)
+
+    contents = await file.read()
+    with open(new_path, "wb") as f:
+        f.write(contents)
+
+    # ── 6. Reset the existing DB row (no schema change needed) ───────
+    document.filename = new_filename
+    document.original_name = file.filename
+    document.file_size = len(contents)
+    document.status = "pending"
+    document.uploaded_at = datetime.utcnow()
+    db.commit()
+    db.refresh(document)
+
+    # ── 7. Re-queue the ingest background task ───────────────────────
+    task_id = None
+    try:
+        task = process_document.delay(
+            document_id=document.id,
+            filepath=new_path,
+            original_name=file.filename,
+            user_id=user.id,
+        )
+        task_id = task.id
+    except Exception as e:
+        logger.warning(f"Celery queue failed, falling back to background task: {e}")
+        if background_tasks:
+            background_tasks.add_task(
+                ingest_document,
+                document_id=document.id,
+                filepath=new_path,
+                original_name=file.filename,
+                user_id=user.id,
+            )
+        task_id = f"local_{uuid.uuid4().hex}"
+
+    return DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
+
 
 @router.post("/urlupload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document_url(

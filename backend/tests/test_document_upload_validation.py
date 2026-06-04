@@ -94,20 +94,9 @@ def test_validate_upload_rejects_corrupted_pdf() -> None:
     assert exc.value.detail == "Corrupted or invalid file"
 
 
-@pytest.mark.parametrize(
-    "first_hex,second_hex",
-    [
-        (
-            "11111111111111111111111111111111",
-            "22222222222222222222222222222222",
-        )
-    ],
-)
-def test_upload_document_handles_duplicate_original_names(
+def test_upload_document_returns_409_for_duplicate_original_name(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    first_hex: str,
-    second_hex: str,
 ) -> None:
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
@@ -132,15 +121,8 @@ def test_upload_document_handles_duplicate_original_names(
         temp_files.append(Path(handle.name))
         return handle.name
 
-    class FakeUUID:
-        def __init__(self, value: str) -> None:
-            self.hex = value
-
-    uuid_values = iter([FakeUUID(first_hex), FakeUUID(second_hex)])
-
     monkeypatch.setattr(documents, "validate_upload", fake_validate_upload)
     monkeypatch.setattr(documents.settings, "UPLOAD_DIR", str(tmp_path / "uploads"))
-    monkeypatch.setattr(documents.uuid, "uuid4", lambda: next(uuid_values))
     monkeypatch.setattr(
         documents.process_document,
         "delay",
@@ -154,20 +136,151 @@ def test_upload_document_handles_duplicate_original_names(
             db=session,
         )
     )
-    second = _run(
-        documents.upload_document(
-            file=_upload_file("same-name.pdf", b"second"),
+
+    with pytest.raises(HTTPException) as exc:
+        _run(
+            documents.upload_document(
+                file=_upload_file("same-name.pdf", b"second"),
+                user=user,
+                db=session,
+            )
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == {
+        "conflict": True,
+        "existing_id": first.id,
+        "original_name": "same-name.pdf",
+    }
+
+    stored_docs = session.query(Document).all()
+    assert len(stored_docs) == 1
+    assert stored_docs[0].original_name == "same-name.pdf"
+    assert first.original_name == "same-name.pdf"
+    assert first.task_id == "queued-task"
+    user_upload_dir = tmp_path / "uploads" / user.id
+    assert (user_upload_dir / stored_docs[0].filename).exists()
+    assert len(list(user_upload_dir.glob("*.pdf"))) == 1
+    assert all(not path.exists() for path in temp_files)
+
+
+def test_replace_document_resets_row_and_requeues_ingest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+
+    user = User(
+        id=str(uuid.uuid4()),
+        username="replace-tester",
+        email="replace@example.com",
+        hashed_password="hashed",
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    upload_dir = tmp_path / "uploads"
+    monkeypatch.setattr(documents.settings, "UPLOAD_DIR", str(upload_dir))
+    user_dir = upload_dir / user.id
+    user_dir.mkdir(parents=True)
+
+    old_filename = "old-doc.pdf"
+    old_path = user_dir / old_filename
+    old_path.write_bytes(b"old-content")
+
+    document = Document(
+        user_id=user.id,
+        filename=old_filename,
+        original_name="report.pdf",
+        file_size=len(b"old-content"),
+        status="ready",
+    )
+    session.add(document)
+    session.commit()
+    session.refresh(document)
+
+    deleted_vectors: list[tuple[str, str]] = []
+
+    def track_delete(document_id: str, user_id: str) -> None:
+        deleted_vectors.append((document_id, user_id))
+
+    monkeypatch.setattr(documents, "delete_document_chunks", track_delete)
+
+    queued: list[dict] = []
+
+    monkeypatch.setattr(
+        documents.process_document,
+        "delay",
+        lambda **kwargs: queued.append(kwargs) or types.SimpleNamespace(id="replace-task"),
+    )
+
+    result = _run(
+        documents.replace_document(
+            doc_id=document.id,
+            file=_upload_file("report.pdf", b"new-content"),
             user=user,
             db=session,
         )
     )
 
-    stored_docs = session.query(Document).order_by(Document.filename).all()
+    session.refresh(document)
 
-    assert [doc.original_name for doc in stored_docs] == ["same-name.pdf", "same-name.pdf"]
-    assert len({doc.filename for doc in stored_docs}) == 2
-    assert first.original_name == second.original_name == "same-name.pdf"
-    assert first.task_id == second.task_id == "queued-task"
-    assert (tmp_path / "uploads" / user.id / f"{first_hex}.pdf").exists()
-    assert (tmp_path / "uploads" / user.id / f"{second_hex}.pdf").exists()
-    assert all(not path.exists() for path in temp_files)
+    assert not old_path.exists()
+    assert deleted_vectors == [(str(document.id), str(user.id))]
+    assert document.original_name == "report.pdf"
+    assert document.file_size == len(b"new-content")
+    assert document.status == "pending"
+    assert document.filename != old_filename
+    assert (user_dir / document.filename).exists()
+    assert (user_dir / document.filename).read_bytes() == b"new-content"
+    assert len(queued) == 1
+    assert queued[0]["document_id"] == document.id
+    assert queued[0]["user_id"] == user.id
+    assert result.task_id == "replace-task"
+
+
+def test_replace_document_returns_423_while_processing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine)()
+
+    user = User(
+        id=str(uuid.uuid4()),
+        username="locked-tester",
+        email="locked@example.com",
+        hashed_password="hashed",
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    monkeypatch.setattr(documents.settings, "UPLOAD_DIR", str(tmp_path / "uploads"))
+
+    document = Document(
+        user_id=user.id,
+        filename="busy.pdf",
+        original_name="busy.pdf",
+        file_size=10,
+        status="processing",
+    )
+    session.add(document)
+    session.commit()
+    session.refresh(document)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(
+            documents.replace_document(
+                doc_id=document.id,
+                file=_upload_file("busy.pdf", b"new"),
+                user=user,
+                db=session,
+            )
+        )
+
+    assert exc.value.status_code == 423

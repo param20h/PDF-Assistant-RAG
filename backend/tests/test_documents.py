@@ -29,6 +29,27 @@ def test_documents_list_authenticated(client, auth_headers, ready_document):
     assert payload["items"][0]["original_name"] == "ready.txt"
 
 
+def test_upload_returns_409_when_original_name_already_exists(
+    client, auth_headers, ready_document, monkeypatch
+):
+    monkeypatch.setattr(
+        "app.tasks.process_document.delay",
+        lambda **_kwargs: type("Task", (), {"id": "task-1"})(),
+    )
+
+    response = client.post(
+        "/api/v1/documents/upload",
+        headers=auth_headers,
+        files={"file": ("ready.txt", b"duplicate-upload", "text/plain")},
+    )
+
+    assert response.status_code == 409
+    payload = response.json()["detail"]
+    assert payload["conflict"] is True
+    assert payload["existing_id"] == ready_document.id
+    assert payload["original_name"] == "ready.txt"
+
+
 def test_upload_rejects_unsupported_extension_before_deep_validation(client, auth_headers):
     response = client.post(
         "/api/v1/documents/upload",
