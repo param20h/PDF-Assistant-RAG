@@ -41,6 +41,9 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username:Optional[str] = None
 
+class UserProfileUpdate(BaseModel):
+    username: Optional[str] = None
+    display_name: Optional[str] = None
 class UserUpdateResponse(BaseModel):
     id: str
     username: str
@@ -115,6 +118,8 @@ class UserResponse(BaseModel):
     is_admin: bool
     is_verified: bool
     hf_token: Optional[str] = None
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
     created_at: datetime
 
     class Config:
