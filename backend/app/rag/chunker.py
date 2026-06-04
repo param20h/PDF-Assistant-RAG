@@ -6,11 +6,13 @@ import json
 import re
 import fitz  # PyMuPDF
 import docx
+import logging
 from typing import List, Dict, Any
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 def _is_word_inside_bbox(word: Dict[str, Any], bbox: tuple) -> bool:
@@ -84,10 +86,14 @@ def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
     """
     try:
         return extract_pdf_with_unstructured(filepath)
-    except ImportError:
+    except Exception as e:
+        # Unstructured may be installed but require native deps (poppler/pdfinfo).
+        # If anything goes wrong, fall back to pdfplumber then PyMuPDF.
+        logger.warning(f"Unstructured extraction failed, falling back: {e}")
         try:
             return extract_pdf_with_tables(filepath)
-        except ImportError:
+        except Exception as e2:
+            logger.warning(f"pdfplumber extraction failed, falling back: {e2}")
             return extract_pdf_with_pymupdf(filepath)
 
 
