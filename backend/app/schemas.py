@@ -20,6 +20,19 @@ class UserLogin(BaseModel):
     password: str
 
 
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
+class RegistrationResponse(MessageResponse):
+    email: EmailStr
+    verification_url: Optional[str] = None
+
+
 class GoogleLoginRequest(BaseModel):
     id_token: str = Field(..., min_length=10)
 
@@ -100,6 +113,7 @@ class UserResponse(BaseModel):
     email: str
     role: UserRole
     is_admin: bool
+    is_verified: bool
     hf_token: Optional[str] = None
     created_at: datetime
 
