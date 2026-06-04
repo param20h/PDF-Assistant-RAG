@@ -3,8 +3,14 @@ Auth API routes — register, login, and user profile.
 """
 import re
 import secrets
-from datetime import datetime, timezone
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+import httpx
+import hashlib
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+from fastapi import APIRouter, Body, Cookie, Depends, HTTPException, Response, status
+from fastapi.responses import RedirectResponse
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from langsmith import expect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -26,11 +32,78 @@ from app.schemas import (
     UserUpdateResponse,
     ApiKeyResponse,
     ApiKeyCreateResponse,
+    EmailVerificationRequest,
+    MessageResponse,
+    RegistrationResponse,
 )
 from app.auth import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, decode_token
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+REGISTRATION_MESSAGE = "Registration successful. Please check your email to verify your account before logging in."
+VERIFICATION_RESEND_MESSAGE = "If the email is registered and unverified, a verification link has been sent."
+VERIFICATION_REQUIRED_MESSAGE = "Please verify your email before logging in"
+
+
+def _hash_verification_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _set_verification_token(user: User) -> str:
+    token = secrets.token_urlsafe(32)
+    user.verification_token_hash = _hash_verification_token(token)
+    user.verification_token_created_at = datetime.now(timezone.utc)
+    return token
+
+
+def _verification_url(token: str) -> str:
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    return f"{frontend_url}/verify-email?token={token}"
+
+
+def _mail_configured() -> bool:
+    return bool(settings.MAIL_SERVER and settings.MAIL_FROM)
+
+
+def _dev_verification_url(token: str) -> str | None:
+    if settings.ENVIRONMENT == "production" or _mail_configured():
+        return None
+    return f"/verify-email?token={token}"
+
+
+async def _send_verification_email(user: User, token: str) -> None:
+    if not _mail_configured():
+        logger.warning("Email verification mail is not configured; skipping verification email for %s", user.email)
+        return
+
+    conf = ConnectionConfig(
+        MAIL_USERNAME=settings.MAIL_USERNAME,
+        MAIL_PASSWORD=settings.MAIL_PASSWORD,
+        MAIL_FROM=settings.MAIL_FROM,
+        MAIL_SERVER=settings.MAIL_SERVER,
+        MAIL_PORT=settings.MAIL_PORT,
+        MAIL_STARTTLS=settings.MAIL_STARTTLS,
+        MAIL_SSL_TLS=settings.MAIL_SSL_TLS,
+        USE_CREDENTIALS=bool(settings.MAIL_USERNAME and settings.MAIL_PASSWORD),
+        VALIDATE_CERTS=True,
+    )
+    verification_link = _verification_url(token)
+    message = MessageSchema(
+        subject="Verify your Document AI Analyst account",
+        recipients=[user.email],
+        body=(
+            f"<p>Hi {user.username},</p>"
+            "<p>Please verify your email address before logging in to Document AI Analyst.</p>"
+            f'<p><a href="{verification_link}">Verify your account</a></p>'
+            "<p>This link expires in "
+            f"{settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS} hours.</p>"
+        ),
+        subtype=MessageType.html,
+    )
+
+    await FastMail(conf).send_message(message)
 
 
 def _create_token_response(user: User) -> TokenResponse:
@@ -97,25 +170,22 @@ def _unique_google_username(email: str, db: Session) -> str:
     return candidate
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: UserRegister, db: Session = Depends(get_db)):
+@router.post("/register", response_model=RegistrationResponse, status_code=status.HTTP_201_CREATED)
+async def register(payload: UserRegister, db: Session = Depends(get_db)):
     """
-    Register a new user account and return authentication tokens.
+    Register a new user account and send a verification email.
 
     Creates a new user in the database after validating that the username and
     email are not already taken. The password is hashed before storage. On
-    success, access and refresh tokens are generated and returned along with
-    the user's public information.
+    success, a verification token is generated, stored as a hash, and emailed
+    to the user before password login is allowed.
 
     Args:
         payload (UserRegister): The registration details including username, email, and password.
         db (Session, optional): Database session dependency. Defaults to Depends(get_db).
 
     Returns:
-        TokenResponse: An object containing:
-            - access_token (str): jwt access token for authenticating API requests.
-            - refresh_token (str): jwt refresh token for obtaining new access tokens.
-            - user : UserResponse object with registered user's public information (id, username, email).
+        RegistrationResponse: Message and email address for the pending verification.
 
     Raises:
         HTTPException: If the username is already taken (409 Conflict).
@@ -135,18 +205,25 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
             detail="Email already registered",
         )
 
-    # Create user
     user = User(
         username=payload.username,
         email=payload.email,
         hashed_password=hash_password(payload.password),
         role=UserRole.user,
+        is_verified=False,
     )
+    token = _set_verification_token(user)
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    return _create_token_response(user)
+    await _send_verification_email(user, token)
+
+    return RegistrationResponse(
+        message=REGISTRATION_MESSAGE,
+        email=user.email,
+        verification_url=_dev_verification_url(token),
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -180,6 +257,12 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
 
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=VERIFICATION_REQUIRED_MESSAGE,
+        )
+
     user.last_login = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
@@ -205,16 +288,68 @@ def login_with_google(payload: GoogleLoginRequest, db: Session = Depends(get_db)
             username=_unique_google_username(email, db),
             email=email,
             hashed_password=hash_password(secrets.token_urlsafe(32)),
+            is_verified=True,
         )
         db.add(user)
         db.commit()
         db.refresh(user)
+    elif not user.is_verified:
+        user.is_verified = True
+        user.verification_token_hash = None
+        user.verification_token_created_at = None
 
     user.last_login = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
 
     return _create_token_response(user)
+
+
+@router.get("/verify", response_model=MessageResponse)
+def verify_email(token: str, db: Session = Depends(get_db)):
+    """Verify a registered user's email address using an emailed token."""
+    token_hash = _hash_verification_token(token)
+    user = db.query(User).filter(User.verification_token_hash == token_hash).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+
+    created_at = user.verification_token_created_at
+    if created_at and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    expires_at = (created_at or datetime.now(timezone.utc)) + timedelta(
+        hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
+    )
+    if expires_at < datetime.now(timezone.utc):
+        user.verification_token_hash = None
+        user.verification_token_created_at = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+
+    user.is_verified = True
+    user.verification_token_hash = None
+    user.verification_token_created_at = None
+    db.commit()
+
+    return MessageResponse(message="Email verified successfully. You can now log in.")
+
+
+@router.post("/resend-verification", response_model=MessageResponse)
+async def resend_verification(payload: EmailVerificationRequest, db: Session = Depends(get_db)):
+    """Resend an email verification link for an unverified user."""
+    user = db.query(User).filter(User.email == payload.email).first()
+    if user and not user.is_verified:
+        token = _set_verification_token(user)
+        db.commit()
+        db.refresh(user)
+        await _send_verification_email(user, token)
+
+    return MessageResponse(message=VERIFICATION_RESEND_MESSAGE)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -352,10 +487,10 @@ def update_user_info(payload:UserUpdate,
                 raise HTTPException(status_code=400, detail="Username already exists")
             user.username = payload.username
         if payload.email:
-            existing_user = db.execute(select(User).where(User.username == payload.email)).scalar_one_or_none()
+            existing_user = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
 
             if existing_user:
-                raise HTTPException(status_code=400, detail="Username already exists")
+                raise HTTPException(status_code=400, detail="Email already exists")
             user.email = payload.email
         db.commit()
         db.refresh(user)
@@ -414,9 +549,6 @@ def update_password(payload:UpdatePassword,
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Database error")
-
-from typing import List
-import hashlib
 
 @router.post("/api-keys", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_api_key(
@@ -479,3 +611,206 @@ def get_auth_config():
     return {
         "google_client_id": settings.GOOGLE_CLIENT_ID
     }
+
+
+def _unique_google_username(email: str, db: Session) -> str:
+    """
+    Generate a unique username based on the email.
+    """
+    base = email.split("@")[0]
+    base = re.sub(r"[^a-zA-Z0-9_-]", "", base)
+    base = base[:70]
+    candidate = base
+    suffix = 1
+
+    while db.query(User).filter(User.username == candidate).first():
+        suffix += 1
+        suffix_text = f"-{suffix}"
+        candidate = f"{base[:80 - len(suffix_text)]}{suffix_text}"
+
+    return candidate
+
+
+@router.get("/login/huggingface")
+def huggingface_login(response: Response):
+    """
+    Generates a secure state, stores it in an HttpOnly cookie,
+    and returns the Hugging Face OAuth authorization URL.
+    """
+    if not settings.HF_CLIENT_ID or not settings.HF_REDIRECT_URI:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Hugging Face OAuth is not configured",
+        )
+
+    # Generate CSRF state
+    state = secrets.token_urlsafe(32)
+
+    # Store state in cookie (valid for 10 minutes)
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=600,  # 10 minutes
+    )
+
+    # Build Hugging Face authorize URL
+    scope = "openid profile email"
+    auth_url = (
+        f"https://huggingface.co/oauth/authorize?"
+        f"client_id={settings.HF_CLIENT_ID}&"
+        f"redirect_uri={settings.HF_REDIRECT_URI}&"
+        f"scope={scope}&"
+        f"state={state}&"
+        f"response_type=code"
+    )
+
+    return {"url": auth_url}
+
+
+@router.get("/callback/huggingface")
+async def huggingface_callback(
+    code: str,
+    state: str,
+    response: Response,
+    oauth_state: Optional[str] = Cookie(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Verifies state, exchanges code for access token,
+    gets user info, upserts user, sets HttpOnly JWT cookies,
+    and redirects to the frontend dashboard.
+    """
+    # 1. Verify CSRF State
+    if not oauth_state or state != oauth_state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="State verification failed. Possible CSRF attack.",
+        )
+
+    # 2. Exchange code for access_token via Hugging Face API
+    token_url = "https://huggingface.co/oauth/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": settings.HF_REDIRECT_URI,
+        "client_id": settings.HF_CLIENT_ID,
+        "client_secret": settings.HF_CLIENT_SECRET,
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            token_response = await client.post(token_url, headers=headers, data=data)
+            token_response.raise_for_status()
+            token_data = token_response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Failed to exchange code: {e.response.text}",
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Token exchange error: {str(e)}",
+            )
+
+    hf_access_token = token_data.get("access_token")
+    if not hf_access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No access token returned from Hugging Face",
+        )
+
+    # 3. Fetch user profile data via /oauth/userinfo
+    userinfo_url = "https://huggingface.co/oauth/userinfo"
+    userinfo_headers = {"Authorization": f"Bearer {hf_access_token}"}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            userinfo_response = await client.get(userinfo_url, headers=userinfo_headers)
+            userinfo_response.raise_for_status()
+            user_data = userinfo_response.json()
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to retrieve Hugging Face user info: {str(e)}",
+            )
+
+    email = user_data.get("email")
+    username = user_data.get("preferred_username") or user_data.get("username") or user_data.get("name")
+
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Hugging Face account email is required but not provided",
+        )
+
+    email = email.lower()
+    if not username:
+        username = email.split("@")[0]
+
+    # 4. Upsert user in the DB
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Check if username is already taken
+        username = _unique_google_username(email, db)
+        user = User(
+            username=username,
+            email=email,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    user.hf_token = hf_access_token
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
+    # 5. Generate secure session JWT tokens for our app
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+
+    # 6. Set tokens as HttpOnly cookies and Redirect
+    redirect_dest = f"{settings.FRONTEND_URL}/dashboard" if settings.ENVIRONMENT == "development" else "/dashboard"
+    response = RedirectResponse(
+        url=redirect_dest,
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    )
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=settings.JWT_ACCESS_EXPIRY_MINUTES * 60,
+    )
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=settings.JWT_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
+    )
+
+    # Delete the oauth_state cookie
+    response.delete_cookie(key="oauth_state")
+
+    return response
+
+
+@router.post("/logout")
+def logout(response: Response):
+    """
+    Logs out the user by clearing the secure session cookies.
+    """
+    response.delete_cookie(key="access_token")
+    response.delete_cookie(key="refresh_token")
+    return {"message": "Successfully logged out"}

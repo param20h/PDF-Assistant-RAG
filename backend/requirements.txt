@@ -17,6 +17,7 @@ python-dotenv
 google-auth
 google-api-python-client
 APScheduler
+fastapi-mail
 
 # Config
 pydantic-settings
@@ -38,6 +39,7 @@ langchain-huggingface
 langchain-text-splitters
 langsmith
 rank-bm25
+ragas>=0.3.0
 
 # Embeddings & ML
 sentence-transformers
@@ -56,6 +58,7 @@ huggingface-hub
 gunicorn
 slowapi
 prometheus-fastapi-instrumentator
+celery[redis]
 
 # File Validation
 #sudo apt-get install libmagic1 // for Debian/Ubuntu
@@ -65,5 +68,5 @@ python-magic; sys_platform != "win32"
 python-docx
 pypdf
 reportlab
-crawl4ai
+# crawl4ai
 ddgs

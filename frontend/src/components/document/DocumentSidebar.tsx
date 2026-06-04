@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -23,6 +24,7 @@ interface Props {
   loading?: boolean;
   onSelectDoc: (doc: DocInfo) => void;
   onDocumentsChange: () => void;
+  onDocumentRenamed: (doc: DocInfo) => void;
 }
 
 function DocumentListSkeleton() {
@@ -47,13 +49,23 @@ function DocumentListSkeleton() {
   );
 }
 
-export default function DocumentSidebar({ documents = [], activeDoc, loading = false, onSelectDoc, onDocumentsChange }: Props) {
+export default function DocumentSidebar({
+  documents = [],
+  activeDoc,
+  loading = false,
+  onSelectDoc,
+  onDocumentsChange,
+  onDocumentRenamed,
+}: Props) {
   const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
   const [settingsDoc, setSettingsDoc] = useState<DocInfo | null>(null);
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -119,6 +131,67 @@ export default function DocumentSidebar({ documents = [], activeDoc, loading = f
     setSettingsDoc(doc); 
   };
 
+  const startRename = (doc: DocInfo, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditingDocId(doc.id);
+    setDraftName(doc.original_name);
+  };
+
+  const cancelRename = () => {
+    setEditingDocId(null);
+    setDraftName("");
+  };
+
+  const submitRename = async (doc: DocInfo) => {
+    const nextName = draftName.trim();
+
+    if (!nextName) {
+      toast.error("Document name cannot be empty");
+      return;
+    }
+
+    if (nextName === doc.original_name) {
+      cancelRename();
+      return;
+    }
+
+    const optimisticDoc = { ...doc, original_name: nextName };
+    onDocumentRenamed(optimisticDoc);
+    setRenamingDocId(doc.id);
+
+    try {
+      const updatedDoc = await api.renameDocument<DocInfo>(doc.id, nextName);
+      onDocumentRenamed(updatedDoc);
+      cancelRename();
+      toast.success("Document renamed");
+    } catch (err) {
+      onDocumentRenamed(doc);
+      const message = err instanceof Error ? err.message : "Rename failed";
+      toast.error(message);
+    } finally {
+      setRenamingDocId(null);
+    }
+  };
+
+  const handleRenameKeyDown = (doc: DocInfo, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void submitRename(doc);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelRename();
+    }
+  };
+
+  const handleDocumentKeyDown = (doc: DocInfo, e: React.KeyboardEvent) => {
+    if (editingDocId === doc.id || doc.status !== "ready") return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onSelectDoc(doc);
+    }
+  };
+
+
   const statusIcon = (status: string) => {
     switch (status) {
       case "ready":
@@ -154,6 +227,7 @@ export default function DocumentSidebar({ documents = [], activeDoc, loading = f
           className={`relative rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-all duration-200
             ${isDragActive ? "border-primary bg-primary/10 scale-[1.02]" : "border-sidebar-border hover:border-primary/40 hover:bg-sidebar-accent/50"}
             ${uploading ? "pointer-events-none opacity-60" : ""}`}
+          aria-label="Upload documents"
         >
           <input {...getInputProps()} />
           {uploading ? (
@@ -196,22 +270,49 @@ export default function DocumentSidebar({ documents = [], activeDoc, loading = f
           </div>
         ) : (
           <div className="space-y-1 pb-3">
-            {documents.map((doc) => (
-              <button
-                key={doc.id}
-                onClick={() => doc.status === "ready" && onSelectDoc(doc)}
-                className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
-                  ${activeDoc?.id === doc.id
-                    ? "bg-primary/15 border border-primary/30"
-                    : "hover:bg-sidebar-accent border border-transparent"}
-                  ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer"}`}
-              >
-                <div className="flex items-start gap-2.5">
-                  {statusIcon(doc.status)}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate leading-tight">
-                      {doc.original_name}
-                    </p>
+            {documents.map((doc) => {
+              const isEditing = editingDocId === doc.id;
+              const isRenaming = renamingDocId === doc.id;
+
+              return (
+                <div
+                  key={doc.id}
+                  role="button"
+                  tabIndex={doc.status === "ready" ? 0 : -1}
+                  aria-disabled={doc.status !== "ready"}
+                  aria-current={activeDoc?.id === doc.id ? "true" : undefined}
+                  aria-label={`Select document ${doc.original_name}. Status: ${doc.status}`}
+                  onClick={() => doc.status === "ready" && !isEditing && onSelectDoc(doc)}
+                  onKeyDown={(e) => handleDocumentKeyDown(doc, e)}
+                  className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
+                    ${activeDoc?.id === doc.id
+                      ? "bg-primary/15 border border-primary/30"
+                      : "hover:bg-sidebar-accent border border-transparent"}
+                    ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    {statusIcon(doc.status)}
+                    <div className="flex-1 min-w-0">
+                      {isEditing ? (
+                        <Input
+                          value={draftName}
+                          onChange={(e) => setDraftName(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => handleRenameKeyDown(doc, e)}
+                          disabled={isRenaming}
+                          autoFocus
+                          className="h-7 px-2 text-sm font-medium"
+                        />
+                      ) : (
+                        <p
+                          className="text-sm font-medium truncate leading-tight"
+                          onDoubleClick={(e) => startRename(doc, e)}
+                          title="Double-click to rename"
+                        >
+                          {doc.original_name}
+                        </p>
+                      )}
+
                     <p className="text-xs text-muted-foreground mt-1">
                       {doc.summary || "📄 No summary available"}
                     </p>
@@ -242,24 +343,28 @@ export default function DocumentSidebar({ documents = [], activeDoc, loading = f
                         </Badge>
                       )}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0"> 
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
                     {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */} 
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity cursor-pointer"
                       onClick={(e) => handleSettingsClick(doc, e)}
                       disabled={doc.status !== "ready"}
+                      aria-label="Open chunking settings"
+                      title={`Open chunking settings for ${doc.original_name}`}
                     >
                       <Settings className="w-3 h-3" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0 cursor-pointer"
                       onClick={(e) => handleDelete(doc.id, e)}
                       disabled={deleting === doc.id}
+                      aria-label="Delete document"
+                      title={`Delete ${doc.original_name}`}
                     >
                       {deleting === doc.id ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -267,10 +372,13 @@ export default function DocumentSidebar({ documents = [], activeDoc, loading = f
                         <Trash2 className="w-3 h-3 text-destructive" />
                       )}
                     </Button>
+                    </div>
                   </div>
                 </div>
-              </button>
-            ))}
+              );
+            })}
+
+
           </div>
         )}
       </ScrollArea>

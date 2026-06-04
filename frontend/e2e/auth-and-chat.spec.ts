@@ -4,6 +4,7 @@ const user = {
   id: "user-1",
   username: "tester",
   email: "tester@example.com",
+  is_verified: true,
   is_admin: false,
   created_at: "2026-05-28T00:00:00Z",
 };
@@ -28,7 +29,13 @@ const uploadedDocument = {
 
 async function mockDashboardApis(page: Page, documents: typeof uploadedDocument[] = []) {
   await page.route("**/api/v1/auth/me", async (route) => {
-    await route.fulfill({ json: user });
+    const headers = route.request().headers();
+    const hasAuth = headers["authorization"] || headers["cookie"];
+    if (hasAuth) {
+      await route.fulfill({ json: user });
+    } else {
+      await route.fulfill({ status: 401, json: { detail: "Not authenticated" } });
+    }
   });
 
   await page.route("**/api/v1/documents/", async (route) => {
@@ -54,19 +61,25 @@ test("logs in with email and password", async ({ page }) => {
   await page.goto("/login");
   await page.locator("#login-email").fill(user.email);
   await page.locator("#login-password").fill("password123");
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page.locator("#sign-in-btn").click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText("No documents yet")).toBeVisible();
 });
 
 test("creates an account from the signup form", async ({ page }) => {
-  await mockDashboardApis(page);
   await page.route("**/api/v1/auth/register", async (route) => {
     const body = route.request().postDataJSON() as { username: string; email: string };
     expect(body.username).toBe(user.username);
     expect(body.email).toBe(user.email);
-    await route.fulfill({ status: 201, json: tokenResponse });
+    await route.fulfill({
+      status: 201,
+      json: {
+        message: "Registration successful. Please check your email to verify your account before logging in.",
+        email: user.email,
+        verification_url: "/verify-email?token=test-token",
+      },
+    });
   });
 
   await page.goto("/register");
@@ -75,21 +88,27 @@ test("creates an account from the signup form", async ({ page }) => {
   await page.locator("#reg-password").fill("password123");
   await page.getByRole("button", { name: "Create Account" }).click();
 
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByText("No documents yet")).toBeVisible();
+  await expect(page).toHaveURL(/\/register$/);
+  await expect(page.getByText("Check your email")).toBeVisible();
+  await expect(page.getByText(`We sent a verification link to ${user.email}. Verify your email before signing in.`)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open verification link" })).toHaveAttribute(
+    "href",
+    "/verify-email?token=test-token"
+  );
 });
 
-test("uploads a document and chats with it", async ({ page }) => {
+test("uploads a PDF document and chats with it", async ({ page }) => {
   const documents: typeof uploadedDocument[] = [];
+  const pdfDoc = { ...uploadedDocument, original_name: "test.pdf" };
   const markdownAnswer = [
-    "A short summary.",
+    "A short summary of the PDF.",
     "",
     "| Field | Value |",
     "| --- | --- |",
-    "| Pages | 1 |",
+    "| Format | PDF |",
     "",
     "```ts",
-    "const answer = 42;",
+    "const isPdf = true;",
     "```",
   ].join("\n");
 
@@ -101,8 +120,8 @@ test("uploads a document and chats with it", async ({ page }) => {
   await mockDashboardApis(page, documents);
 
   await page.route("**/api/v1/documents/upload", async (route) => {
-    documents.push(uploadedDocument);
-    await route.fulfill({ status: 202, json: uploadedDocument });
+    documents.push(pdfDoc);
+    await route.fulfill({ status: 202, json: pdfDoc });
   });
 
   await page.route("**/api/v1/chat/history/doc-1", async (route) => {
@@ -122,23 +141,73 @@ test("uploads a document and chats with it", async ({ page }) => {
   });
 
   await page.goto("/dashboard");
+  
+  // Upload as a PDF
   await page.locator('input[type="file"]').setInputFiles({
-    name: "notes.txt",
-    mimeType: "text/plain",
-    buffer: Buffer.from("hello world"),
+    name: "test.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\n%..."),
   });
 
-  const documentButton = page.getByRole("button", { name: /notes\.txt/ });
+  const documentButton = page.getByRole("button", { name: /test\.pdf/ });
   await expect(documentButton).toBeVisible();
   await documentButton.click();
   await expect(page.getByText("Ask about your document")).toBeVisible();
 
-  await page.locator("#chat-input").fill("Summarize this document");
+  await page.locator("#chat-input").fill("Summarize this PDF");
   await page.locator("#send-btn").click();
 
-  await expect(page.getByText("Summarize this document")).toBeVisible();
-  await expect(page.getByText("A short summary.")).toBeVisible();
+  await expect(page.getByText("Summarize this PDF")).toBeVisible();
+  await expect(page.getByText("A short summary of the PDF.")).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Field" })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "Pages" })).toBeVisible();
-  await expect(page.getByText("const answer = 42;")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Format" })).toBeVisible();
+  await expect(page.getByText("const isPdf = true;")).toBeVisible();
+});
+
+test("deletes a document successfully", async ({ page }) => {
+  const documents = [{ ...uploadedDocument, original_name: "test.pdf" }];
+  
+  await page.addInitScript(() => {
+    localStorage.setItem("token", "access-token");
+    localStorage.setItem("refresh_token", "refresh-token");
+  });
+
+  await mockDashboardApis(page, documents);
+
+  await page.route("**/api/v1/documents/doc-1", async (route) => {
+    expect(route.request().method()).toBe("DELETE");
+    documents.pop();
+    await route.fulfill({ status: 200, json: { message: "deleted" } });
+  });
+
+  await page.goto("/dashboard");
+  const documentButton = page.getByRole("button", { name: /test\.pdf/ });
+  await expect(documentButton).toBeVisible();
+  
+  // Handle confirm dialog (must be registered BEFORE click)
+  page.on('dialog', dialog => dialog.accept());
+
+  // Delete the document
+  await documentButton.hover();
+  // Find the button with Trash2 icon
+  await page.locator('button.shrink-0:has(svg.lucide-trash2)').click();
+
+  await expect(page.getByText("No documents yet")).toBeVisible();
+});
+
+test("logs out successfully", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("token", "access-token");
+    localStorage.setItem("refresh_token", "refresh-token");
+  });
+
+  await mockDashboardApis(page);
+
+  await page.goto("/dashboard");
+  await page.getByRole("button", { name: "tester" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+
+  await expect(page).toHaveURL(/\/login$/);
+  const token = await page.evaluate(() => localStorage.getItem("token"));
+  expect(token).toBeNull();
 });

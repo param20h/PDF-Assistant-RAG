@@ -59,6 +59,14 @@ def _migrate_schema():
     users_migrations = [
         ("users", "hf_token", "ALTER TABLE users ADD COLUMN hf_token VARCHAR(255)"),
         ("users", "role", "ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'"),
+        ("users", "last_login", "ALTER TABLE users ADD COLUMN last_login TIMESTAMP"),
+        ("users", "is_verified", "ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT TRUE NOT NULL"),
+        ("users", "verification_token_hash", "ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR(64)"),
+        (
+            "users",
+            "verification_token_created_at",
+            "ALTER TABLE users ADD COLUMN verification_token_created_at TIMESTAMP",
+        ),
     ]
     for table, column, ddl in users_migrations:
         if column not in existing_users_columns:
@@ -98,9 +106,34 @@ def _migrate_schema():
         ("documents", "last_accessed_at", "ALTER TABLE documents ADD COLUMN last_accessed_at TIMESTAMP"),
         ("documents", "is_deleted", "ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE NOT NULL"),
         ("documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP"),
+        ("documents", "summary", "ALTER TABLE documents ADD COLUMN summary TEXT"),
+        ("documents", "chunk_size", "ALTER TABLE documents ADD COLUMN chunk_size INTEGER"),
+        ("documents", "chunk_overlap", "ALTER TABLE documents ADD COLUMN chunk_overlap INTEGER"),
+        ("documents", "drive_file_id", "ALTER TABLE documents ADD COLUMN drive_file_id VARCHAR(255)"),
+        ("documents", "drive_folder_id", "ALTER TABLE documents ADD COLUMN drive_folder_id VARCHAR(255)"),
+        ("documents", "drive_synced_at", "ALTER TABLE documents ADD COLUMN drive_synced_at TIMESTAMP"),
     ]
     for table, column, ddl in docs_migrations:
         if column not in existing_docs_columns:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+                logger.info("Migration: added column %s.%s", table, column)
+            except Exception:
+                logger.warning(
+                    "Migration skipped (may already exist): %s.%s", table, column
+                )
+
+    # Migrate chat_messages
+    try:
+        existing_chat_columns = {c["name"] for c in inspector.get_columns("chat_messages")}
+    except Exception:
+        existing_chat_columns = set()
+    chat_migrations = [
+        ("chat_messages", "feedback", "ALTER TABLE chat_messages ADD COLUMN feedback VARCHAR(10)"),
+    ]
+    for table, column, ddl in chat_migrations:
+        if column not in existing_chat_columns:
             try:
                 with engine.begin() as conn:
                     conn.execute(text(ddl))

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useTranslation } from "react-i18next";
@@ -10,9 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Brain, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
+import HuggingFaceSignInButton from "@/components/auth/HuggingFaceSignInButton";
 
 export default function RegisterPage() {
-  const { register } = useAuth();
+  const { register, user, initialized } = useAuth();
   const { t } = useTranslation();
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -20,7 +21,17 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [registeredEmail, setRegisteredEmail] = useState("");
+  const [verificationUrl, setVerificationUrl] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (initialized && user) {
+      router.replace("/dashboard");
+    }
+  }, [user, initialized, router]);
 
   const handleGoogleSuccess = useCallback(() => {
     router.replace("/dashboard");
@@ -29,11 +40,15 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
+    setVerificationUrl("");
     setLoading(true);
 
     try {
-      await register(username, email, password);
-      router.replace("/dashboard");
+      const result = await register(username, email, password);
+      setRegisteredEmail(result.email);
+      setSuccess(result.message);
+      setVerificationUrl(result.verification_url ?? "");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t("register.fallbackError");
       setError(message);
@@ -58,7 +73,8 @@ export default function RegisterPage() {
         </CardHeader>
 
         <CardContent>
-          <div className="mb-4">
+          <div className="flex flex-col gap-2.5 mb-4">
+            <HuggingFaceSignInButton onError={setError} />
             <GoogleSignInButton
               onError={setError}
               onSuccess={handleGoogleSuccess}
@@ -69,6 +85,19 @@ export default function RegisterPage() {
             {error && (
               <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
                 {error}
+              </div>
+            )}
+            {success && (
+              <div className="p-3 rounded-lg bg-primary/10 border border-primary/30 text-sm text-primary">
+                <p className="font-medium">{t("register.verifyTitle")}</p>
+                <p className="mt-1">
+                  {t("register.verifyMessage", { email: registeredEmail })}
+                </p>
+                {verificationUrl && (
+                  <Link href={verificationUrl} className="inline-flex mt-3 font-medium underline">
+                    {t("register.openVerification")}
+                  </Link>
+                )}
               </div>
             )}
 
@@ -82,6 +111,7 @@ export default function RegisterPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 minLength={3}
+                disabled={Boolean(success)}
                 className="h-11"
               />
             </div>
@@ -95,6 +125,7 @@ export default function RegisterPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={Boolean(success)}
                 className="h-11"
               />
             </div>
@@ -110,6 +141,7 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
+                  disabled={Boolean(success)}
                   className="h-11 pr-10"
                 />
                 <button
@@ -122,7 +154,7 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
+            <Button type="submit" className="w-full h-11 text-base" disabled={loading || Boolean(success)}>
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
