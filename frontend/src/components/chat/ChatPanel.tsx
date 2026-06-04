@@ -195,7 +195,18 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           ws.send(JSON.stringify({ question, document_id: activeDoc?.id || null, session_id: activeSessionId }));
         };
 
+        // If WS doesn't open within 800ms, treat as failure and fallback
+        const connectTimeout = setTimeout(() => {
+          try {
+            ws.close();
+          } catch (e) {
+            // ignore
+          }
+          reject(new Error("WebSocket connection timeout"));
+        }, 800);
+
         ws.onmessage = (ev) => {
+          clearTimeout(connectTimeout);
           try {
             const event = JSON.parse(ev.data);
             if (event.type === "token") {
@@ -241,6 +252,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         };
 
         ws.onerror = (ev) => {
+          clearTimeout(connectTimeout);
           reject(new Error("WebSocket error"));
         };
 
