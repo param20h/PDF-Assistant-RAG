@@ -41,6 +41,7 @@ MAX_QUERY_VARIANTS = 4
 class CustomVectorRetriever(BaseRetriever):
     user_id: str = Field(description="User ID")
     document_id: Optional[str] = Field(default=None, description="Document ID")
+    document_ids: Optional[List[str]] = Field(default=None, description="Active Document IDs")
     top_k: int = Field(default=10, description="Top K results")
 
     def _get_relevant_documents(
@@ -51,6 +52,7 @@ class CustomVectorRetriever(BaseRetriever):
             query_embedding=query_vector,
             user_id=self.user_id,
             document_id=self.document_id,
+            document_ids=self.document_ids,
             top_k=self.top_k,
         )
         return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
@@ -59,6 +61,7 @@ class CustomVectorRetriever(BaseRetriever):
 class CustomBM25Retriever(BaseRetriever):
     user_id: str = Field(description="User ID")
     document_id: Optional[str] = Field(default=None, description="Document ID")
+    document_ids: Optional[List[str]] = Field(default=None, description="Active Document IDs")
     top_k: int = Field(default=10, description="Top K results")
 
     def _get_relevant_documents(
@@ -69,6 +72,7 @@ class CustomBM25Retriever(BaseRetriever):
             query=query,
             user_id=self.user_id,
             document_id=self.document_id,
+            document_ids=self.document_ids,
             top_k=self.top_k,
         )
         return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
@@ -228,17 +232,36 @@ def retrieve(
 
     Returns chunks with confidence scores.
     """
+    from app.database import SessionLocal
+    from app.models import Document
+
+    if document_id:
+        active_doc_ids = [document_id]
+    else:
+        with SessionLocal() as db:
+            active_docs = (
+                db.query(Document.id)
+                .filter(Document.user_id == user_id, Document.is_deleted.is_(False))
+                .all()
+            )
+            active_doc_ids = [str(d[0]) for d in active_docs]
+
+    if not active_doc_ids:
+        return []
+
     # ── Stage 1: Hybrid Search with Query Transformation ─────────────
     effective_top_k = top_k if top_k is not None else settings.TOP_K_RETRIEVAL
     vector_retriever = CustomVectorRetriever(
         user_id=user_id,
         document_id=document_id,
+        document_ids=active_doc_ids,
         top_k=effective_top_k,
     )
 
     bm25_retriever = CustomBM25Retriever(
         user_id=user_id,
         document_id=document_id,
+        document_ids=active_doc_ids,
         top_k=effective_top_k,
     )
 
