@@ -77,11 +77,18 @@ def _table_to_markdown(rows: List[List[Any]]) -> str:
 
 
 def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
-    """Extract PDF text while preserving tables as separate bbox-aware chunks."""
+    """Extract PDF text while preserving tables as separate chunks.
+
+    Prefer Unstructured for robust table extraction. Fall back to pdfplumber
+    if Unstructured is not available, then to PyMuPDF as a last resort.
+    """
     try:
-        return extract_pdf_with_tables(filepath)
+        return extract_pdf_with_unstructured(filepath)
     except ImportError:
-        return extract_pdf_with_pymupdf(filepath)
+        try:
+            return extract_pdf_with_tables(filepath)
+        except ImportError:
+            return extract_pdf_with_pymupdf(filepath)
 
 
 def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
@@ -99,6 +106,66 @@ def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
             })
 
     doc.close()
+    return pages
+
+
+def extract_pdf_with_unstructured(filepath: str) -> List[Dict[str, Any]]:
+    """Use Unstructured to partition PDF into elements and extract tables.
+
+    This function will raise ImportError when Unstructured isn't installed so
+    callers can fall back to other extractors.
+    """
+    try:
+        from unstructured.partition.pdf import partition_pdf
+        from unstructured.documents.elements import Table
+    except Exception as e:
+        raise ImportError("unstructured not available") from e
+
+    elements = partition_pdf(filename=filepath)
+    pages: List[Dict[str, Any]] = []
+    table_idx = 0
+
+    for elem in elements:
+        # Determine element type and page number
+        elem_type = getattr(elem, "element_type", None) or elem.__class__.__name__
+        page_num = None
+        if hasattr(elem, "page_number"):
+            page_num = getattr(elem, "page_number")
+        elif getattr(elem, "metadata", None):
+            page_num = elem.metadata.get("page_number") or elem.metadata.get("page")
+        page_num = int(page_num) if page_num else 1
+
+        if isinstance(elem, Table) or (isinstance(elem_type, str) and elem_type.lower() == "table"):
+            rows = []
+            for raw_row in getattr(elem, "rows", []) or []:
+                row = []
+                for cell in raw_row:
+                    # Cells may be elements or lists of elements
+                    if isinstance(cell, (list, tuple)):
+                        cell_text = " ".join(getattr(c, "text", str(c)) for c in cell)
+                    else:
+                        cell_text = getattr(cell, "text", str(cell))
+                    row.append(cell_text)
+                rows.append(row)
+
+            table_text = _table_to_markdown(rows)
+            if table_text.strip():
+                pages.append({
+                    "text": table_text,
+                    "page": page_num,
+                    "chunk_type": "table",
+                    "table_index": table_idx,
+                })
+                table_idx += 1
+        else:
+            text = getattr(elem, "text", str(elem) if elem else "")
+            if text and text.strip():
+                pages.append({
+                    "text": text,
+                    "page": page_num,
+                    "chunk_type": "text",
+                })
+
     return pages
 
 

@@ -30,6 +30,7 @@ httpx
 PyMuPDF
 pdfplumber
 python-docx
+unstructured[pdf]
 
 # LangChain & RAG
 langchain
