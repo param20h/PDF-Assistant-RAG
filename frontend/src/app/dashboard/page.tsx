@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { Menu } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
@@ -73,7 +74,8 @@ export default function DashboardPage() {
       unit?: "percent" | "pixels" | "pdf";
     }[];
   } | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(true);
   const [connectionError, setConnectionError] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(true);
@@ -163,6 +165,16 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [documents, loadDocuments]);
 
+  // Prevent background scroll on mobile while drawer is open
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [sidebarOpen]);
+
   if (!initialized || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -171,30 +183,33 @@ export default function DashboardPage() {
     );
   }
 
-  // Shared sidebar content — used by both desktop panel and mobile sheet
-  const sidebarContent = (
-    <DocumentSidebar
-      documents={documents}
-      activeDoc={activeDoc}
-      loading={documentsLoading}
-      onSelectDoc={(doc) => {
-        setActiveDoc(doc);
-        setPdfPage(1);
-      }}
-      onDocumentsChange={loadDocuments}
-      onDocumentRenamed={handleDocumentRenamed}
-    />
-  );
-
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <Header
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        viewerOpen={viewerOpen}
-        onToggleViewer={() => setViewerOpen(!viewerOpen)}
-        mobileSheetContent={sidebarContent}
-      />
+      <div className="relative flex-shrink-0 z-50">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="
+            md:hidden
+            absolute left-3 top-1/2 -translate-y-1/2 z-[60]
+            p-2 rounded-md
+            text-gray-600 hover:text-gray-900
+            dark:text-gray-400 dark:hover:text-gray-100
+            hover:bg-gray-100 dark:hover:bg-gray-800
+            transition-colors
+          "
+          aria-label="Open document sidebar"
+          aria-expanded={sidebarOpen}
+          aria-controls="document-sidebar"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <Header
+          sidebarOpen={panelOpen}
+          onToggleSidebar={() => setPanelOpen(!panelOpen)}
+          viewerOpen={viewerOpen}
+          onToggleViewer={() => setViewerOpen(!viewerOpen)}
+        />
+      </div>
 
       {connectionError && (
         <div
@@ -206,12 +221,25 @@ export default function DashboardPage() {
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        {/* ── Left: Document Sidebar — desktop only (md+) ─────────── */}
-        {sidebarOpen && (
-          <div className="hidden md:block w-72 flex-shrink-0 border-r border-border/50 overflow-hidden animate-fade-in-up">
-            {sidebarContent}
-          </div>
-        )}
+        {/* ── Left: Document Sidebar ─────────── */}
+        <div
+          className={`w-0 flex-shrink-0 overflow-visible md:overflow-hidden md:w-72 md:border-r md:border-border/50 md:animate-fade-in-up ${panelOpen ? "md:block" : "md:hidden"}`}
+        >
+          <DocumentSidebar
+            documents={documents}
+            activeDoc={activeDoc}
+            loading={documentsLoading}
+            onSelectDoc={(doc) => {
+              setActiveDoc(doc);
+              setPdfPage(1);
+              setSidebarOpen(false);
+            }}
+            onDocumentsChange={loadDocuments}
+            onDocumentRenamed={handleDocumentRenamed}
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+          />
+        </div>
 
         {/* ── Left-Center: Chat Sessions Sidebar ──── */}
         <ChatSessionSidebar />

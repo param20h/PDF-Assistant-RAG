@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api } from "@/lib/api";
@@ -11,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen,
+  FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen, X,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
@@ -25,6 +27,8 @@ interface Props {
   onSelectDoc: (doc: DocInfo) => void;
   onDocumentsChange: () => void;
   onDocumentRenamed: (doc: DocInfo) => void;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 function DocumentListSkeleton() {
@@ -56,8 +60,28 @@ export default function DocumentSidebar({
   onSelectDoc,
   onDocumentsChange,
   onDocumentRenamed,
+  isOpen,
+  onClose,
 }: Props) {
   const { t } = useTranslation();
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(drawerRef, isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isOpen, onClose]);
+
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
@@ -213,8 +237,59 @@ export default function DocumentSidebar({
     return `${(bytes / 1048576).toFixed(1)} MB`;
   };
 
+  const backdrop =
+    mounted &&
+    createPortal(
+      <div
+        aria-hidden={!isOpen}
+        onClick={onClose}
+        className={`
+          fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm
+          md:hidden
+          transition-opacity duration-300
+          ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
+        `}
+      />,
+      document.body
+    );
+
   return (
-    <div className="h-full flex flex-col bg-sidebar">
+    <>
+      {backdrop}
+
+      <div
+        id="document-sidebar"
+        ref={drawerRef}
+        role="dialog"
+        aria-label="Document sidebar"
+        aria-modal="true"
+        className={`
+          fixed top-0 left-0 z-[110] h-full
+          w-72 sm:w-80
+          bg-sidebar
+          border-r border-sidebar-border
+          flex flex-col
+          transition-transform duration-300 ease-in-out
+          md:static md:translate-x-0 md:z-auto md:h-full md:flex
+          ${isOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
+      >
+        <button
+          onClick={onClose}
+          className="
+            md:hidden
+            absolute top-3 right-3
+            p-1.5 rounded-md
+            text-gray-500 hover:text-gray-900
+            dark:text-gray-400 dark:hover:text-gray-100
+            hover:bg-gray-100 dark:hover:bg-gray-800
+            transition-colors
+          "
+          aria-label="Close sidebar"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
       {/* ── Upload Zone ─────────────────────────────── */}
       <div className="p-3 border-b border-sidebar-border space-y-2">
         {uploadError && (
@@ -397,6 +472,7 @@ export default function DocumentSidebar({
           }}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }

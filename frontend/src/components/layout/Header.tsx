@@ -100,19 +100,20 @@ export default function Header({
       <header className="h-14 flex items-center justify-between px-4 border-b border-border/50 bg-card/50 backdrop-blur-md flex-shrink-0 z-50">
         {/* Left */}
         <div className="flex items-center gap-3">
-          {/* Hamburger - mobile only */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 md:hidden"
-            onClick={() => setSheetOpen(true)}
-            title="Open sidebar"
-            aria-label="Open document navigation"
-            aria-expanded={sheetOpen}
-            aria-controls="mobile-document-navigation"
-          >
-            <Menu className="w-4 h-4" />
-          </Button>
+          {mobileSheetContent && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 md:hidden"
+              onClick={() => setSheetOpen(true)}
+              title="Open sidebar"
+              aria-label="Open document navigation"
+              aria-expanded={sheetOpen}
+              aria-controls="mobile-document-navigation"
+            >
+              <Menu className="w-4 h-4" />
+            </Button>
+          )}
 
           {/* Desktop sidebar toggle - hidden on mobile */}
           <Button
@@ -240,8 +241,8 @@ export default function Header({
         </div>
       </header>
 
-      {/* Mobile navigation sheet */}
-      {sheetOpen && (
+      {/* Mobile navigation sheet (legacy; omit mobileSheetContent to use dashboard drawer) */}
+      {mobileSheetContent && sheetOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
           onClick={() => setSheetOpen(false)}
@@ -249,6 +250,7 @@ export default function Header({
         />
       )}
 
+      {mobileSheetContent && (
       <aside
         id="mobile-document-navigation"
         className={[
@@ -281,6 +283,7 @@ export default function Header({
 
         <div className="flex-1 overflow-hidden">{sheetOpen ? mobileSheetContent : null}</div>
       </aside>
+      )}
     </>
   );
 }
