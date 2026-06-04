@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -38,7 +38,7 @@ import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspa
 import { api } from "@/lib/api";
 import { useTheme } from "next-themes";
 import HuggingFaceTokenModal from "@/components/auth/HuggingFaceTokenModal";
-
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useSyncExternalStore } from "react";
 
 interface HeaderProps {
@@ -268,6 +268,7 @@ export default function Header({
             </div>
             <span className="font-semibold text-sm">Document AI Analyst</span>
           </div>
+          <ThemeToggle />
           <Button
             variant="ghost"
             size="icon"
