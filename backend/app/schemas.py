@@ -1,7 +1,7 @@
 """
 Pydantic schemas for API request/response validation.
 """
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 from app.models import UserRole
@@ -41,7 +41,21 @@ class UpdatePasswordResponse(BaseModel):
     id: str
     username: str
     email: EmailStr
-    password_changed:bool = True
+    password_changed: bool = True
+
+
+class WorkspaceInviteRequest(BaseModel):
+    email: EmailStr
+    workspace_name: str = Field(..., min_length=1, max_length=100)
+    message: Optional[str] = None
+
+
+class WorkspaceInviteResponse(BaseModel):
+    email: EmailStr
+    workspace_name: str
+    invite_link: str
+    expires_in_hours: int
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -105,9 +119,22 @@ class DocumentResponse(BaseModel):
     error_message: Optional[str] = None
     uploaded_at: datetime
     summary: Optional[str] = None # New field for document summary
+    task_id: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class DocumentRename(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Document name cannot be empty")
+        return stripped
 
 
 class DocumentStatusResponse(BaseModel):

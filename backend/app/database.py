@@ -59,6 +59,7 @@ def _migrate_schema():
     users_migrations = [
         ("users", "hf_token", "ALTER TABLE users ADD COLUMN hf_token VARCHAR(255)"),
         ("users", "role", "ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'"),
+        ("users", "last_login", "ALTER TABLE users ADD COLUMN last_login TIMESTAMP"),
     ]
     for table, column, ddl in users_migrations:
         if column not in existing_users_columns:
@@ -98,6 +99,12 @@ def _migrate_schema():
         ("documents", "last_accessed_at", "ALTER TABLE documents ADD COLUMN last_accessed_at TIMESTAMP"),
         ("documents", "is_deleted", "ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE NOT NULL"),
         ("documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP"),
+        ("documents", "summary", "ALTER TABLE documents ADD COLUMN summary TEXT"),
+        ("documents", "chunk_size", "ALTER TABLE documents ADD COLUMN chunk_size INTEGER"),
+        ("documents", "chunk_overlap", "ALTER TABLE documents ADD COLUMN chunk_overlap INTEGER"),
+        ("documents", "drive_file_id", "ALTER TABLE documents ADD COLUMN drive_file_id VARCHAR(255)"),
+        ("documents", "drive_folder_id", "ALTER TABLE documents ADD COLUMN drive_folder_id VARCHAR(255)"),
+        ("documents", "drive_synced_at", "ALTER TABLE documents ADD COLUMN drive_synced_at TIMESTAMP"),
     ]
     for table, column, ddl in docs_migrations:
         if column not in existing_docs_columns:

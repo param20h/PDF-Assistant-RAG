@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useTranslation } from "react-i18next";
@@ -10,9 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Brain, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
+import HuggingFaceSignInButton from "@/components/auth/HuggingFaceSignInButton";
 
 export default function RegisterPage() {
-  const { register } = useAuth();
+  const { register, user, initialized } = useAuth();
   const { t } = useTranslation();
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -21,6 +22,13 @@ export default function RegisterPage() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (initialized && user) {
+      router.replace("/dashboard");
+    }
+  }, [user, initialized, router]);
 
   const handleGoogleSuccess = useCallback(() => {
     router.replace("/dashboard");
@@ -58,7 +66,8 @@ export default function RegisterPage() {
         </CardHeader>
 
         <CardContent>
-          <div className="mb-4">
+          <div className="flex flex-col gap-2.5 mb-4">
+            <HuggingFaceSignInButton onError={setError} />
             <GoogleSignInButton
               onError={setError}
               onSuccess={handleGoogleSuccess}

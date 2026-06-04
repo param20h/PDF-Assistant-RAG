@@ -12,6 +12,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import {
   Brain,
@@ -20,15 +26,18 @@ import {
   PanelRightClose,
   PanelRightOpen,
   LogOut,
-  Moon,
-  Sun,
   Menu,
   X,
+  Palette,
+  Briefcase, 
+  ChevronDown,
+  Sun,
+  Moon
 } from "lucide-react";
-import { Briefcase, ChevronDown } from "lucide-react";
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
 import { useTheme } from "next-themes";
+import HuggingFaceTokenModal from "@/components/auth/HuggingFaceTokenModal";
 
 import { useSyncExternalStore } from "react";
 
@@ -203,7 +212,7 @@ export default function Header({
               aria-label={`Open user menu for ${user?.username ?? "current user"}`}
             >
               <Avatar className="w-6 h-6">
-                <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
+                <AvatarFallback className="text-[10px] bg-primary text-primary-foreground">
                   {user?.username?.slice(0, 2).toUpperCase() || "U"}
                 </AvatarFallback>
               </Avatar>
@@ -215,7 +224,14 @@ export default function Header({
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
+              <div className="px-1 py-0.5">
+                <HuggingFaceTokenModal />
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive cursor-pointer"
+                onClick={handleLogout}
+              >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign out
               </DropdownMenuItem>

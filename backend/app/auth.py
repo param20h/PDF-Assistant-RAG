@@ -2,11 +2,11 @@
 JWT authentication — register, login, and token verification.
 """
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Any
 
 import jwt
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Cookie
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,7 @@ from app.database import get_db
 from app.models import User, UserRole
 
 settings = get_settings()
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 # ── Password Hashing ─────────────────────────────────
@@ -65,16 +65,54 @@ def decode_token(token: str, token_type: str = "access") -> Optional[str]:
         return None
 
 
+def create_invite_token(inviter_id: str, email: str, workspace_name: str) -> str:
+    """Create a time-bound workspace invitation JWT."""
+    payload: dict[str, Any] = {
+        "sub": inviter_id,
+        "email": email,
+        "workspace_name": workspace_name,
+        "type": "invite",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=settings.INVITE_TOKEN_EXPIRY_HOURS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_invite_token(token: str) -> Optional[dict[str, Any]]:
+    """Decode a workspace invite JWT and return its payload if valid."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "invite":
+            return None
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
 # ── FastAPI Dependencies ─────────────────────────────
 
 import hashlib
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    access_token: Optional[str] = Cookie(None),
     db: Session = Depends(get_db),
 ) -> User:
-    """Dependency: extract and validate user from JWT bearer token or API key."""
-    token = credentials.credentials
+    """Dependency: extract and validate user from JWT bearer token, API key, or secure cookie."""
+    token = None
+    if credentials:
+        token = credentials.credentials
+    elif access_token:
+        token = access_token
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     # Check if token is an API key
     if token.startswith("pdf_rag_"):

@@ -8,12 +8,25 @@ import hashlib
 from datetime import datetime, timezone
 
 from cryptography.fernet import Fernet
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Boolean, Enum as SQLAlchemyEnum
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    DateTime,
+    ForeignKey,
+    Text,
+    Boolean,
+    Enum as SQLAlchemyEnum,
+)
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+
+
+def generate_uuid():
+    return str(uuid.uuid4())
 
 
 class GUID(TypeDecorator):
@@ -50,9 +63,9 @@ class GUID(TypeDecorator):
 
 class EncryptedString(TypeDecorator):
     """
-    A custom SQLAlchemy type that transparently encrypts strings in the database 
-    using Fernet (AES). This ensures sensitive tokens aren't stored in plain text 
-    while remaining easily accessible in code.
+    A custom SQLAlchemy type that transparently encrypts strings
+    in the database using Fernet (AES). This ensures sensitive tokens
+    aren't stored in plain text while remaining easily accessible in code.
     """
     impl = Text
     cache_ok = False
@@ -61,7 +74,9 @@ class EncryptedString(TypeDecorator):
         from app.config import get_settings
         settings = get_settings()
         # Derive a 32-byte key from the SECRET_KEY for Fernet encryption
-        key = base64.urlsafe_b64encode(hashlib.sha256(settings.SECRET_KEY.encode()).digest())
+        key = base64.urlsafe_b64encode(
+            hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+        )
         return Fernet(key)
 
     def process_bind_param(self, value, dialect):
@@ -96,7 +111,8 @@ class UserRole(str, enum.Enum):
 class User(Base):
     """
     Represents a registered user within the system.
-    Supports both legacy 'is_admin' flags and the modern 'role' enum for permissions.
+    Supports both legacy 'is_admin' flags and the modern 'role' enum for
+    permissions.
     """
     __tablename__ = "users"
 
@@ -104,21 +120,44 @@ class User(Base):
     username = Column(String(80), unique=True, nullable=False, index=True)
     email = Column(String(120), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
-    
-    # Permission fields: transitioning towards 'role', keeping 'is_admin' for compatibility
+
+    # Permission fields: transitioning towards 'role', while keeping 'is_admin'
+    # for compatibility
     role = Column(
         SQLAlchemyEnum(UserRole),
         default=UserRole.user,
         nullable=False,
-        server_default="user"
+        server_default="user",
     )
     is_admin = Column(Boolean, default=False)
-    
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, nullable=True, index=True)
     hf_token = Column(EncryptedString, nullable=True)
 
     # Relationships
+ 
+    documents = relationship(
+        "Document",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+    messages = relationship(
+        "ChatMessage",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    api_keys = relationship(
+        "ApiKey",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    chat_sessions = relationship(
+        "ChatSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
     documents = relationship("Document", back_populates="owner", cascade="all, delete-orphan")
     messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
@@ -126,9 +165,11 @@ class User(Base):
     drive_connections = relationship("DriveConnection", back_populates="user", cascade="all, delete-orphan")
 
 
+
 class ApiKey(Base):
     """
-    Stores secure hashes of API keys used for programmatic interaction with the system.
+    Stores secure hashes of API keys used for programmatic interaction with the
+    system.
     """
     __tablename__ = "api_keys"
 
@@ -145,6 +186,26 @@ class ApiKey(Base):
     user = relationship("User", back_populates="api_keys")
 
 
+class WorkspaceInvitation(Base):
+    __tablename__ = "workspace_invitations"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    email = Column(String(120), nullable=False, index=True)
+    token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    inviter_id = Column(
+        String,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+    workspace_name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime, nullable=False)
+    accepted_at = Column(DateTime, nullable=True)
+
+    inviter = relationship("User")
+
+
 class ChatSession(Base):
     """
     Groups chat messages into logical sessions/threads.
@@ -158,7 +219,11 @@ class ChatSession(Base):
 
     # Relationships
     user = relationship("User", back_populates="chat_sessions")
-    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+    messages = relationship(
+        "ChatMessage",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
 
 
 class Document(Base):
@@ -169,14 +234,27 @@ class Document(Base):
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
-    filename = Column(String(255), nullable=False)        # Stored filename (UUID-based)
-    original_name = Column(String(255), nullable=False)    # User's original filename
-    file_size = Column(Integer, default=0)                 # Size in bytes
+    filename = Column(String(255), nullable=False)
+    # Stored filename (UUID-based)
+    original_name = Column(String(255), nullable=False)
+    # User's original filename
+    file_size = Column(Integer, default=0)
+    # Size in bytes
     page_count = Column(Integer, default=0)
     chunk_count = Column(Integer, default=0)
-    status = Column(String(20), default="pending")          # pending | processing | ready | failed
+    status = Column(String(20), default="pending")
+    # pending | processing | ready | failed
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    last_accessed_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=True,
+    )
+    summary = Column(Text, nullable=True)
+    # Optional summary of the document's content
+
     last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
     summary = Column(Text, nullable=True)  # Optional summary of the document's content
     chunk_size = Column(Integer, nullable=True)   # if NULL, use global default from settings
@@ -187,9 +265,14 @@ class Document(Base):
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
 
+
     # Relationships
     owner = relationship("User", back_populates="documents")
-    messages = relationship("ChatMessage", back_populates="document", cascade="all, delete-orphan")
+    messages = relationship(
+        "ChatMessage",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
 
 
 class ChatMessage(Base):
@@ -200,8 +283,18 @@ class ChatMessage(Base):
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
-    document_id = Column(GUID, ForeignKey("documents.id"), nullable=True, index=True)
-    session_id = Column(GUID, ForeignKey("chat_sessions.id"), nullable=True, index=True)
+    document_id = Column(
+        GUID,
+        ForeignKey("documents.id"),
+        nullable=True,
+        index=True,
+    )
+    session_id = Column(
+        GUID,
+        ForeignKey("chat_sessions.id"),
+        nullable=True,
+        index=True,
+    )
     role = Column(String(20), nullable=False)  # "user" | "assistant"
     content = Column(Text, nullable=False)
     sources_json = Column(Text, nullable=True)  # JSON representation of retrieved sources
@@ -212,7 +305,12 @@ class ChatMessage(Base):
     user = relationship("User", back_populates="messages")
     document = relationship("Document", back_populates="messages")
     session = relationship("ChatSession", back_populates="messages")
-    shared_message = relationship("SharedMessage", back_populates="message", uselist=False, cascade="all, delete-orphan")
+    shared_message = relationship(
+        "SharedMessage",
+        back_populates="message",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
 
 class DriveConnection(Base):
@@ -238,7 +336,13 @@ class SharedMessage(Base):
     __tablename__ = "shared_messages"
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
-    message_id = Column(GUID, ForeignKey("chat_messages.id"), nullable=False, unique=True, index=True)
+    message_id = Column(
+        GUID,
+        ForeignKey("chat_messages.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships

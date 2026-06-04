@@ -3,8 +3,11 @@ Auth API routes — register, login, and user profile.
 """
 import re
 import secrets
+from typing import Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Cookie, Response, Body
+from fastapi.responses import RedirectResponse
+import httpx
 from langsmith import expect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -479,3 +482,206 @@ def get_auth_config():
     return {
         "google_client_id": settings.GOOGLE_CLIENT_ID
     }
+
+
+def _unique_google_username(email: str, db: Session) -> str:
+    """
+    Generate a unique username based on the email.
+    """
+    base = email.split("@")[0]
+    base = re.sub(r"[^a-zA-Z0-9_-]", "", base)
+    base = base[:70]
+    candidate = base
+    suffix = 1
+
+    while db.query(User).filter(User.username == candidate).first():
+        suffix += 1
+        suffix_text = f"-{suffix}"
+        candidate = f"{base[:80 - len(suffix_text)]}{suffix_text}"
+
+    return candidate
+
+
+@router.get("/login/huggingface")
+def huggingface_login(response: Response):
+    """
+    Generates a secure state, stores it in an HttpOnly cookie,
+    and returns the Hugging Face OAuth authorization URL.
+    """
+    if not settings.HF_CLIENT_ID or not settings.HF_REDIRECT_URI:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Hugging Face OAuth is not configured",
+        )
+
+    # Generate CSRF state
+    state = secrets.token_urlsafe(32)
+
+    # Store state in cookie (valid for 10 minutes)
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=600,  # 10 minutes
+    )
+
+    # Build Hugging Face authorize URL
+    scope = "openid profile email"
+    auth_url = (
+        f"https://huggingface.co/oauth/authorize?"
+        f"client_id={settings.HF_CLIENT_ID}&"
+        f"redirect_uri={settings.HF_REDIRECT_URI}&"
+        f"scope={scope}&"
+        f"state={state}&"
+        f"response_type=code"
+    )
+
+    return {"url": auth_url}
+
+
+@router.get("/callback/huggingface")
+async def huggingface_callback(
+    code: str,
+    state: str,
+    response: Response,
+    oauth_state: Optional[str] = Cookie(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Verifies state, exchanges code for access token,
+    gets user info, upserts user, sets HttpOnly JWT cookies,
+    and redirects to the frontend dashboard.
+    """
+    # 1. Verify CSRF State
+    if not oauth_state or state != oauth_state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="State verification failed. Possible CSRF attack.",
+        )
+
+    # 2. Exchange code for access_token via Hugging Face API
+    token_url = "https://huggingface.co/oauth/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": settings.HF_REDIRECT_URI,
+        "client_id": settings.HF_CLIENT_ID,
+        "client_secret": settings.HF_CLIENT_SECRET,
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            token_response = await client.post(token_url, headers=headers, data=data)
+            token_response.raise_for_status()
+            token_data = token_response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Failed to exchange code: {e.response.text}",
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Token exchange error: {str(e)}",
+            )
+
+    hf_access_token = token_data.get("access_token")
+    if not hf_access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No access token returned from Hugging Face",
+        )
+
+    # 3. Fetch user profile data via /oauth/userinfo
+    userinfo_url = "https://huggingface.co/oauth/userinfo"
+    userinfo_headers = {"Authorization": f"Bearer {hf_access_token}"}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            userinfo_response = await client.get(userinfo_url, headers=userinfo_headers)
+            userinfo_response.raise_for_status()
+            user_data = userinfo_response.json()
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to retrieve Hugging Face user info: {str(e)}",
+            )
+
+    email = user_data.get("email")
+    username = user_data.get("preferred_username") or user_data.get("username") or user_data.get("name")
+
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Hugging Face account email is required but not provided",
+        )
+
+    email = email.lower()
+    if not username:
+        username = email.split("@")[0]
+
+    # 4. Upsert user in the DB
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Check if username is already taken
+        username = _unique_google_username(email, db)
+        user = User(
+            username=username,
+            email=email,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    user.hf_token = hf_access_token
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
+    # 5. Generate secure session JWT tokens for our app
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+
+    # 6. Set tokens as HttpOnly cookies and Redirect
+    redirect_dest = f"{settings.FRONTEND_URL}/dashboard" if settings.ENVIRONMENT == "development" else "/dashboard"
+    response = RedirectResponse(
+        url=redirect_dest,
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    )
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=settings.JWT_ACCESS_EXPIRY_MINUTES * 60,
+    )
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=settings.JWT_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
+    )
+
+    # Delete the oauth_state cookie
+    response.delete_cookie(key="oauth_state")
+
+    return response
+
+
+@router.post("/logout")
+def logout(response: Response):
+    """
+    Logs out the user by clearing the secure session cookies.
+    """
+    response.delete_cookie(key="access_token")
+    response.delete_cookie(key="refresh_token")
+    return {"message": "Successfully logged out"}
