@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, CheckCircle, Folder } from "lucide-react";
 import { getDriveFolders, type DriveFolder } from "@/services/drive-api";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 
 interface DriveFolderSelectorProps {
   onSelect?: (folder: DriveFolder) => void;
@@ -91,18 +92,35 @@ export default function DriveFolderSelector({ onSelect }: DriveFolderSelectorPro
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [folderPath, setFolderPath] = useState<DriveFolder[]>([]);
 
   useEffect(() => {
     let active = true;
 
+    const interval = setInterval(() => {
+      setSyncProgress((prev) => {
+        if (prev >= 90) return prev;
+        return prev + 10;
+      });
+    }, 150);
+
     void getDriveFolders().then((data) => {
       if (!active) return;
+
+      clearInterval(interval);
+
+      setSyncProgress(100);
       setFolders(data);
-      setLoading(false);
+
+      setTimeout(() => {
+        setLoading(false);
+      }, 300);
     });
 
     return () => {
       active = false;
+      clearInterval(interval);
     };
   }, []);
 
@@ -118,10 +136,16 @@ export default function DriveFolderSelector({ onSelect }: DriveFolderSelectorPro
     }));
   };
 
-  const handleSelect = (folder: DriveFolder) => {
-    setSelectedId(folder.id);
-    onSelect?.(folder);
-  };
+ const handleSelect = (folder: DriveFolder) => {
+  setSelectedId(folder.id);
+
+  const path =
+    findFolderPath(folders, folder.id) ?? [];
+
+  setFolderPath(path);
+
+  onSelect?.(folder);
+};
 
   return (
     <div className="space-y-6">
@@ -135,6 +159,41 @@ export default function DriveFolderSelector({ onSelect }: DriveFolderSelectorPro
             Pick exactly one folder from the tree.
           </div>
         </div>
+
+        {loading && (
+          <div className="mt-3 space-y-2">
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Syncing Drive folders...</span>
+              <span>{syncProgress}%</span>
+            </div>
+            <Progress value={syncProgress} />
+          </div>
+        )}
+
+        {folderPath.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+            {folderPath.map((folder, index) => (
+              <div
+                key={folder.id}
+                className="flex items-center gap-2"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSelect(folder)}
+                  className="text-primary hover:underline"
+                >
+                  {folder.name}
+                </button>
+
+                {index < folderPath.length - 1 && (
+                  <span className="text-muted-foreground">
+                    /
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <div className="space-y-2">
@@ -194,6 +253,30 @@ export default function DriveFolderSelector({ onSelect }: DriveFolderSelectorPro
       </div>
     </div>
   );
+}
+
+function findFolderPath(
+  folders: DriveFolder[],
+  targetId: string
+): DriveFolder[] | null {
+  for (const folder of folders) {
+    if (folder.id === targetId) {
+      return [folder];
+    }
+
+    if (folder.children) {
+      const childPath = findFolderPath(
+        folder.children,
+        targetId
+      );
+
+      if (childPath) {
+        return [folder, ...childPath];
+      }
+    }
+  }
+
+  return null;
 }
 
 function collectFolders(folder: DriveFolder): DriveFolder[] {
