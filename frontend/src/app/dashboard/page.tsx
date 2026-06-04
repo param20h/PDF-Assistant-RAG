@@ -61,6 +61,7 @@ export default function DashboardPage() {
 
   const [documents, setDocuments] = useState<DocInfo[]>([]);
   const prevDocsRef = useRef<Record<string, string>>({});
+  const toastedFailures = useRef<Set<string>>(new Set());
   const [activeDoc, setActiveDoc] = useState<DocInfo | null>(null);
   const [pdfPage, setPdfPage] = useState(1);
   const [pdfHighlightTarget, setPdfHighlightTarget] = useState<{
@@ -141,15 +142,31 @@ export default function DashboardPage() {
       nextPrevDocs[doc.id] = doc.status;
 
       const oldStatus = prev[doc.id];
-      if (oldStatus && oldStatus !== doc.status) {
-        if (doc.status === "ready") {
-          toast.success(`🎉 Ingestion complete: '${doc.original_name}' is ready!`);
-        } else if (doc.status === "failed") {
-          toast.error(`❌ Ingestion failed for '${doc.original_name}': ${doc.error_message || "Unknown error"}`);
-        }
+      if (oldStatus && oldStatus !== doc.status && doc.status === "ready") {
+        toast.success(`🎉 Ingestion complete: '${doc.original_name}' is ready!`);
       }
     });
     prevDocsRef.current = nextPrevDocs;
+  }, [documents]);
+
+  // ── Issue #16: surface async processing failures ──────────────────────
+  useEffect(() => {
+    documents.forEach((doc) => {
+      if (doc.status === "failed" && !toastedFailures.current.has(doc.id)) {
+        toastedFailures.current.add(doc.id);
+
+        const reason =
+          doc.error_message ??
+          `Processing failed for "${doc.original_name}".`;
+
+        toast.error(reason);
+
+        setTimeout(() => {
+          setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+          toastedFailures.current.delete(doc.id);
+        }, 4000);
+      }
+    });
   }, [documents]);
 
   // Poll for processing status

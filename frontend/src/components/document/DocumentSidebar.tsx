@@ -91,7 +91,8 @@ export default function DocumentSidebar({
         } catch (err) {
           const message = err instanceof Error ? err.message : t("documents.uploadFailed");
           setUploadError(message);
-          toast.error(`❌ Upload failed: ${message}`);
+          toast.error(message);
+          return;
         } finally {
           setUploading(false);
           setUploadProgress(0);
@@ -105,9 +106,6 @@ export default function DocumentSidebar({
     onDrop,
     accept: {
       "application/pdf": [".pdf"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-      "text/plain": [".txt"],
-      "text/markdown": [".md"],
     },
     disabled: uploading,
   });
@@ -343,6 +341,11 @@ export default function DocumentSidebar({
                         </Badge>
                       )}
                     </div>
+                    {doc.status === "failed" && doc.error_message && (
+                      <p className="mt-1.5 text-xs text-red-500 dark:text-red-400 leading-snug">
+                        {doc.error_message}
+                      </p>
+                    )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                     {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */} 

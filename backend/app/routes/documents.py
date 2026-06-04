@@ -200,30 +200,56 @@ async def upload_document(
         HTTPException: With status code 500 if:
             - The server lacks the 'python-magic' dependency. 
     """
-    # ── Validate file type ───────────────────────────
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
 
-    ext = file.filename.rsplit(".", 1)[-1].lower()
-    if ext not in settings.ALLOWED_EXTENSIONS:
+    # ── Issue #16: consistent validation errors ──────────────────────────
+    ALLOWED_CONTENT_TYPES = {"application/pdf"}
+    ALLOWED_EXTENSIONS = {".pdf"}
+    MAX_FILE_SIZE_BYTES = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"File type '.{ext}' not supported. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}",
+            detail=f"Unsupported file type '{ext or 'unknown'}'. Only PDF files are accepted.",
         )
 
-    # ── Validate and save file to disk ───────────────
-    temp_path = await validate_upload(file)
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid content type '{file.content_type}'. Only PDF files are accepted.",
+        )
+
+    contents = await file.read()
+
+    if not contents.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file does not appear to be a valid PDF.",
+        )
+
+    if len(contents) > MAX_FILE_SIZE_BYTES:
+        mb = len(contents) / (1024 * 1024)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"File too large ({mb:.1f} MB). "
+                f"Maximum allowed size is {settings.MAX_UPLOAD_SIZE_MB} MB."
+            ),
+        )
+    # ── end validation ────────────────────────────────────────────────────
 
     user_dir = os.path.join(settings.UPLOAD_DIR, user.id)
     os.makedirs(user_dir, exist_ok=True)
 
-    stored_filename = f"{uuid.uuid4().hex}.{ext}"
+    stored_filename = f"{uuid.uuid4().hex}.pdf"
     filepath = os.path.join(user_dir, stored_filename)
 
-    # Move temp file to final destination
-    shutil.move(temp_path, filepath)
+    with open(filepath, "wb") as f:
+        f.write(contents)
 
-    file_size = Path(filepath).stat().st_size
+    file_size = len(contents)
 
     # ── Create database record ───────────────────────
     document = Document(

@@ -24,8 +24,16 @@ def _pdf_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def _upload_file(name: str, content: bytes) -> UploadFile:
-    return UploadFile(filename=name, file=io.BytesIO(content))
+def _upload_file(
+    name: str,
+    content: bytes,
+    content_type: str = "application/pdf",
+) -> UploadFile:
+    return UploadFile(
+        filename=name,
+        file=io.BytesIO(content),
+        headers={"content-type": content_type},
+    )
 
 
 def _run(coro):
@@ -123,22 +131,12 @@ def test_upload_document_handles_duplicate_original_names(
     session.commit()
     session.refresh(user)
 
-    temp_files: list[Path] = []
-
-    async def fake_validate_upload(_file: UploadFile) -> str:
-        handle = documents.tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-        with handle:
-            handle.write(_pdf_bytes())
-        temp_files.append(Path(handle.name))
-        return handle.name
-
     class FakeUUID:
         def __init__(self, value: str) -> None:
             self.hex = value
 
     uuid_values = iter([FakeUUID(first_hex), FakeUUID(second_hex)])
 
-    monkeypatch.setattr(documents, "validate_upload", fake_validate_upload)
     monkeypatch.setattr(documents.settings, "UPLOAD_DIR", str(tmp_path / "uploads"))
     monkeypatch.setattr(documents.uuid, "uuid4", lambda: next(uuid_values))
     monkeypatch.setattr(
@@ -147,16 +145,17 @@ def test_upload_document_handles_duplicate_original_names(
         lambda **_kwargs: types.SimpleNamespace(id="queued-task"),
     )
 
+    pdf_bytes = _pdf_bytes()
     first = _run(
         documents.upload_document(
-            file=_upload_file("same-name.pdf", b"first"),
+            file=_upload_file("same-name.pdf", pdf_bytes),
             user=user,
             db=session,
         )
     )
     second = _run(
         documents.upload_document(
-            file=_upload_file("same-name.pdf", b"second"),
+            file=_upload_file("same-name.pdf", pdf_bytes),
             user=user,
             db=session,
         )
@@ -170,4 +169,31 @@ def test_upload_document_handles_duplicate_original_names(
     assert first.task_id == second.task_id == "queued-task"
     assert (tmp_path / "uploads" / user.id / f"{first_hex}.pdf").exists()
     assert (tmp_path / "uploads" / user.id / f"{second_hex}.pdf").exists()
-    assert all(not path.exists() for path in temp_files)
+
+
+def test_upload_document_rejects_non_pdf_extension() -> None:
+    with pytest.raises(HTTPException) as exc:
+        _run(
+            documents.upload_document(
+                file=_upload_file("test.docx", b"%PDF-1.4", "application/pdf"),
+                user=types.SimpleNamespace(id="user-1"),
+                db=types.SimpleNamespace(),
+            )
+        )
+
+    assert exc.value.status_code == 400
+    assert "Unsupported file type" in exc.value.detail
+
+
+def test_upload_document_rejects_invalid_magic_bytes() -> None:
+    with pytest.raises(HTTPException) as exc:
+        _run(
+            documents.upload_document(
+                file=_upload_file("fake.pdf", b"not a pdf file"),
+                user=types.SimpleNamespace(id="user-1"),
+                db=types.SimpleNamespace(),
+            )
+        )
+
+    assert exc.value.status_code == 400
+    assert "does not appear to be a valid PDF" in exc.value.detail
