@@ -7,7 +7,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Brain, User, Copy, Check, Share2, Link2, X, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/store/chat-store";
 
@@ -56,22 +56,22 @@ export default function MessageBubble({ message }: Props) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const [shareFailed, setShareFailed] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Component unmount ആകുമ്പോൾ speech cancel ചെയ്യും
   useEffect(() => {
+    const currentUtterance = utteranceRef.current;
     return () => {
-      if (utteranceRef.current) {
-        window.speechSynthesis.cancel();
-      }
-    };
+  if (currentUtterance) {
+    speechSynthesis.cancel();
+  }
+};
   }, []);
 
-  const [feedbackState, setFeedbackState] = useState<"up" | "down" | null>(message.feedback ?? null);
-  const setMessages = useChatStore((s) => s.setMessages);
+  const [feedbackState] = useState<"up" | "down" | null>(message.feedback ?? null);
+  const {} = useChatStore((s) => s.setMessages);
 
   const handleCopy = async () => {
     if (!message.content) return;
