@@ -6,11 +6,13 @@ import json
 import re
 import fitz  # PyMuPDF
 import docx
+import logging
 from typing import List, Dict, Any
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 def _is_word_inside_bbox(word: Dict[str, Any], bbox: tuple) -> bool:
@@ -77,11 +79,22 @@ def _table_to_markdown(rows: List[List[Any]]) -> str:
 
 
 def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
-    """Extract PDF text while preserving tables as separate bbox-aware chunks."""
+    """Extract PDF text while preserving tables as separate chunks.
+
+    Prefer Unstructured for robust table extraction. Fall back to pdfplumber
+    if Unstructured is not available, then to PyMuPDF as a last resort.
+    """
     try:
-        return extract_pdf_with_tables(filepath)
-    except ImportError:
-        return extract_pdf_with_pymupdf(filepath)
+        return extract_pdf_with_unstructured(filepath)
+    except Exception as e:
+        # Unstructured may be installed but require native deps (poppler/pdfinfo).
+        # If anything goes wrong, fall back to pdfplumber then PyMuPDF.
+        logger.warning(f"Unstructured extraction failed, falling back: {e}")
+        try:
+            return extract_pdf_with_tables(filepath)
+        except Exception as e2:
+            logger.warning(f"pdfplumber extraction failed, falling back: {e2}")
+            return extract_pdf_with_pymupdf(filepath)
 
 
 def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
@@ -99,6 +112,66 @@ def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
             })
 
     doc.close()
+    return pages
+
+
+def extract_pdf_with_unstructured(filepath: str) -> List[Dict[str, Any]]:
+    """Use Unstructured to partition PDF into elements and extract tables.
+
+    This function will raise ImportError when Unstructured isn't installed so
+    callers can fall back to other extractors.
+    """
+    try:
+        from unstructured.partition.pdf import partition_pdf
+        from unstructured.documents.elements import Table
+    except Exception as e:
+        raise ImportError("unstructured not available") from e
+
+    elements = partition_pdf(filename=filepath)
+    pages: List[Dict[str, Any]] = []
+    table_idx = 0
+
+    for elem in elements:
+        # Determine element type and page number
+        elem_type = getattr(elem, "element_type", None) or elem.__class__.__name__
+        page_num = None
+        if hasattr(elem, "page_number"):
+            page_num = getattr(elem, "page_number")
+        elif getattr(elem, "metadata", None):
+            page_num = elem.metadata.get("page_number") or elem.metadata.get("page")
+        page_num = int(page_num) if page_num else 1
+
+        if isinstance(elem, Table) or (isinstance(elem_type, str) and elem_type.lower() == "table"):
+            rows = []
+            for raw_row in getattr(elem, "rows", []) or []:
+                row = []
+                for cell in raw_row:
+                    # Cells may be elements or lists of elements
+                    if isinstance(cell, (list, tuple)):
+                        cell_text = " ".join(getattr(c, "text", str(c)) for c in cell)
+                    else:
+                        cell_text = getattr(cell, "text", str(cell))
+                    row.append(cell_text)
+                rows.append(row)
+
+            table_text = _table_to_markdown(rows)
+            if table_text.strip():
+                pages.append({
+                    "text": table_text,
+                    "page": page_num,
+                    "chunk_type": "table",
+                    "table_index": table_idx,
+                })
+                table_idx += 1
+        else:
+            text = getattr(elem, "text", str(elem) if elem else "")
+            if text and text.strip():
+                pages.append({
+                    "text": text,
+                    "page": page_num,
+                    "chunk_type": "text",
+                })
+
     return pages
 
 
@@ -186,11 +259,50 @@ def extract_docx(filepath: str) -> List[Dict[str, Any]]:
 
 
 def extract_txt(filepath: str) -> List[Dict[str, Any]]:
-    """Extract text from TXT/Markdown files."""
+    """Extract text from TXT/Markdown files, preserving tables as separate chunks."""
     with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
         text = f.read()
 
-    return [{"text": text, "page": 1}] if text.strip() else []
+    if not text.strip():
+        return []
+
+    chunks = []
+    current_text_lines = []
+    table_lines = []
+    in_table = False
+
+    for line in text.splitlines():
+        is_table_line = line.strip().startswith("|")
+
+        if is_table_line:
+            if not in_table:
+                # flush any accumulated text first
+                if current_text_lines:
+                    chunk_text = "\n".join(current_text_lines).strip()
+                    if chunk_text:
+                        chunks.append({"text": chunk_text, "page": 1, "chunk_type": "text"})
+                    current_text_lines = []
+                in_table = True
+            table_lines.append(line)
+        else:
+            if in_table:
+                # flush the table
+                table_text = "\n".join(table_lines).strip()
+                if table_text:
+                    chunks.append({"text": table_text, "page": 1, "chunk_type": "table"})
+                table_lines = []
+                in_table = False
+            current_text_lines.append(line)
+
+    # flush whatever's left
+    if in_table and table_lines:
+        chunks.append({"text": "\n".join(table_lines).strip(), "page": 1, "chunk_type": "table"})
+    elif current_text_lines:
+        chunk_text = "\n".join(current_text_lines).strip()
+        if chunk_text:
+            chunks.append({"text": chunk_text, "page": 1, "chunk_type": "text"})
+
+    return chunks
 
 # Change the chunk_document function input to take a file path and optional chunk size and overlap parameters. 
 def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = None) -> List[Dict[str, Any]]:

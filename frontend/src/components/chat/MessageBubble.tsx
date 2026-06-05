@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { formatDistanceToNow } from "date-fns";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -118,6 +119,7 @@ export default function MessageBubble({ message }: Props) {
       return;
     }
 
+    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(message.content);
     utteranceRef.current = utterance;
 
@@ -192,6 +194,28 @@ export default function MessageBubble({ message }: Props) {
                       <X className="w-3.5 h-3.5 text-destructive" />
                     ) : (
                       <Share2 className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                )}
+
+                {/* Speech button */}
+                {!message.isStreaming && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
+                      isSpeaking
+                        ? "opacity-100"
+                        : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                    }`}
+                    onClick={handleSpeech}
+                    aria-label={isSpeaking ? "Stop reading" : "Read response"}
+                  >
+                    {isSpeaking ? (
+                      <Pause className="w-3.5 h-3.5" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
                     )}
                   </Button>
                 )}
@@ -299,9 +323,20 @@ export default function MessageBubble({ message }: Props) {
             )}
           </>
         )}
+        
+         <div
+          className={`text-xs text-muted-foreground mt-2 ${
+            isUser ? "text-right" : "text-left"
+          }`}
+          title={new Date(Number(message.id.split("-")[1])).toLocaleString()}
+        >
+          {formatDistanceToNow(
+            new Date(Number(message.id.split("-")[1])),
+            { addSuffix: true }
+          )}
+        </div>
       </div>
-
-      {isUser && (
+       {isUser && (
         <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
           <User className="w-4 h-4 text-primary-foreground" />
         </div>

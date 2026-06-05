@@ -17,6 +17,7 @@ python-dotenv
 google-auth
 google-api-python-client
 APScheduler
+fastapi-mail
 
 # Config
 pydantic-settings
@@ -29,6 +30,7 @@ httpx
 PyMuPDF
 pdfplumber
 python-docx
+unstructured[pdf]
 
 # LangChain & RAG
 langchain
@@ -70,3 +72,4 @@ reportlab
 # crawl4ai
 ddgs
 loguru
+google-auth-oauthlib

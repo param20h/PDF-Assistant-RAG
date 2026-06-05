@@ -34,6 +34,7 @@ def test_generate_answer_appends_graph_context_without_changing_sources(monkeypa
             "page": 1,
             "score": 0.9,
             "confidence": 100.0,
+            "bbox": "",
         }
     ]
     mock_executor.invoke.assert_called_once_with({"input": "How are OpenAI and Microsoft related?", "chat_history": ""})

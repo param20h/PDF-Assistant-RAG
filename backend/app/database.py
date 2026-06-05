@@ -58,8 +58,16 @@ def _migrate_schema():
     existing_users_columns = {c["name"] for c in inspector.get_columns("users")}
     users_migrations = [
         ("users", "hf_token", "ALTER TABLE users ADD COLUMN hf_token VARCHAR(255)"),
+        ("users", "google_refresh_token", "ALTER TABLE users ADD COLUMN google_refresh_token TEXT"),
         ("users", "role", "ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'"),
         ("users", "last_login", "ALTER TABLE users ADD COLUMN last_login TIMESTAMP"),
+        ("users", "is_verified", "ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT TRUE NOT NULL"),
+        ("users", "verification_token_hash", "ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR(64)"),
+        (
+            "users",
+            "verification_token_created_at",
+            "ALTER TABLE users ADD COLUMN verification_token_created_at TIMESTAMP",
+        ),
     ]
     for table, column, ddl in users_migrations:
         if column not in existing_users_columns:

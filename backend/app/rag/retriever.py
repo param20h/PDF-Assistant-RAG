@@ -31,30 +31,11 @@ from app.config import get_settings
 from app.rag.embeddings import embed_query
 from app.rag.tracing import trace_function
 from app.rag.vectorstore import query_chunks
+from app.rag.reranker import get_reranker
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 MAX_QUERY_VARIANTS = 4
-
-# ── Singleton reranker ───────────────────────────────
-_reranker = None
-
-
-def get_reranker():
-    """Load cross-encoder reranker model (singleton)."""
-    global _reranker
-
-    if _reranker is None:
-        try:
-            from sentence_transformers import CrossEncoder
-            logger.info(f"Loading reranker: {settings.RERANKER_MODEL}")
-            _reranker = CrossEncoder(settings.RERANKER_MODEL, max_length=512)
-            logger.info("Reranker loaded successfully")
-        except Exception as e:
-            logger.warning(f"Failed to load reranker: {e}. Falling back to embedding-only retrieval.")
-            _reranker = "disabled"
-
-    return _reranker if _reranker != "disabled" else None
 
 
 class CustomVectorRetriever(BaseRetriever):
@@ -225,7 +206,7 @@ def _merge_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 @trace_function(
     "retrieve",
-    metadata_factory=lambda query, user_id, document_id=None: {
+    metadata_factory=lambda query, user_id, document_id=None, top_k=None: {
         "user_id": user_id,
         "document_id": document_id,
         "embedding_model": settings.EMBEDDING_MODEL,
@@ -238,6 +219,7 @@ def retrieve(
     query: str,
     user_id: str,
     document_id: Optional[str] = None,
+    top_k: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
     Two-stage retrieval pipeline:
@@ -247,16 +229,17 @@ def retrieve(
     Returns chunks with confidence scores.
     """
     # ── Stage 1: Hybrid Search with Query Transformation ─────────────
+    effective_top_k = top_k if top_k is not None else settings.TOP_K_RETRIEVAL
     vector_retriever = CustomVectorRetriever(
         user_id=user_id,
         document_id=document_id,
-        top_k=settings.TOP_K_RETRIEVAL,
+        top_k=effective_top_k,
     )
 
     bm25_retriever = CustomBM25Retriever(
         user_id=user_id,
         document_id=document_id,
-        top_k=settings.TOP_K_RETRIEVAL,
+        top_k=effective_top_k,
     )
 
     ensemble_retriever = EnsembleRetriever(
@@ -281,41 +264,30 @@ def retrieve(
 
     # ── Stage 2: Cross-encoder reranking ─────────────
     reranker = get_reranker()
+    
+    if reranker is not None:
+        top_chunks = reranker.rerank(
+            query=query,
+            documents=candidates,
+            top_k=settings.TOP_K_RERANK
+        )
+    else:
+        # Fall back to hybrid scores (no reranker)
+        candidates.sort(key=lambda x: x.get("score", 0), reverse=True)
+        top_chunks = candidates[:settings.TOP_K_RERANK]
 
-    if reranker is not None and len(candidates) > 1:
-        try:
-            # Build query-document pairs for reranking
-            pairs = [(query, chunk["text"]) for chunk in candidates]
-            rerank_scores = reranker.predict(pairs)
-
-            # Assign rerank scores
-            for i, chunk in enumerate(candidates):
-                chunk["rerank_score"] = float(rerank_scores[i])
-
-            # Sort by rerank score (descending)
-            candidates.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
-
-        except Exception as e:
-            logger.warning(f"Reranking failed, using hybrid scores: {e}")
-
-    # Ensure candidates are sorted by best available score
-    candidates.sort(key=lambda x: x.get("rerank_score", x.get("score", 0)), reverse=True)
-
-    # ── Take top-K after reranking ───────────────────
-    top_chunks = candidates[:settings.TOP_K_RERANK]
-
+    # top_chunks is now always defined
     # ── Calculate confidence percentages ─────────────
     if top_chunks:
         max_score = max(
             chunk.get("rerank_score", chunk.get("score", 0))
             for chunk in top_chunks
         )
-        max_score = max(max_score, 0.001)  # Avoid division by zero
+        max_score = max(max_score, 0.001)
 
         for chunk in top_chunks:
             raw = chunk.get("rerank_score", chunk.get("score", 0))
             chunk["confidence"] = round((raw / max_score) * 100, 1)
-            # Clean up internal score
             if "rerank_score" in chunk:
                 chunk["score"] = round(chunk["rerank_score"], 4)
                 del chunk["rerank_score"]

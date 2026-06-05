@@ -36,10 +36,11 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── Application ──────────────────────────────────────────
+  # ── Application (CPU profile) ────────────────────────────
   app:
     build: .
     container_name: pdf_rag_app
+    profiles: ["cpu"]
     ports:
       - "7860:7860"
     volumes:
@@ -53,6 +54,7 @@ services:
       - GRAPH_PERSIST_DIR=/app/data/graphs
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DEVICE=cpu
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,10 +68,50 @@ services:
       retries: 3
       start_period: 60s
 
-  # Celery worker for document extraction, chunking, embeddings, and vector storage
+  # ── Application (GPU profile) ────────────────────────────
+  app-gpu:
+    build: .
+    container_name: pdf_rag_app
+    profiles: ["gpu"]
+    ports:
+      - "7860:7860"
+    volumes:
+      - app_data:/app/data
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
+      - HF_TOKEN=${HF_TOKEN}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
+      - UPLOAD_DIR=/app/data/uploads
+      - CHROMA_PERSIST_DIR=/app/data/chroma_db
+      - GRAPH_PERSIST_DIR=/app/data/graphs
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DEVICE=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Celery worker (CPU profile)
   worker:
     build: .
     container_name: pdf_rag_worker
+    profiles: ["cpu"]
     command: >
       sh -c "cd /app/backend &&
       celery -A app.celery_app.celery_app worker --loglevel=info"
@@ -84,6 +126,41 @@ services:
       - GRAPH_PERSIST_DIR=/app/data/graphs
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DEVICE=cpu
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery worker (GPU profile)
+  worker-gpu:
+    build: .
+    container_name: pdf_rag_worker
+    profiles: ["gpu"]
+    command: >
+      sh -c "cd /app/backend &&
+             celery -A app.celery_app.celery_app worker --loglevel=info"
+    volumes:
+      - app_data:/app/data
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
+      - HF_TOKEN=${HF_TOKEN}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
+      - UPLOAD_DIR=/app/data/uploads
+      - CHROMA_PERSIST_DIR=/app/data/chroma_db
+      - GRAPH_PERSIST_DIR=/app/data/graphs
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DEVICE=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     depends_on:
       postgres:
         condition: service_healthy

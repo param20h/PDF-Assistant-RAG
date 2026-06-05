@@ -104,3 +104,44 @@ def test_pdf_table_detection_separates_table_from_paragraph(monkeypatch):
     assert chunks[1]["bbox"] == "[0.1, 0.45, 0.75, 0.8]"
     assert "| Name | Amount |" in chunks[1]["text"]
     assert "| Alpha | $10 |" in chunks[1]["text"]
+
+
+def test_unstructured_table_detection(monkeypatch):
+    # Create fake Unstructured Table and Text element classes
+    class FakeTableClass:
+        pass
+
+    class FakeTable(FakeTableClass):
+        def __init__(self):
+            self.rows = [["Name", "Amount"], ["Delta", "$40"]]
+            self.page_number = 3
+
+    class FakeText:
+        def __init__(self):
+            self.text = "Intro paragraph"
+            self.page_number = 3
+
+    def fake_partition_pdf(filename):
+        return [FakeText(), FakeTable()]
+
+    # Insert fake unstructured modules
+    monkeypatch.setitem(sys.modules, "unstructured", types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "unstructured.partition", types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "unstructured.partition.pdf", types.SimpleNamespace(partition_pdf=fake_partition_pdf))
+    monkeypatch.setitem(sys.modules, "unstructured.documents", types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "unstructured.documents.elements", types.SimpleNamespace(Table=FakeTableClass))
+
+    monkeypatch.setattr(chunker, "extract_pdf_images", lambda _filepath: [])
+
+    chunks = chunk_document("sample.pdf")
+
+    # Expect two chunks: text then table
+    assert len(chunks) >= 2
+    assert chunks[0]["chunk_type"] == "text"
+    assert "Intro paragraph" in chunks[0]["text"]
+    # find a table chunk
+    table_chunks = [c for c in chunks if c.get("chunk_type") == "table"]
+    assert table_chunks, "No table chunks produced by Unstructured path"
+    assert table_chunks[0]["page"] == 3
+    assert "| Name | Amount |" in table_chunks[0]["text"]
+    assert "| Delta | $40 |" in table_chunks[0]["text"]
