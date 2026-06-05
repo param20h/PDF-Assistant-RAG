@@ -7,7 +7,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/store/chat-store";
 
@@ -56,6 +56,7 @@ export default function MessageBubble({ message }: Props) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const [shareFailed, setShareFailed] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -70,8 +71,10 @@ export default function MessageBubble({ message }: Props) {
 };
   }, []);
 
-  const [feedbackState] = useState<"up" | "down" | null>(message.feedback ?? null);
-  const {} = useChatStore((s) => s.setMessages);
+  const [feedbackState, setFeedbackState] = useState<"up" | "down" | null>(
+  message.feedback ?? null
+);
+ const setMessages = useChatStore((s) => s.setMessages);
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -249,26 +252,27 @@ export default function MessageBubble({ message }: Props) {
                   </div>
                 )}
 
+                
                 {/* Play / Pause button */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
-                    isSpeaking
-                      ? "opacity-100"
-                      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                  }`}
-                  onClick={handleSpeech}
-                  disabled={message.isStreaming}
-                  aria-label={isSpeaking ? "Stop speech" : "Play speech"}
-                >
-                  {isSpeaking ? (
-                    <Pause className="w-3.5 h-3.5 text-primary" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5" />
-                  )}
-                </Button>
+<Button
+  type="button"
+  variant="ghost"
+  size="icon-xs"
+  className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
+    isSpeaking
+      ? "opacity-100"
+      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+  }`}
+  onClick={handleSpeech}
+  disabled={message.isStreaming}
+  aria-label={isSpeaking ? "Stop speech" : "Play speech"}
+>
+  {isSpeaking ? (
+    <Pause className="w-3.5 h-3.5 text-primary" />
+  ) : (
+    <Play className="w-3.5 h-3.5" />
+  )}
+</Button>
               </>
             )}
 
