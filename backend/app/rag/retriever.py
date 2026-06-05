@@ -320,4 +320,10 @@ def retrieve(
                 chunk["score"] = round(chunk["rerank_score"], 4)
                 del chunk["rerank_score"]
 
+    # Bind chunks count to contextvar and log retrieval
+    chunks_count = len(top_chunks)
+    from app.observability import chunks_retrieved_var
+    chunks_retrieved_var.set(chunks_count)
+    logger.info(f"Retrieved {chunks_count} relevant chunks from vector store for query: '{query}'")
+
     return top_chunks

@@ -14,7 +14,7 @@ from pathlib import Path
 import shutil
 import tempfile
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -168,6 +168,7 @@ def _crawl_in_new_loop(url: str) -> str:
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
     user: User = Depends(get_current_user),
@@ -183,6 +184,7 @@ async def upload_document(
     while embeddings are generated.
 
     Args:
+        request: The FastAPI request object.
         file: The uploaded file, provided as a multipart/form-data field in the request.
         background_tasks: FastAPI BackgroundTasks instance for in-process fallback execution.
         user: The currently authenticated user, injected by the `get_current_user` dependency.
@@ -225,6 +227,14 @@ async def upload_document(
 
     file_size = Path(filepath).stat().st_size
 
+    # Bind upload metadata to request state and context variables
+    request.state.filename = file.filename
+    request.state.filesize = file_size
+    from app.observability import upload_filename_var, upload_filesize_var
+    upload_filename_var.set(file.filename)
+    upload_filesize_var.set(file_size)
+    logger.info(f"File upload completed locally, starting ingestion: {file.filename} ({file_size} bytes)")
+
     # ── Create database record ───────────────────────
     document = Document(
         user_id=user.id,
@@ -263,6 +273,7 @@ async def upload_document(
 
 @router.post("/urlupload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document_url(
+        request: Request,
         payload: UploadUrl,
         background_tasks: BackgroundTasks = None,
         user: User = Depends(get_current_user),
@@ -323,6 +334,14 @@ async def upload_document_url(
         # ── Derive a human-readable name from the URL ─────────
         url_path = parsed.path.rstrip("/")
         original_name = f"{parsed.netloc}{url_path or ''}.txt"
+
+        # Bind URL crawl metadata to request state and context variables
+        request.state.filename = original_name
+        request.state.filesize = file_size
+        from app.observability import upload_filename_var, upload_filesize_var
+        upload_filename_var.set(original_name)
+        upload_filesize_var.set(file_size)
+        logger.info(f"URL crawler crawl completed, starting ingestion: {original_name} ({file_size} bytes)")
 
         # ── Create database record ─────────────────────────────
         document = Document(

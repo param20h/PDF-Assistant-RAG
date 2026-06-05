@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:7860"
 
+    # ── Logging ──────────────────────────────────────────
+    LOG_LEVEL: str | None = None
+    LOG_FILE: str = "./data/logs/app.log"
+
+
     # ── Database ─────────────────────────────────────────
     DATABASE_URL: str = "sqlite:///./data/app.db"
 
