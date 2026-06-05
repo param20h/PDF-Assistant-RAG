@@ -292,35 +292,8 @@ export default function MessageBubble({ message }: Props) {
                 <span className="inline-block w-0.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
               )}
             </div>
-            {!message.isStreaming && !isUser && (
-              <div className="flex items-center gap-1 pt-2 border-t border-border/40 mt-3">
-                <span className="text-[11px] text-muted-foreground/60 mr-1">Was this helpful?</span>
-                <button
-                  type="button"
-                  onClick={() => handleFeedback("up")}
-                  className={`p-1 rounded transition-colors ${
-                    feedbackState === "up"
-                      ? "text-emerald-500 bg-emerald-500/10"
-                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
-                  }`}
-                  aria-label="Thumbs up"
-                >
-                  <ThumbsUp className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleFeedback("down")}
-                  className={`p-1 rounded transition-colors ${
-                    feedbackState === "down"
-                      ? "text-red-500 bg-red-500/10"
-                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
-                  }`}
-                  aria-label="Thumbs down"
-                >
-                  <ThumbsDown className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+            
+        
           </>
         )}
         
