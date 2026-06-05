@@ -652,7 +652,8 @@ def update_chunk_settings(
             raise HTTPException(400, "Chunk size must be at least 100")
         doc.chunk_size = settings_update.chunk_size
     if settings_update.chunk_overlap is not None:
-        if settings_update.chunk_overlap >= settings_update.chunk_size:
+        chunk_size_val = settings_update.chunk_size if settings_update.chunk_size is not None else (doc.chunk_size or settings.CHUNK_SIZE)
+        if settings_update.chunk_overlap >= chunk_size_val:
             raise HTTPException(400, "Chunk overlap cannot be greater than or equal to chunk size")
         doc.chunk_overlap = settings_update.chunk_overlap    
 
