@@ -1,3 +1,4 @@
+from werkzeug.utils import secure_filename
 import os
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
@@ -254,12 +255,21 @@ def admin_dashboard():
 def download_file(username, filename):
     if current_user.username != username and not current_user.is_admin:
         return "Unauthorized", 403
-        
+
+    safe_name = secure_filename(filename)
+    if not safe_name:
+        return "Invalid filename", 400
+
     folder = get_user_upload_folder(username)
-    filepath = os.path.join(folder, filename)
+    filepath = os.path.join(folder, safe_name)
+
+    # Prevent path traversal even after secure_filename
+    if not os.path.abspath(filepath).startswith(os.path.abspath(folder)):
+        return "Forbidden", 403
+
     if not os.path.exists(filepath):
         return "File not found", 404
-        
+
     return send_file(filepath, as_attachment=True)
 
 @app.route("/profile", methods=["GET"])

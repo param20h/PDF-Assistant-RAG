@@ -71,3 +71,4 @@ pypdf
 reportlab
 # crawl4ai
 ddgs
+google-auth-oauthlib

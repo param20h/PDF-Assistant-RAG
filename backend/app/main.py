@@ -6,7 +6,8 @@ import os
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -147,6 +148,28 @@ app.add_exception_handler(
         content={"detail": "Rate limit exceeded. Please try again later."},
     ),
 )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    def _sanitize_error(err):
+        if isinstance(err, dict):
+            sanitized = {}
+            for k, v in err.items():
+                if k == "ctx" and isinstance(v, dict) and "error" in v:
+                    ctx_error = v.get("error")
+                    if isinstance(ctx_error, Exception):
+                        v = {**v, "error": str(ctx_error)}
+                sanitized[k] = _sanitize_error(v)
+            return sanitized
+        if isinstance(err, list):
+            return [_sanitize_error(i) for i in err]
+        return err
+
+    return JSONResponse(
+        status_code=422,
+        content={"detail": [_sanitize_error(e) for e in exc.errors()]},
+    )
+
 app.add_middleware(SlowAPIMiddleware)
 
 # ── CORS (allow frontend dev server) ─────────────────

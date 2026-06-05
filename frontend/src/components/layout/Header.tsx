@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,7 @@ import {
   Menu,
   X,
   Palette,
-  Briefcase, 
+  Briefcase,
   ChevronDown,
   Sun,
   Moon
@@ -37,7 +38,6 @@ import {
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
 import { useTheme } from "next-themes";
-import HuggingFaceTokenModal from "@/components/auth/HuggingFaceTokenModal";
 
 import { useSyncExternalStore } from "react";
 
@@ -80,14 +80,10 @@ export default function Header({
   };
 
   const fetchDocumentsForWorkspace = async (id: string) => {
-    // Placeholder: simulate fetching documents for the selected workspace
     setWorkspaceLoading(true);
     try {
-      // Attempt a real API call if available; otherwise this will fail silently
       const res = await api.get(`/api/v1/documents?workspace=${encodeURIComponent(id)}`).catch(() => null);
       console.log("workspace change, fetched documents:", res);
-      // Here you would dispatch the results into your document store or context
-      // e.g. documentStore.setDocuments(res || [])
     } catch (err) {
       console.warn("Failed to fetch documents for workspace", id, err);
     } finally {
@@ -131,12 +127,17 @@ export default function Header({
             )}
           </Button>
 
-          <div className="flex items-center gap-2">
+          {/* LOGO — clicking navigates to dashboard */}
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 hover:opacity-75 transition-opacity cursor-pointer"
+            aria-label="Go to homepage"
+          >
             <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
               <Brain className="w-4 h-4 text-primary" />
             </div>
             <span className="font-semibold text-sm hidden sm:inline">Document AI Analyst</span>
-          </div>
+          </Link>
         </div>
 
         {/* Right */}
@@ -224,14 +225,7 @@ export default function Header({
                 <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
               </div>
               <DropdownMenuSeparator />
-              <div className="px-1 py-0.5">
-                <HuggingFaceTokenModal />
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive cursor-pointer"
-                onClick={handleLogout}
-              >
+              <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign out
               </DropdownMenuItem>
@@ -240,7 +234,7 @@ export default function Header({
         </div>
       </header>
 
-      {/* Mobile navigation sheet */}
+      {/* Mobile navigation sheet - backdrop */}
       {sheetOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
@@ -262,12 +256,18 @@ export default function Header({
         inert={!sheetOpen ? true : undefined}
       >
         <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border flex-shrink-0">
-          <div className="flex items-center gap-2">
+          {/* MOBILE LOGO — clicking navigates to dashboard and closes the sheet */}
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 hover:opacity-75 transition-opacity cursor-pointer"
+            aria-label="Go to homepage"
+            onClick={() => setSheetOpen(false)}
+          >
             <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
               <Brain className="w-4 h-4 text-primary" />
             </div>
             <span className="font-semibold text-sm">Document AI Analyst</span>
-          </div>
+          </Link>
           <Button
             variant="ghost"
             size="icon"

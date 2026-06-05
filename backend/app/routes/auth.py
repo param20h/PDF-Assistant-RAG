@@ -3,14 +3,18 @@ Auth API routes — register, login, and user profile.
 """
 import re
 import secrets
-import httpx
-import hashlib
 import logging
+import hashlib
+from html import escape
+from typing import Optional, List
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
-from fastapi import APIRouter, Body, Cookie, Depends, HTTPException, Response, status
-from fastapi.responses import RedirectResponse
+
+import httpx
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Cookie, Response, Body
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
+from google_auth_oauthlib.flow import Flow
 from langsmith import expect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -20,6 +24,8 @@ from app.database import get_db
 from app.models import User, ApiKey, UserRole
 from app.schemas import (
     GoogleLoginRequest,
+    GoogleDriveAuthUrlResponse,
+    GoogleDriveStatusResponse,
     HFTokenUpdate,
     RefreshRequest,
     TokenResponse,
@@ -104,6 +110,9 @@ async def _send_verification_email(user: User, token: str) -> None:
     )
 
     await FastMail(conf).send_message(message)
+
+GOOGLE_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+GOOGLE_DRIVE_STATE_TOKEN_TYPE = "google_drive_oauth_state"
 
 
 def _create_token_response(user: User) -> TokenResponse:
@@ -477,7 +486,7 @@ def update_user_info(payload:UserUpdate,
         and a 400 response.
     """
     if payload.username is None and payload.email is None:
-        raise HTTPException(status_code=400, detail="Username and email are required")
+        raise HTTPException(status_code=400, detail="At least one of username or email must be provided")
 
     try:
         if payload.username:
@@ -629,6 +638,176 @@ def _unique_google_username(email: str, db: Session) -> str:
         candidate = f"{base[:80 - len(suffix_text)]}{suffix_text}"
 
     return candidate
+
+
+def _require_google_drive_config() -> None:
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Drive OAuth is not configured",
+        )
+
+
+def _create_google_drive_state(user_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user_id),
+        "type": GOOGLE_DRIVE_STATE_TOKEN_TYPE,
+        "iat": now,
+        "exp": now + timedelta(minutes=10),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def _decode_google_drive_state(state_token: str) -> str | None:
+    try:
+        payload = jwt.decode(
+            state_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+    except jwt.InvalidTokenError:
+        return None
+
+    if payload.get("type") != GOOGLE_DRIVE_STATE_TOKEN_TYPE:
+        return None
+    return payload.get("sub")
+
+
+def _google_drive_flow(state: str | None = None) -> Flow:
+    _require_google_drive_config()
+    return Flow.from_client_config(
+        {
+            "web": {
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [settings.GOOGLE_DRIVE_REDIRECT_URI],
+            }
+        },
+        scopes=GOOGLE_DRIVE_SCOPES,
+        state=state,
+        redirect_uri=settings.GOOGLE_DRIVE_REDIRECT_URI,
+    )
+
+
+def _google_drive_callback_page(title: str, message: str, success: bool) -> HTMLResponse:
+    color = "#16a34a" if success else "#dc2626"
+    safe_title = escape(title)
+    safe_message = escape(message)
+    return HTMLResponse(
+        f"""
+        <!doctype html>
+        <html>
+          <head>
+            <title>{safe_title}</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+          </head>
+          <body style="font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5;">
+            <h1 style="color: {color};">{safe_title}</h1>
+            <p>{safe_message}</p>
+            <p>You can close this tab and return to Document AI Analyst.</p>
+          </body>
+        </html>
+        """,
+        status_code=status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST,
+    )
+
+
+@router.get("/google-drive/connect", response_model=GoogleDriveAuthUrlResponse)
+def connect_google_drive(user: User = Depends(get_current_user)):
+    """
+    Create a Google OAuth consent URL for read-only Drive access.
+
+    The OAuth state is a short-lived signed token containing the current user
+    id, so the callback can store the refresh token without trusting client
+    input or requiring a browser Authorization header.
+    """
+    state_token = _create_google_drive_state(user.id)
+    flow = _google_drive_flow(state_token)
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent",
+    )
+    return GoogleDriveAuthUrlResponse(auth_url=auth_url)
+
+
+@router.get("/google-drive/callback")
+def google_drive_callback(
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Handle Google's OAuth callback and persist the encrypted refresh token."""
+    if error:
+        return _google_drive_callback_page("Google Drive not connected", error, False)
+
+    if not code or not state:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Missing Google OAuth callback data.",
+            False,
+        )
+
+    user_id = _decode_google_drive_state(state)
+    if not user_id:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Invalid or expired Google OAuth state.",
+            False,
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return _google_drive_callback_page("Google Drive not connected", "User not found.", False)
+
+    try:
+        flow = _google_drive_flow(state)
+        flow.fetch_token(code=code)
+    except Exception:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Failed to connect Google Drive.",
+            False,
+        )
+
+    refresh_token = flow.credentials.refresh_token
+    if not refresh_token:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Google did not return a refresh token. Revoke access and try again.",
+            False,
+        )
+
+    user.google_refresh_token = refresh_token
+    db.commit()
+    db.refresh(user)
+
+    return _google_drive_callback_page(
+        "Google Drive connected",
+        "Read-only Google Drive access was granted successfully.",
+        True,
+    )
+
+
+@router.get("/google-drive/status", response_model=GoogleDriveStatusResponse)
+def google_drive_status(user: User = Depends(get_current_user)):
+    """Return whether the current user has connected Google Drive."""
+    return GoogleDriveStatusResponse(connected=bool(user.google_refresh_token))
+
+
+@router.delete("/google-drive/disconnect", response_model=GoogleDriveStatusResponse)
+def disconnect_google_drive(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove the stored Google Drive refresh token for the current user."""
+    user.google_refresh_token = None
+    db.commit()
+    return GoogleDriveStatusResponse(connected=False)
 
 
 @router.get("/login/huggingface")

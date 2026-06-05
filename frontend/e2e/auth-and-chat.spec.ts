@@ -85,7 +85,7 @@ test("creates an account from the signup form", async ({ page }) => {
   await page.goto("/register");
   await page.locator("#reg-username").fill(user.username);
   await page.locator("#reg-email").fill(user.email);
-  await page.locator("#reg-password").fill("password123");
+  await page.locator("#reg-password").fill("Password1!");
   await page.getByRole("button", { name: "Create Account" }).click();
 
   await expect(page).toHaveURL(/\/register$/);

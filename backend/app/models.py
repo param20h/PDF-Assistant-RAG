@@ -73,7 +73,6 @@ class EncryptedString(TypeDecorator):
     def _get_cipher(self):
         from app.config import get_settings
         settings = get_settings()
-        # Derive a 32-byte key from the SECRET_KEY for Fernet encryption
         key = base64.urlsafe_b64encode(
             hashlib.sha256(settings.SECRET_KEY.encode()).digest()
         )
@@ -94,7 +93,6 @@ class EncryptedString(TypeDecorator):
         try:
             return cipher.decrypt(value.encode()).decode()
         except Exception:
-            # Fallback for unencrypted data or if decryption fails
             return value
 
 
@@ -120,9 +118,8 @@ class User(Base):
     username = Column(String(80), unique=True, nullable=False, index=True)
     email = Column(String(120), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
+    google_refresh_token = Column(EncryptedString, nullable=True)
 
-    # Permission fields: transitioning towards 'role', while keeping 'is_admin'
-    # for compatibility
     role = Column(
         SQLAlchemyEnum(UserRole),
         default=UserRole.user,
@@ -141,7 +138,6 @@ class User(Base):
     avatar_url = Column(String(500), nullable=True)
 
     # Relationships
- 
     documents = relationship(
         "Document",
         back_populates="owner",
@@ -162,13 +158,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
-
-    documents = relationship("Document", back_populates="owner", cascade="all, delete-orphan")
-    messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")
-    api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
-    chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
-    drive_connections = relationship("DriveConnection", back_populates="user", cascade="all, delete-orphan")
-
+    drive_connections = relationship(
+        "DriveConnection",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApiKey(Base):
@@ -240,36 +234,26 @@ class Document(Base):
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
     filename = Column(String(255), nullable=False)
-    # Stored filename (UUID-based)
     original_name = Column(String(255), nullable=False)
-    # User's original filename
     file_size = Column(Integer, default=0)
-    # Size in bytes
     page_count = Column(Integer, default=0)
     chunk_count = Column(Integer, default=0)
     status = Column(String(20), default="pending")
-    # pending | processing | ready | failed
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
     last_accessed_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         nullable=True,
     )
     summary = Column(Text, nullable=True)
-    # Optional summary of the document's content
-
-    last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
-    summary = Column(Text, nullable=True)  # Optional summary of the document's content
-    chunk_size = Column(Integer, nullable=True)   # if NULL, use global default from settings
-    chunk_overlap = Column(Integer, nullable=True) # if NULL, use global default from settings
+    chunk_size = Column(Integer, nullable=True)
+    chunk_overlap = Column(Integer, nullable=True)
     drive_file_id = Column(String(255), unique=True, nullable=True, index=True)
     drive_folder_id = Column(String(255), nullable=True, index=True)
     drive_synced_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
-
 
     # Relationships
     owner = relationship("User", back_populates="documents")
@@ -302,8 +286,8 @@ class ChatMessage(Base):
     )
     role = Column(String(20), nullable=False)  # "user" | "assistant"
     content = Column(Text, nullable=False)
-    sources_json = Column(Text, nullable=True)  # JSON representation of retrieved sources
-    feedback = Column(String(10), nullable=True)  # "up" | "down"
+    sources_json = Column(Text, nullable=True)
+    feedback = Column(String(10), nullable=True)  # "up" | "down" | None
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships

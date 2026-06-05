@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "sonner";
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
@@ -10,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff } from "lucide-react";
+import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ISpeechRecognitionEvent {
@@ -71,9 +72,15 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const setIsTyping = useChatStore((state) => state.setIsTyping);
   const resetChat = useChatStore((state) => state.resetChat);
   const fetchSessionHistory = useChatStore((state) => state.fetchSessionHistory);
+  
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const MAX_CHARACTERS = 2000;
   const [isRecording, setIsRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  
+  // New State for Keyboard Shortcuts Help Modal
+  const [showHelpModal, setShowHelpModal] = useState(false);
+
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const initialInputRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -172,7 +179,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    
     const assistantId = `assistant-${Date.now()}`;
     let assistantCreated = false;
 
@@ -317,6 +323,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         );
       }
     } finally {
+
       setStreaming(false);
       setIsTyping(false);
     }
@@ -327,8 +334,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     try {
       await api.delete(`/api/v1/chat/history/${activeDoc.id}`);
       setMessages([]);
+      toast.info("Chat history cleared");
     } catch {
-        //silent fail
+      // silent fail preserved; no additional toast for this scenario
     }
   };
 
@@ -474,8 +482,44 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     }
   };
 
+  // ── NEW KEYBOARD SHORTCUTS ENGINE EFFECT ──────────────────────────
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+
+      // Shortcut 1: Ctrl/Cmd + Enter -> Send Message (When textarea has focus)
+      if (isCmdOrCtrl && e.key === "Enter") {
+        if (document.activeElement === textareaRef.current) {
+          e.preventDefault();
+          handleSend();
+        }
+      }
+
+      // Shortcut 2: Escape -> Clear Input / Close Modal
+      if (e.key === "Escape") {
+        if (document.activeElement === textareaRef.current) {
+          e.preventDefault();
+          setInput(""); // Clear textarea state
+        } else if (showHelpModal) {
+          setShowHelpModal(false); // Close shortcuts modal if open
+        }
+      }
+
+      // Shortcut 3: Ctrl/Cmd + K -> Focus chat input from anywhere
+      if (isCmdOrCtrl && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        textareaRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [input, streaming, showHelpModal]); // Dependencies updated to capture fresh state data
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
       {/* ── Chat Messages ──────────────────────────── */}
       <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" aria-busy={historyLoading}>
         {historyLoading ? (
@@ -575,6 +619,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               <Textarea
                 ref={textareaRef}
                 id="chat-input"
+                maxLength={MAX_CHARACTERS}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -584,11 +629,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     : t("chat.selectPlaceholder")
                 }
                 disabled={streaming}
-                className="min-h-[44px] max-h-32 resize-none bg-background/50 border-border/50 pr-10"
+                className="min-h-[44px] max-h-32 resize-none bg-background/50 border-border/50 pr-16"
                 rows={1}
                 aria-label="Chat message"
                 aria-describedby="chat-input-hint"
               />
+              
+              {/* Mic Button */}
               <Button
                 id="mic-btn"
                 type="button"
@@ -597,7 +644,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 disabled={streaming}
                 onClick={toggleRecording}
                 className={cn(
-                  "absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
+                  "absolute right-10 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
                   isRecording
                     ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
                     : "hover:text-primary hover:bg-accent"
@@ -614,106 +661,169 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 }
                 aria-pressed={isRecording}
               >
-                {isRecording ? (
-                  <MicOff className="h-4 w-4" />
-                ) : (
-                  <Mic className="h-4 w-4" />
-                )}
+                {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </Button>
+
+              {/* NEW Keyboard Shortcuts Info Button */}
+              <Button
+                id="shortcut-help-btn"
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowHelpModal(true)}
+                className="absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-all duration-200"
+                title="Keyboard Shortcuts"
+                aria-label="View Keyboard Shortcuts"
+              >
+                <HelpCircle className="h-4 w-4" />
               </Button>
             </div>
+            
             <div className="flex gap-1.5 shrink-0">
-            <Button
-              id="send-btn"
-              size="icon"
-              onClick={handleSend}
-              disabled={!input.trim() || streaming}
-              className="h-[44px] w-[44px]"
-              aria-label={streaming ? "Sending message" : "Send message"}
-            >
-              {streaming ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
-            {messages.length > 0 && (
-              <>
-                {/* Export dropdown */}
-                <div className="relative" ref={exportMenuRef}>
+              <Button
+                id="send-btn"
+                size="icon"
+                onClick={handleSend}
+                disabled={!input.trim() || streaming}
+                className="h-[44px] w-[44px]"
+                aria-label={streaming ? "Sending message" : "Send message"}
+              >
+                {streaming ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </Button>
+              {messages.length > 0 && (
+                <>
+                  {/* Export dropdown */}
+                  <div className="relative" ref={exportMenuRef}>
+                    <Button
+                      id="export-chat-btn"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowExportMenu((v) => !v)}
+                      className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
+                      title={t("chat.exportTitle")}
+                      aria-label={t("chat.exportTitle")}
+                      aria-expanded={showExportMenu}
+                      aria-controls="chat-export-menu"
+                      aria-haspopup="menu"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    {showExportMenu && (
+                      <div
+                        id="chat-export-menu"
+                        role="menu"
+                        aria-label="Export chat"
+                        onKeyDown={handleExportMenuKeyDown}
+                        className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
+                      >
+                        <button
+                          id="export-md-btn"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleExport("md")}
+                          className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        >
+                          <span className="text-base">📝</span>
+                          {t("chat.markdown")}
+                        </button>
+                        <button
+                          id="export-txt-btn"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleExport("txt")}
+                          className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        >
+                          <span className="text-base">📄</span>
+                          {t("chat.plainText")}
+                        </button>
+                        <button
+                          id="export-pdf-btn"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleExport("pdf")}
+                          className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        >
+                          <span className="text-base">📕</span>
+                          {t("chat.pdf")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {/* Clear history */}
                   <Button
-                    id="export-chat-btn"
                     variant="ghost"
                     size="icon"
-                    onClick={() => setShowExportMenu((v) => !v)}
-                    className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
-                    title={t("chat.exportTitle")}
-                    aria-label={t("chat.exportTitle")}
-                    aria-expanded={showExportMenu}
-                    aria-controls="chat-export-menu"
-                    aria-haspopup="menu"
+                    onClick={handleClear}
+                    className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
+                    aria-label="Clear chat history"
                   >
-                    <Download className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" />
                   </Button>
-                  {showExportMenu && (
-                    <div
-                      id="chat-export-menu"
-                      role="menu"
-                      aria-label="Export chat"
-                      onKeyDown={handleExportMenuKeyDown}
-                      className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
-                    >
-                      <button
-                        id="export-md-btn"
-                        type="button"
-                        role="menuitem"
-                        onClick={() => handleExport("md")}
-                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                      >
-                        <span className="text-base">📝</span>
-                        {t("chat.markdown")}
-                      </button>
-                      <button
-                        id="export-txt-btn"
-                        type="button"
-                        role="menuitem"
-                        onClick={() => handleExport("txt")}
-                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                      >
-                        <span className="text-base">📄</span>
-                        {t("chat.plainText")}
-                      </button>
-                      <button
-                        id="export-pdf-btn"
-                        type="button"
-                        role="menuitem"
-                        onClick={() => handleExport("pdf")}
-                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                      >
-                        <span className="text-base">📕</span>
-                        {t("chat.pdf")}
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {/* Clear history */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleClear}
-                  className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
-                  aria-label="Clear chat history"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
         <p id="chat-input-hint" className="sr-only">
           Press Enter to send. Press Shift and Enter for a new line.
         </p>
       </div>
+
+      {/* ── NEW KEYBOARD SHORTCUTS HELP MODAL OVERLAY ───────────────── */}
+      {showHelpModal && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200"
+          onClick={() => setShowHelpModal(false)}
+        >
+          <div 
+            className="bg-popover text-popover-foreground border border-border p-6 rounded-xl w-80 relative shadow-2xl animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()} // Stop overlay closing when clicking inside
+          >
+            <button 
+              onClick={() => setShowHelpModal(false)}
+              className="absolute top-3 right-4 text-xl font-medium text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Close shortcuts help"
+            >
+              &times;
+            </button>
+            
+            <h3 className="text-lg font-bold mb-1 flex items-center gap-2 text-foreground">
+              ⌨️ Keyboard Shortcuts
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">Enhance your typing productivity</p>
+            <hr className="border-border mb-4" />
+            
+            <ul className="space-y-4 text-sm">
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">Send Message</span>
+                <div className="flex gap-1">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Ctrl</kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Enter</kbd>
+                </div>
+              </li>
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">Clear Chat Input</span>
+                <div>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Esc</kbd>
+                </div>
+              </li>
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">Focus Chat Input</span>
+                <div className="flex gap-1">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Ctrl</kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">K</kbd>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
-  </div>
   );
 }
