@@ -27,9 +27,22 @@ export default function RegisterPage() {
   const [verificationUrl, setVerificationUrl] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // ── NEW: Terms state ──────────────────────────────────────────
+  const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
+  const [termsError, setTermsError] = useState<string>("");
+  // ─────────────────────────────────────────────────────────────
+
   const passwordValid = isPasswordValid(password);
-  const canSubmit = username.trim().length >= 3 && email.trim().length > 0 && passwordValid && !loading;
-  // Redirect if already logged in
+
+  // ── UPDATED: added acceptedTerms to canSubmit ─────────────────
+  const canSubmit =
+    username.trim().length >= 3 &&
+    email.trim().length > 0 &&
+    passwordValid &&
+    acceptedTerms &&
+    !loading;
+  // ─────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (initialized && user) {
       router.replace("/dashboard");
@@ -45,6 +58,15 @@ export default function RegisterPage() {
     setError("");
     setSuccess("");
     setVerificationUrl("");
+
+    // ── NEW: Terms validation guard ───────────────────────────
+    if (!acceptedTerms) {
+      setTermsError("You must accept the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
+    setTermsError("");
+    // ─────────────────────────────────────────────────────────
+
     setLoading(true);
 
     try {
@@ -52,6 +74,10 @@ export default function RegisterPage() {
       setRegisteredEmail(result.email);
       setSuccess(result.message);
       setVerificationUrl(result.verification_url ?? "");
+
+      // ── NEW: Reset terms on successful register ───────────
+      setAcceptedTerms(false);
+      // ─────────────────────────────────────────────────────
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t("register.fallbackError");
       setError(message);
@@ -148,7 +174,64 @@ export default function RegisterPage() {
               disabled={Boolean(success)}
             />
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={loading || Boolean(success)}>
+            {/* ── NEW: Terms & Conditions Checkbox ──────────────────── */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="acceptTerms"
+                  checked={acceptedTerms}
+                  onChange={(e) => {
+                    setAcceptedTerms(e.target.checked);
+                    if (e.target.checked) setTermsError("");
+                  }}
+                  disabled={Boolean(success)}
+                  className="mt-1 h-4 w-4 cursor-pointer accent-primary"
+                  aria-required="true"
+                  aria-describedby="terms-error"
+                />
+                <label
+                  htmlFor="acceptTerms"
+                  className="text-sm text-muted-foreground cursor-pointer leading-snug"
+                >
+                  I agree to the{" "}
+                  <Link
+                    href="/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline hover:opacity-80"
+                  >
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link
+                    href="/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline hover:opacity-80"
+                  >
+                    Privacy Policy
+                  </Link>
+                </label>
+              </div>
+
+              {termsError && (
+                <p
+                  id="terms-error"
+                  role="alert"
+                  className="text-sm text-red-500 ml-6"
+                >
+                  {termsError}
+                </p>
+              )}
+            </div>
+            {/* ────────────────────────────────────────────────────────── */}
+
+            <Button
+              type="submit"
+              className="w-full h-11 text-base"
+              disabled={!canSubmit || Boolean(success)}
+            >
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
