@@ -486,7 +486,7 @@ def update_user_info(payload:UserUpdate,
         and a 400 response.
     """
     if payload.username is None and payload.email is None:
-        raise HTTPException(status_code=400, detail="Username and email are required")
+        raise HTTPException(status_code=400, detail="At least one of username or email must be provided")
 
     try:
         if payload.username:
