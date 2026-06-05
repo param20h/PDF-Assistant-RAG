@@ -4,6 +4,7 @@ const user = {
   id: "user-1",
   username: "tester",
   email: "tester@example.com",
+  is_verified: true,
   is_admin: false,
   created_at: "2026-05-28T00:00:00Z",
 };
@@ -67,22 +68,33 @@ test("logs in with email and password", async ({ page }) => {
 });
 
 test("creates an account from the signup form", async ({ page }) => {
-  await mockDashboardApis(page);
   await page.route("**/api/v1/auth/register", async (route) => {
     const body = route.request().postDataJSON() as { username: string; email: string };
     expect(body.username).toBe(user.username);
     expect(body.email).toBe(user.email);
-    await route.fulfill({ status: 201, json: tokenResponse });
+    await route.fulfill({
+      status: 201,
+      json: {
+        message: "Registration successful. Please check your email to verify your account before logging in.",
+        email: user.email,
+        verification_url: "/verify-email?token=test-token",
+      },
+    });
   });
 
   await page.goto("/register");
   await page.locator("#reg-username").fill(user.username);
   await page.locator("#reg-email").fill(user.email);
-  await page.locator("#reg-password").fill("password123");
+  await page.locator("#reg-password").fill("Password1!");
   await page.getByRole("button", { name: "Create Account" }).click();
 
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByText("No documents yet")).toBeVisible();
+  await expect(page).toHaveURL(/\/register$/);
+  await expect(page.getByText("Check your email")).toBeVisible();
+  await expect(page.getByText(`We sent a verification link to ${user.email}. Verify your email before signing in.`)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open verification link" })).toHaveAttribute(
+    "href",
+    "/verify-email?token=test-token"
+  );
 });
 
 test("uploads a PDF document and chats with it", async ({ page }) => {

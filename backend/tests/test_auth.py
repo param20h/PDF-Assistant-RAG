@@ -1,25 +1,28 @@
+VALID_TEST_PASSWORD = "Password1!"
+
+
 def test_register_success(client):
     response = client.post(
         "/api/v1/auth/register",
         json={
             "username": "newuser",
             "email": "newuser@example.com",
-            "password": "password123",
+            "password": VALID_TEST_PASSWORD,
         },
     )
 
     assert response.status_code == 201
     payload = response.json()
-    assert payload["access_token"]
-    assert payload["refresh_token"]
-    assert payload["user"]["email"] == "newuser@example.com"
+    assert payload["message"] == "Registration successful. Please check your email to verify your account before logging in."
+    assert payload["email"] == "newuser@example.com"
+    assert payload["verification_url"].startswith("/verify-email?token=")
 
 
 def test_register_duplicate_email_or_username_conflict(client):
     payload = {
         "username": "dupuser",
         "email": "dup@example.com",
-        "password": "password123",
+        "password": VALID_TEST_PASSWORD,
     }
     first = client.post("/api/v1/auth/register", json=payload)
     assert first.status_code == 201
@@ -37,6 +40,40 @@ def test_register_duplicate_email_or_username_conflict(client):
     )
     assert duplicate_username.status_code == 409
     assert duplicate_username.json()["detail"] == "Username already taken"
+
+
+def test_register_rejects_weak_password(client):
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "weakpassuser",
+            "email": "weakpass@example.com",
+            "password": "123456",
+        },
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    messages = " ".join(item["msg"] for item in detail)
+    assert "uppercase" in messages.lower() or "8 characters" in messages.lower()
+
+
+def test_register_rejects_password_missing_special_character(client):
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "specialcharuser",
+            "email": "specialchar@example.com",
+            "password": "Password1",
+        },
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    messages = " ".join(item["msg"] for item in detail).lower()
+    assert "special character" in messages
 
 
 def test_login_success(client, user):
@@ -123,7 +160,15 @@ def test_hf_token_appears_in_user_response(client, auth_headers, user, db_sessio
     assert stored_token is not None
     assert stored_token != "hf_persist_token"
 
+def test_update_user_info_rejects_duplicate_email(client, auth_headers, other_user):
+    response = client.put(
+        "/api/v1/auth/update",
+        json={"email": other_user.email},
+        headers=auth_headers,
+    )
 
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Email already exists"
 from unittest.mock import patch, AsyncMock, MagicMock
 import urllib.parse
 
@@ -199,3 +244,84 @@ def test_huggingface_logout(client):
     assert response.status_code == 200
     assert response.cookies.get("access_token") in (None, "")
     assert response.cookies.get("refresh_token") in (None, "")
+
+
+def test_google_drive_connect_returns_auth_url(client, auth_headers, monkeypatch):
+    from app.routes import auth as auth_routes
+
+    class FakeFlow:
+        def authorization_url(self, **kwargs):
+            assert kwargs["access_type"] == "offline"
+            assert kwargs["prompt"] == "consent"
+            return "https://accounts.google.com/o/oauth2/auth?state=signed-state", "signed-state"
+
+    monkeypatch.setattr(auth_routes.settings, "GOOGLE_CLIENT_ID", "google-client-id")
+    monkeypatch.setattr(auth_routes.settings, "GOOGLE_CLIENT_SECRET", "google-client-secret")
+    monkeypatch.setattr(auth_routes, "_google_drive_flow", lambda state: FakeFlow())
+
+    response = client.get("/api/v1/auth/google-drive/connect", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["auth_url"].startswith("https://accounts.google.com")
+
+
+def test_google_drive_status_reflects_stored_token(client, auth_headers, user, db_session):
+    initial = client.get("/api/v1/auth/google-drive/status", headers=auth_headers)
+    assert initial.status_code == 200
+    assert initial.json() == {"connected": False}
+
+    user.google_refresh_token = "google-refresh-token"
+    db_session.commit()
+
+    connected = client.get("/api/v1/auth/google-drive/status", headers=auth_headers)
+    assert connected.status_code == 200
+    assert connected.json() == {"connected": True}
+
+
+def test_google_drive_callback_stores_encrypted_refresh_token(client, user, db_session, monkeypatch):
+    from app.routes import auth as auth_routes
+    from sqlalchemy import text
+
+    class FakeCredentials:
+        refresh_token = "google-refresh-token"
+
+    class FakeFlow:
+        credentials = FakeCredentials()
+
+        def fetch_token(self, code):
+            assert code == "oauth-code"
+
+    monkeypatch.setattr(auth_routes.settings, "GOOGLE_CLIENT_ID", "google-client-id")
+    monkeypatch.setattr(auth_routes.settings, "GOOGLE_CLIENT_SECRET", "google-client-secret")
+    monkeypatch.setattr(auth_routes, "_google_drive_flow", lambda state: FakeFlow())
+
+    state = auth_routes._create_google_drive_state(user.id)
+    response = client.get(
+        "/api/v1/auth/google-drive/callback",
+        params={"code": "oauth-code", "state": state},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert "Google Drive connected" in response.text
+
+    db_session.refresh(user)
+    assert user.google_refresh_token == "google-refresh-token"
+
+    row = db_session.execute(text("SELECT google_refresh_token FROM users WHERE id = :id"), {"id": user.id}).fetchone()
+    stored_token = row[0]
+    assert stored_token is not None
+    assert stored_token != "google-refresh-token"
+
+
+def test_google_drive_disconnect_removes_token(client, auth_headers, user, db_session):
+    user.google_refresh_token = "google-refresh-token"
+    db_session.commit()
+
+    response = client.delete("/api/v1/auth/google-drive/disconnect", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json() == {"connected": False}
+
+    db_session.refresh(user)
+    assert user.google_refresh_token is None

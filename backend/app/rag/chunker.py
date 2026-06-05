@@ -186,11 +186,50 @@ def extract_docx(filepath: str) -> List[Dict[str, Any]]:
 
 
 def extract_txt(filepath: str) -> List[Dict[str, Any]]:
-    """Extract text from TXT/Markdown files."""
+    """Extract text from TXT/Markdown files, preserving tables as separate chunks."""
     with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
         text = f.read()
 
-    return [{"text": text, "page": 1}] if text.strip() else []
+    if not text.strip():
+        return []
+
+    chunks = []
+    current_text_lines = []
+    table_lines = []
+    in_table = False
+
+    for line in text.splitlines():
+        is_table_line = line.strip().startswith("|")
+
+        if is_table_line:
+            if not in_table:
+                # flush any accumulated text first
+                if current_text_lines:
+                    chunk_text = "\n".join(current_text_lines).strip()
+                    if chunk_text:
+                        chunks.append({"text": chunk_text, "page": 1, "chunk_type": "text"})
+                    current_text_lines = []
+                in_table = True
+            table_lines.append(line)
+        else:
+            if in_table:
+                # flush the table
+                table_text = "\n".join(table_lines).strip()
+                if table_text:
+                    chunks.append({"text": table_text, "page": 1, "chunk_type": "table"})
+                table_lines = []
+                in_table = False
+            current_text_lines.append(line)
+
+    # flush whatever's left
+    if in_table and table_lines:
+        chunks.append({"text": "\n".join(table_lines).strip(), "page": 1, "chunk_type": "table"})
+    elif current_text_lines:
+        chunk_text = "\n".join(current_text_lines).strip()
+        if chunk_text:
+            chunks.append({"text": chunk_text, "page": 1, "chunk_type": "text"})
+
+    return chunks
 
 # Change the chunk_document function input to take a file path and optional chunk size and overlap parameters. 
 def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = None) -> List[Dict[str, Any]]:

@@ -3,11 +3,18 @@ Auth API routes — register, login, and user profile.
 """
 import re
 import secrets
-from typing import Optional
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, Cookie, Response, Body
-from fastapi.responses import RedirectResponse
+import logging
+import hashlib
+from html import escape
+from typing import Optional, List
+from datetime import datetime, timedelta, timezone
+
 import httpx
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Cookie, Response, Body
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
+from google_auth_oauthlib.flow import Flow
 from langsmith import expect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -17,6 +24,8 @@ from app.database import get_db
 from app.models import User, ApiKey, UserRole
 from app.schemas import (
     GoogleLoginRequest,
+    GoogleDriveAuthUrlResponse,
+    GoogleDriveStatusResponse,
     HFTokenUpdate,
     RefreshRequest,
     TokenResponse,
@@ -29,11 +38,81 @@ from app.schemas import (
     UserUpdateResponse,
     ApiKeyResponse,
     ApiKeyCreateResponse,
+    EmailVerificationRequest,
+    MessageResponse,
+    RegistrationResponse,
 )
 from app.auth import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, decode_token
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+REGISTRATION_MESSAGE = "Registration successful. Please check your email to verify your account before logging in."
+VERIFICATION_RESEND_MESSAGE = "If the email is registered and unverified, a verification link has been sent."
+VERIFICATION_REQUIRED_MESSAGE = "Please verify your email before logging in"
+
+
+def _hash_verification_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _set_verification_token(user: User) -> str:
+    token = secrets.token_urlsafe(32)
+    user.verification_token_hash = _hash_verification_token(token)
+    user.verification_token_created_at = datetime.now(timezone.utc)
+    return token
+
+
+def _verification_url(token: str) -> str:
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    return f"{frontend_url}/verify-email?token={token}"
+
+
+def _mail_configured() -> bool:
+    return bool(settings.MAIL_SERVER and settings.MAIL_FROM)
+
+
+def _dev_verification_url(token: str) -> str | None:
+    if settings.ENVIRONMENT == "production" or _mail_configured():
+        return None
+    return f"/verify-email?token={token}"
+
+
+async def _send_verification_email(user: User, token: str) -> None:
+    if not _mail_configured():
+        logger.warning("Email verification mail is not configured; skipping verification email for %s", user.email)
+        return
+
+    conf = ConnectionConfig(
+        MAIL_USERNAME=settings.MAIL_USERNAME,
+        MAIL_PASSWORD=settings.MAIL_PASSWORD,
+        MAIL_FROM=settings.MAIL_FROM,
+        MAIL_SERVER=settings.MAIL_SERVER,
+        MAIL_PORT=settings.MAIL_PORT,
+        MAIL_STARTTLS=settings.MAIL_STARTTLS,
+        MAIL_SSL_TLS=settings.MAIL_SSL_TLS,
+        USE_CREDENTIALS=bool(settings.MAIL_USERNAME and settings.MAIL_PASSWORD),
+        VALIDATE_CERTS=True,
+    )
+    verification_link = _verification_url(token)
+    message = MessageSchema(
+        subject="Verify your Document AI Analyst account",
+        recipients=[user.email],
+        body=(
+            f"<p>Hi {user.username},</p>"
+            "<p>Please verify your email address before logging in to Document AI Analyst.</p>"
+            f'<p><a href="{verification_link}">Verify your account</a></p>'
+            "<p>This link expires in "
+            f"{settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS} hours.</p>"
+        ),
+        subtype=MessageType.html,
+    )
+
+    await FastMail(conf).send_message(message)
+
+GOOGLE_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+GOOGLE_DRIVE_STATE_TOKEN_TYPE = "google_drive_oauth_state"
 
 
 def _create_token_response(user: User) -> TokenResponse:
@@ -100,25 +179,22 @@ def _unique_google_username(email: str, db: Session) -> str:
     return candidate
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: UserRegister, db: Session = Depends(get_db)):
+@router.post("/register", response_model=RegistrationResponse, status_code=status.HTTP_201_CREATED)
+async def register(payload: UserRegister, db: Session = Depends(get_db)):
     """
-    Register a new user account and return authentication tokens.
+    Register a new user account and send a verification email.
 
     Creates a new user in the database after validating that the username and
     email are not already taken. The password is hashed before storage. On
-    success, access and refresh tokens are generated and returned along with
-    the user's public information.
+    success, a verification token is generated, stored as a hash, and emailed
+    to the user before password login is allowed.
 
     Args:
         payload (UserRegister): The registration details including username, email, and password.
         db (Session, optional): Database session dependency. Defaults to Depends(get_db).
 
     Returns:
-        TokenResponse: An object containing:
-            - access_token (str): jwt access token for authenticating API requests.
-            - refresh_token (str): jwt refresh token for obtaining new access tokens.
-            - user : UserResponse object with registered user's public information (id, username, email).
+        RegistrationResponse: Message and email address for the pending verification.
 
     Raises:
         HTTPException: If the username is already taken (409 Conflict).
@@ -138,18 +214,25 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
             detail="Email already registered",
         )
 
-    # Create user
     user = User(
         username=payload.username,
         email=payload.email,
         hashed_password=hash_password(payload.password),
         role=UserRole.user,
+        is_verified=False,
     )
+    token = _set_verification_token(user)
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    return _create_token_response(user)
+    await _send_verification_email(user, token)
+
+    return RegistrationResponse(
+        message=REGISTRATION_MESSAGE,
+        email=user.email,
+        verification_url=_dev_verification_url(token),
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -183,6 +266,12 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
 
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=VERIFICATION_REQUIRED_MESSAGE,
+        )
+
     user.last_login = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
@@ -208,16 +297,68 @@ def login_with_google(payload: GoogleLoginRequest, db: Session = Depends(get_db)
             username=_unique_google_username(email, db),
             email=email,
             hashed_password=hash_password(secrets.token_urlsafe(32)),
+            is_verified=True,
         )
         db.add(user)
         db.commit()
         db.refresh(user)
+    elif not user.is_verified:
+        user.is_verified = True
+        user.verification_token_hash = None
+        user.verification_token_created_at = None
 
     user.last_login = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
 
     return _create_token_response(user)
+
+
+@router.get("/verify", response_model=MessageResponse)
+def verify_email(token: str, db: Session = Depends(get_db)):
+    """Verify a registered user's email address using an emailed token."""
+    token_hash = _hash_verification_token(token)
+    user = db.query(User).filter(User.verification_token_hash == token_hash).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+
+    created_at = user.verification_token_created_at
+    if created_at and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    expires_at = (created_at or datetime.now(timezone.utc)) + timedelta(
+        hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
+    )
+    if expires_at < datetime.now(timezone.utc):
+        user.verification_token_hash = None
+        user.verification_token_created_at = None
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+
+    user.is_verified = True
+    user.verification_token_hash = None
+    user.verification_token_created_at = None
+    db.commit()
+
+    return MessageResponse(message="Email verified successfully. You can now log in.")
+
+
+@router.post("/resend-verification", response_model=MessageResponse)
+async def resend_verification(payload: EmailVerificationRequest, db: Session = Depends(get_db)):
+    """Resend an email verification link for an unverified user."""
+    user = db.query(User).filter(User.email == payload.email).first()
+    if user and not user.is_verified:
+        token = _set_verification_token(user)
+        db.commit()
+        db.refresh(user)
+        await _send_verification_email(user, token)
+
+    return MessageResponse(message=VERIFICATION_RESEND_MESSAGE)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -355,10 +496,10 @@ def update_user_info(payload:UserUpdate,
                 raise HTTPException(status_code=400, detail="Username already exists")
             user.username = payload.username
         if payload.email:
-            existing_user = db.execute(select(User).where(User.username == payload.email)).scalar_one_or_none()
+            existing_user = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
 
             if existing_user:
-                raise HTTPException(status_code=400, detail="Username already exists")
+                raise HTTPException(status_code=400, detail="Email already exists")
             user.email = payload.email
         db.commit()
         db.refresh(user)
@@ -417,9 +558,6 @@ def update_password(payload:UpdatePassword,
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Database error")
-
-from typing import List
-import hashlib
 
 @router.post("/api-keys", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_api_key(
@@ -500,6 +638,176 @@ def _unique_google_username(email: str, db: Session) -> str:
         candidate = f"{base[:80 - len(suffix_text)]}{suffix_text}"
 
     return candidate
+
+
+def _require_google_drive_config() -> None:
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Drive OAuth is not configured",
+        )
+
+
+def _create_google_drive_state(user_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user_id),
+        "type": GOOGLE_DRIVE_STATE_TOKEN_TYPE,
+        "iat": now,
+        "exp": now + timedelta(minutes=10),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def _decode_google_drive_state(state_token: str) -> str | None:
+    try:
+        payload = jwt.decode(
+            state_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+    except jwt.InvalidTokenError:
+        return None
+
+    if payload.get("type") != GOOGLE_DRIVE_STATE_TOKEN_TYPE:
+        return None
+    return payload.get("sub")
+
+
+def _google_drive_flow(state: str | None = None) -> Flow:
+    _require_google_drive_config()
+    return Flow.from_client_config(
+        {
+            "web": {
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [settings.GOOGLE_DRIVE_REDIRECT_URI],
+            }
+        },
+        scopes=GOOGLE_DRIVE_SCOPES,
+        state=state,
+        redirect_uri=settings.GOOGLE_DRIVE_REDIRECT_URI,
+    )
+
+
+def _google_drive_callback_page(title: str, message: str, success: bool) -> HTMLResponse:
+    color = "#16a34a" if success else "#dc2626"
+    safe_title = escape(title)
+    safe_message = escape(message)
+    return HTMLResponse(
+        f"""
+        <!doctype html>
+        <html>
+          <head>
+            <title>{safe_title}</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+          </head>
+          <body style="font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5;">
+            <h1 style="color: {color};">{safe_title}</h1>
+            <p>{safe_message}</p>
+            <p>You can close this tab and return to Document AI Analyst.</p>
+          </body>
+        </html>
+        """,
+        status_code=status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST,
+    )
+
+
+@router.get("/google-drive/connect", response_model=GoogleDriveAuthUrlResponse)
+def connect_google_drive(user: User = Depends(get_current_user)):
+    """
+    Create a Google OAuth consent URL for read-only Drive access.
+
+    The OAuth state is a short-lived signed token containing the current user
+    id, so the callback can store the refresh token without trusting client
+    input or requiring a browser Authorization header.
+    """
+    state_token = _create_google_drive_state(user.id)
+    flow = _google_drive_flow(state_token)
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent",
+    )
+    return GoogleDriveAuthUrlResponse(auth_url=auth_url)
+
+
+@router.get("/google-drive/callback")
+def google_drive_callback(
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Handle Google's OAuth callback and persist the encrypted refresh token."""
+    if error:
+        return _google_drive_callback_page("Google Drive not connected", error, False)
+
+    if not code or not state:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Missing Google OAuth callback data.",
+            False,
+        )
+
+    user_id = _decode_google_drive_state(state)
+    if not user_id:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Invalid or expired Google OAuth state.",
+            False,
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return _google_drive_callback_page("Google Drive not connected", "User not found.", False)
+
+    try:
+        flow = _google_drive_flow(state)
+        flow.fetch_token(code=code)
+    except Exception:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Failed to connect Google Drive.",
+            False,
+        )
+
+    refresh_token = flow.credentials.refresh_token
+    if not refresh_token:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Google did not return a refresh token. Revoke access and try again.",
+            False,
+        )
+
+    user.google_refresh_token = refresh_token
+    db.commit()
+    db.refresh(user)
+
+    return _google_drive_callback_page(
+        "Google Drive connected",
+        "Read-only Google Drive access was granted successfully.",
+        True,
+    )
+
+
+@router.get("/google-drive/status", response_model=GoogleDriveStatusResponse)
+def google_drive_status(user: User = Depends(get_current_user)):
+    """Return whether the current user has connected Google Drive."""
+    return GoogleDriveStatusResponse(connected=bool(user.google_refresh_token))
+
+
+@router.delete("/google-drive/disconnect", response_model=GoogleDriveStatusResponse)
+def disconnect_google_drive(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove the stored Google Drive refresh token for the current user."""
+    user.google_refresh_token = None
+    db.commit()
+    return GoogleDriveStatusResponse(connected=False)
 
 
 @router.get("/login/huggingface")

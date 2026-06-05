@@ -34,12 +34,12 @@ short_description: Enterprise Agentic RAG — upload PDFs and chat with AI
 
 <br/>
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Flask](https://img.shields.io/badge/Flask-2.x-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org/)
-[![LangChain](https://img.shields.io/badge/LangChain-RAG-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://langchain.com/)
-[![ChromaDB](https://img.shields.io/badge/ChromaDB-VectorStore-FF6B35?style=for-the-badge)](https://trychroma.com/)
-[![HuggingFace](https://img.shields.io/badge/HuggingFace-Inference-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black)](https://huggingface.co/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://mongodb.com/)
+[![Pinecone](https://img.shields.io/badge/Pinecone-VectorDB-000000?style=for-the-badge)](https://pinecone.io/)
+[![Groq](https://img.shields.io/badge/Groq-LLM-F55036?style=for-the-badge)](https://console.groq.com/)
+[![Gemini](https://img.shields.io/badge/Google_Gemini-Embeddings-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://aistudio.google.com/)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-F59E0B?style=for-the-badge)](LICENSE)
 
@@ -93,8 +93,7 @@ Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 
 
 **PDF-Assistant-RAG** is a complete, production-ready AI document assistant that lets users upload complex PDFs, financial reports, legal contracts, and research papers — then chat with an AI that provides **accurate, cited answers** powered by a multi-stage Retrieval-Augmented Generation pipeline.
 
-The system uses **semantic search + cross-encoder reranking** to find the most relevant document chunks, streams AI-generated answers token-by-token, and highlights exact source citations with page numbers — all inside a sleek Next.js UI with JWT-secured per-user data isolation.
-
+The system uses **semantic search + cross-encoder reranking** to find the most relevant document chunks, streams AI-generated answers token-by-token, and highlights exact source citations with page numbers — all inside a clean Flask-served UI with session-based per-user data isolation.
 <br/>
 
 ## 🏗️ Architecture
@@ -181,33 +180,29 @@ graph TD
 
 | | Technology | Purpose |
 |---|---|---|
-| <img src="https://skillicons.dev/icons?i=fastapi" width="30"/> | **FastAPI 0.115+** | Async REST API framework |
+| <img src="https://skillicons.dev/icons?i=flask" width="30"/> | **Flask 2.x** | Web framework + routing |
 | <img src="https://skillicons.dev/icons?i=python" width="30"/> | **Python 3.11** | Runtime environment |
-| <img src="https://skillicons.dev/icons?i=sqlite" width="30"/> | **SQLite + SQLAlchemy** | User & document metadata storage |
-| <img src="https://img.shields.io/badge/JWT-000000?style=flat&logo=jsonwebtokens&logoColor=white" height="24"/> | **JWT + Passlib** | Authentication & authorization |
-| <img src="https://img.shields.io/badge/LangChain-1C3C3C?style=flat&logo=langchain&logoColor=white" height="24"/> | **LangChain** | RAG orchestration |
-| <img src="https://img.shields.io/badge/ChromaDB-FF6B35?style=flat" height="24"/> | **ChromaDB** | Persistent vector store (per-user) |
-| <img src="https://img.shields.io/badge/HuggingFace-FFD21E?style=flat&logo=huggingface&logoColor=black" height="24"/> | **HuggingFace Hub** | LLM inference API |
+| <img src="https://skillicons.dev/icons?i=mongodb" width="30"/> | **MongoDB + PyMongo** | User accounts & metadata storage |
+| <img src="https://img.shields.io/badge/Flask--Login-000000?style=flat" height="24"/> | **Flask-Login + Flask-Dance** | Session auth + Google OAuth |
+| <img src="https://img.shields.io/badge/Pinecone-000000?style=flat" height="24"/> | **Pinecone** | Vector store (per-user namespace) |
+| <img src="https://img.shields.io/badge/Google_Gemini-4285F4?style=flat&logo=google&logoColor=white" height="24"/> | **Google Gemini API** | Document chunk embeddings |
+| <img src="https://img.shields.io/badge/Groq-F55036?style=flat" height="24"/> | **Groq (Llama 3)** | LLM answer generation |
 
 ### Frontend
 
 | | Technology | Purpose |
 |---|---|---|
-| <img src="https://skillicons.dev/icons?i=nextjs" width="30"/> | **Next.js 16** | React framework (App Router) |
-| <img src="https://skillicons.dev/icons?i=tailwind" width="30"/> | **Tailwind CSS v4** | Utility-first styling |
-| <img src="https://img.shields.io/badge/shadcn/ui-000000?style=flat&logo=shadcnui&logoColor=white" height="24"/> | **shadcn/ui** | Accessible component library |
-| <img src="https://skillicons.dev/icons?i=ts" width="30"/> | **TypeScript** | Type-safe frontend |
-| <img src="https://img.shields.io/badge/react--pdf-FF0000?style=flat" height="24"/> | **react-pdf** | In-browser PDF viewer |
-| <img src="https://img.shields.io/badge/react--markdown-000000?style=flat" height="24"/> | **react-markdown + GFM** | Markdown-rendered AI responses |
+| <img src="https://skillicons.dev/icons?i=html" width="30"/> | **Jinja2 (via Flask)** | Server-side HTML templating |
+| <img src="https://skillicons.dev/icons?i=js" width="30"/> | **HTML + CSS + JavaScript** | Frontend UI (served from `/static` and `/templates`) |
 
 ### AI / ML Pipeline
 
 | | Technology | Purpose |
 |---|---|---|
-| <img src="https://img.shields.io/badge/MiniLM-L6-v2-FFD21E?style=flat" height="24"/> | **all-MiniLM-L6-v2** | Local sentence embeddings |
-| <img src="https://img.shields.io/badge/ms--marco--MiniLM-1C3C3C?style=flat" height="24"/> | **ms-marco-MiniLM-L-6-v2** | Cross-encoder reranker |
-| <img src="https://img.shields.io/badge/Qwen2.5-72B-Instruct-626BDF?style=flat" height="24"/> | **Qwen2.5-72B-Instruct** | LLM (HuggingFace Inference API) |
-| <img src="https://img.shields.io/badge/PyMuPDF-FF0000?style=flat" height="24"/> | **PyMuPDF + python-docx** | Document parsing |
+| <img src="https://img.shields.io/badge/Google_Gemini-4285F4?style=flat&logo=google&logoColor=white" height="24"/> | **Google Gemini API** | Generates vector embeddings for document chunks |
+| <img src="https://img.shields.io/badge/Pinecone-000000?style=flat" height="24"/> | **Pinecone** | Stores + retrieves embeddings per user namespace |
+| <img src="https://img.shields.io/badge/Groq-F55036?style=flat" height="24"/> | **Groq API (Llama 3)** | Generates answers from retrieved context |
+| <img src="https://img.shields.io/badge/PyMuPDF-FF0000?style=flat" height="24"/> | **PyMuPDF + pdfplumber + python-docx** | Document text extraction |
 
 ### DevOps & Tooling
 
@@ -269,64 +264,36 @@ graph TD
 ```
 PDF-Assistant-RAG/
 │
-├── backend/                          # FastAPI + RAG server
-│   ├── app/
-│   │   ├── main.py                   # App entrypoint, middleware, static files
-│   │   ├── config.py                 # Pydantic settings (env vars)
-│   │   ├── database.py               # SQLAlchemy async engine
-│   │   ├── models.py                 # ORM models (User, Document, Message)
-│   │   ├── schemas.py                # Pydantic request/response schemas
-│   │   ├── auth.py                   # JWT creation & verification
-│   │   │
-│   │   ├── routes/
-│   │   │   ├── auth.py               # POST /register, /login, /me
-│   │   │   ├── documents.py          # Upload, list, delete, retrieve
-│   │   │   └── chat.py               # Streaming chat + history
-│   │   │
-│   │   └── rag/
-│   │       ├── agent.py              # Main RAG orchestrator
-│   │       ├── chunker.py            # Recursive text splitter
-│   │       ├── embeddings.py         # SentenceTransformer wrapper
-│   │       ├── vectorstore.py        # ChromaDB collection manager
-│   │       ├── retriever.py          # Semantic search + reranking
-│   │       └── prompts.py            # System & user prompt templates
-│   │
-│   ├── requirements.txt
-│   └── .env                          # Local env (never committed)
+├── app.py                  # Flask app — all routes (upload, ask, download, auth)
+├── config.py               # Loads SECRET_KEY, MONGO_URI, Google OAuth credentials
+├── models.py               # User model (MongoDB via PyMongo)
+├── make_admin.py           # CLI script to promote a user to admin
 │
-├── frontend/                         # Next.js 16 App Router
-│   └── src/
-│       ├── app/
-│       │   ├── layout.tsx            # Root layout + fonts
-│       │   ├── page.tsx              # Landing / redirect
-│       │   ├── login/                # Auth pages
-│       │   ├── register/
-│       │   └── dashboard/            # Main app page
-│       │
-│       ├── components/
-│       │   ├── chat/
-│       │   │   ├── ChatPanel.tsx     # Chat UI + SSE streaming
-│       │   │   ├── MessageBubble.tsx # User / assistant message
-│       │   │   └── SourceCard.tsx    # Citation cards
-│       │   ├── document/             # Upload + sidebar components
-│       │   └── layout/               # Navbar, sidebar shell
-│       │
-│       └── lib/
-│           └── api.ts                # Typed API client + SSE stream helper
+├── rag/
+│   ├── chunker.py          # Splits PDF/DOCX/TXT into text chunks
+│   ├── embeddings.py       # Gemini embeddings → Pinecone store/delete
+│   ├── retriever.py        # Pinecone similarity search → top-K chunks
+│   └── generator.py        # Groq LLM → answer from retrieved context
+│
+├── static/                 # CSS, JS, images
+├── templates/              # Jinja2 HTML templates (login, register, chat, admin)
+├── uploads/                # Per-user uploaded files (gitignored)
+├── instance/               # Flask instance folder
 │
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml                    # CI — runs on dev branch only
-│   │   ├── deploy.yml                # Docker build — main branch only
-│   │   └── devsecops.yml             # Security scans — main branch only
-│   ├── ISSUE_TEMPLATE/               # Bug report & feature request forms
-│   ├── pull_request_template.md      # PR checklist
-│   └── CODEOWNERS                    # Auto-review assignment
+│   │   ├── ci.yml          # CI — runs on dev branch only
+│   │   ├── deploy.yml      # Docker build — main branch only
+│   │   └── devsecops.yml   # Security scans — main branch only
+│   ├── ISSUE_TEMPLATE/     # Bug report & feature request forms
+│   └── pull_request_template.md
 │
-├── Dockerfile                        # Multi-stage: Node build → Python serve
-├── docker-compose.yml                # Local Docker stack
-├── CONTRIBUTING.md                   # contributor guide
-└── .env.example                      # Template for environment variables
+├── .env.example            # Template for required environment variables
+├── requirements.txt        # Python dependencies
+├── Dockerfile              # Docker build
+├── docker-compose.yml      # Local Docker stack
+├── start.sh                # Gunicorn startup script
+└── render.yaml             # Render.com deployment config
 ```
 
 <br/>
@@ -336,8 +303,10 @@ PDF-Assistant-RAG/
 ### Prerequisites
 
 - ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white) **Python 3.11+**
-- ![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=flat&logo=node.js&logoColor=white) **Node.js 20+**
-- ![HuggingFace](https://img.shields.io/badge/HuggingFace-Token-FFD21E?style=flat&logo=huggingface&logoColor=black) **HuggingFace account** (free) for LLM inference
+- ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=flat&logo=mongodb&logoColor=white) **MongoDB** (Atlas free tier or local)
+- ![Pinecone](https://img.shields.io/badge/Pinecone-000000?style=flat) **Pinecone** account — [pinecone.io](https://pinecone.io)
+- ![Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?style=flat&logo=google&logoColor=white) **Google Gemini API key** — [aistudio.google.com](https://aistudio.google.com)
+- ![Groq](https://img.shields.io/badge/Groq-F55036?style=flat) **Groq API key** — [console.groq.com](https://console.groq.com)
 
 ---
 
@@ -351,12 +320,10 @@ cd PDF-Assistant-RAG
 ### 2. Configure Environment
 
 ```bash
-cp .env.example backend/.env
-```
+cp .env.example .env
 
-Edit `backend/.env`:
+Edit `.env`:
 
-```env
 SECRET_KEY=your-strong-random-secret
 DATABASE_URL=sqlite:///./data/app.db
 HF_TOKEN=hf_your_huggingface_token_here
@@ -368,6 +335,36 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/1
 
 > Get your free HuggingFace token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 
+#### Email Verification Setup
+
+Password registration requires email verification before users can log in. To send real verification emails, add SMTP settings to `backend/.env`:
+
+```env
+FRONTEND_URL=http://localhost:3000
+EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS=24
+MAIL_USERNAME=your_smtp_username
+MAIL_PASSWORD=your_smtp_or_gmail_app_password
+MAIL_FROM=your_sender_email@example.com
+MAIL_SERVER=smtp.example.com
+MAIL_PORT=587
+MAIL_STARTTLS=True
+MAIL_SSL_TLS=False
+```
+
+For Gmail, enable 2-Step Verification on the sender Google account, create a 16-character App Password from Google Account > Security > App passwords, then use:
+
+```env
+MAIL_USERNAME=yourgmail@gmail.com
+MAIL_PASSWORD=your_16_character_app_password
+MAIL_FROM=yourgmail@gmail.com
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_STARTTLS=True
+MAIL_SSL_TLS=False
+```
+
+Without SMTP settings in a non-production environment, registration returns a local verification link so contributors can test the flow without private email credentials. With SMTP configured, the same link is sent by email.
+
 ### 3. Set up crawl4ai (URL Upload Feature)
 
 The URL upload feature (`POST /api/v1/documents/urlupload`) uses **crawl4ai** with a Playwright browser to crawl web pages. `crawl4ai-setup` handles the Playwright browser installation automatically — run it once after `pip install`:
@@ -376,43 +373,25 @@ The URL upload feature (`POST /api/v1/documents/urlupload`) uses **crawl4ai** wi
 crawl4ai-setup
 ```
 
-> **Linux / Docker users:** If Chromium fails to launch due to missing system libraries, also run:
-> ```bash
-> playwright install-deps chromium
-> ```
-> This installs OS-level dependencies (libnss, libatk, etc.) on fresh Ubuntu/Debian servers.
-
-> **Windows users:** No extra steps — the `NotImplementedError` (SelectorEventLoop + subprocess) is already handled in the backend automatically.
 
 ---
 
-### 4. Run Locally
-
-Open **two terminals**:
+### 3. Run Locally
 
 ```bash
-# Terminal A — Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+# Single terminal — Flask app
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-# → API running at http://localhost:8000
-# → Swagger docs at http://localhost:8000/docs
+python app.py
+# → App running at http://localhost:5000
 ```
 
-```bash
-# Terminal B — Frontend
-cd frontend
-npm install
-npm run dev
-# → App running at http://localhost:3000
-```
-
-### 5. Run with Docker
+### 4. Run with Docker
 
 ```bash
 docker compose up --build
-# → FastAPI, Redis, Celery worker, and Postgres at http://localhost:7860
+# → App running at http://localhost:7860
 ```
 
 <br/>
@@ -496,7 +475,7 @@ docker compose up --build
 | `HF_CLIENT_ID` | ❌ | — | HuggingFace OAuth client ID. Required only for Hugging Face sign-in. | [HuggingFace Developer Settings](https://huggingface.co/settings/connected-applications) |
 | `HF_CLIENT_SECRET` | ❌ | — | HuggingFace OAuth client secret. Required only for Hugging Face sign-in. | [HuggingFace Developer Settings](https://huggingface.co/settings/connected-applications) |
 | `HF_REDIRECT_URI` | ❌ | `http://localhost:8000/api/v1/auth/callback/huggingface` | HuggingFace OAuth callback redirect URI. | — |
-| `FRONTEND_URL` | ❌ | `http://localhost:3000` | Frontend URL to redirect to after OAuth callback finishes. | — |
+| `FRONTEND_URL` | ❌ | `http://localhost:3000` | Public frontend URL used for OAuth redirects and email verification links. | Your deployed frontend URL |
 | `ENVIRONMENT` | ❌ | `development` | Runtime mode. Set to `production` for deployment to lock CORS. | — |
 | `DEBUG` | ❌ | `False` | Enable debug mode with detailed error pages. Never enable in production. | — |
 | `ALLOWED_ORIGINS` | ❌ | `http://localhost:3000,http://localhost:7860` | Comma-separated CORS origins (only enforced in production). | Your deployed domain(s) |
@@ -505,6 +484,14 @@ docker compose up --build
 | `JWT_EXPIRY_HOURS` | ❌ | `72` | JWT token lifetime in hours before re-login is required. | — |
 | `GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID used by FastAPI to verify ID tokens. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | ❌ | — | Google OAuth web client ID exposed to the Next.js Google sign-in button. | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS` | ❌ | `24` | Email verification token lifetime in hours. | — |
+| `MAIL_USERNAME` | ❌ | — | SMTP username for account verification emails. | SMTP provider or Gmail App Password setup |
+| `MAIL_PASSWORD` | ❌ | — | SMTP password or Gmail 16-character App Password. | SMTP provider or Gmail App Password setup |
+| `MAIL_FROM` | ❌ | — | Sender email address for verification emails. | Verified sender address |
+| `MAIL_SERVER` | ❌ | — | SMTP server hostname, for example `smtp.gmail.com`. | SMTP provider |
+| `MAIL_PORT` | ❌ | `587` | SMTP server port. | SMTP provider |
+| `MAIL_STARTTLS` | ❌ | `True` | Enable STARTTLS for SMTP. | SMTP provider |
+| `MAIL_SSL_TLS` | ❌ | `False` | Enable SSL/TLS for SMTP. | SMTP provider |
 | `CELERY_BROKER_URL` | ❌ | `redis://localhost:6379/0` | Redis broker URL used by FastAPI to queue document ingestion jobs. | Redis |
 | `CELERY_RESULT_BACKEND` | ❌ | `redis://localhost:6379/1` | Redis backend URL used by Celery to store task state/results. | Redis |
 | `UPLOAD_DIR` | ❌ | `./data/uploads` | Local directory for storing uploaded documents. | — |
@@ -623,7 +610,7 @@ Distributed under the **MIT License**. See [`LICENSE`](license) for more informa
 
 <br/>
 
-[![FastAPI](https://skillicons.dev/icons?i=fastapi,python,nextjs,ts,tailwind,docker)](https://skillicons.dev)
+[![Stack](https://skillicons.dev/icons?i=flask,python,mongodb,docker)](https://skillicons.dev)
 
 <br/>
 
