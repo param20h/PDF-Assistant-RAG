@@ -19,4 +19,3 @@ def process_document(
         user_id=user_id,
     )
     return {"document_id": document_id, "status": "completed"}
-
