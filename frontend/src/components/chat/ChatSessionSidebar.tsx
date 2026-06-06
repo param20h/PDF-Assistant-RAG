@@ -237,7 +237,7 @@ export default function ChatSessionSidebar() {
 
       <Button
         onClick={() => setMobileOpen(true)}
-        className="fixed bottom-4 left-4 z-30 h-11 w-11 rounded-full shadow-lg md:hidden"
+        className="fixed bottom-4 left-2 z-30 h-10 w-10 rounded-full shadow-lg md:hidden"
         size="icon"
         aria-label="Open chat sessions"
         aria-controls="mobile-chat-sessions"

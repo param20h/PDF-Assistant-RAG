@@ -217,7 +217,8 @@ export default function DashboardPage() {
         <ChatSessionSidebar />
 
         {/* ── Center: Chat Panel ──────────────────────────────────── */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        
+        <div className="flex-1 min-w-0 w-full flex flex-col overflow-hidden">
           <ChatPanel
             activeDoc={activeDoc}
             onCitationClick={(target) => {
