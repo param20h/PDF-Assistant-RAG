@@ -5,13 +5,27 @@ import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api, API_BASE } from "@/lib/api";
-import { useChatStore, type ChatMsg, type SourceBoundingBox, type SourceChunk } from "@/store/chat-store";
+import {
+  useChatStore,
+  type ChatMsg,
+  type SourceBoundingBox,
+  type SourceChunk,
+} from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff, HelpCircle } from "lucide-react";
+import {
+  Send,
+  Loader2,
+  Trash2,
+  MessageSquare,
+  Download,
+  Mic,
+  MicOff,
+  HelpCircle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ISpeechRecognitionEvent {
@@ -71,13 +85,15 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const setStreaming = useChatStore((state) => state.setStreaming);
   const setIsTyping = useChatStore((state) => state.setIsTyping);
   const resetChat = useChatStore((state) => state.resetChat);
-  const fetchSessionHistory = useChatStore((state) => state.fetchSessionHistory);
-  
+  const fetchSessionHistory = useChatStore(
+    (state) => state.fetchSessionHistory,
+  );
+
   const [showExportMenu, setShowExportMenu] = useState(false);
   const MAX_CHARACTERS = 2000;
   const [isRecording, setIsRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
-  
+
   // New State for Keyboard Shortcuts Help Modal
   const [showHelpModal, setShowHelpModal] = useState(false);
 
@@ -87,7 +103,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
-
+  const abortControllerRef = useRef<AbortController | null>(null);
   const showEmptyState = messages.length === 0 && !isTyping && !historyLoading;
 
   useEffect(() => {
@@ -96,7 +112,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
     textarea.style.height = "auto";
     const computedMaxHeight = Number.parseFloat(
-      window.getComputedStyle(textarea).maxHeight
+      window.getComputedStyle(textarea).maxHeight,
     );
     const maxHeight = Number.isFinite(computedMaxHeight)
       ? computedMaxHeight
@@ -139,9 +155,14 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     let cancelled = false;
 
     api
-      .get<{ messages: Array<{ id: string; role: string; content: string; sources?: SourceChunk[] }> }>(
-        `/api/v1/chat/history/${documentId}`
-      )
+      .get<{
+        messages: Array<{
+          id: string;
+          role: string;
+          content: string;
+          sources?: SourceChunk[];
+        }>;
+      }>(`/api/v1/chat/history/${documentId}`)
       .then((data) => {
         if (cancelled || prevDocId.current !== documentId) return;
 
@@ -151,7 +172,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             role: m.role as "user" | "assistant",
             content: m.content,
             sources: m.sources || [],
-          }))
+          })),
         );
       })
       .catch(() => {
@@ -170,6 +191,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     const question = input.trim();
     setInput("");
 
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     // Add user message
     const userMsg: ChatMsg = {
       id: `user-${Date.now()}`,
@@ -213,8 +236,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               prev.map((m) =>
                 m.id === assistantId
                   ? { ...m, content: m.content + (event.data as string) }
-                  : m
-              )
+                  : m,
+              ),
             );
           }
         } else if (event.type === "sources") {
@@ -222,8 +245,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             prev.map((m) =>
               m.id === assistantId
                 ? { ...m, sources: event.data as SourceChunk[] }
-                : m
-            )
+                : m,
+            ),
           );
         } else if (event.type === "error") {
           setIsTyping(false);
@@ -231,14 +254,14 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             prev.map((m) =>
               m.id === assistantId
                 ? { ...m, content: `Error: ${event.data}`, isStreaming: false }
-                : m
-            )
+                : m,
+            ),
           );
         } else if (event.type === "done") {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, isStreaming: false } : m
-            )
+              m.id === assistantId ? { ...m, isStreaming: false } : m,
+            ),
           );
         }
       }
@@ -255,17 +278,19 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 }),
                 isStreaming: false,
               }
-            : m
-        )
+            : m,
+        ),
       );
 
-      if (message.toLowerCase().includes("connect") || message.toLowerCase().includes("network")) {
+      if (
+        message.toLowerCase().includes("connect") ||
+        message.toLowerCase().includes("network")
+      ) {
         toast.error("Network error. Please check your connection.");
       } else {
-          toast.error(`Upload failed: ${message}`);
+        toast.error(`Upload failed: ${message}`);
       }
     } finally {
-
       setStreaming(false);
       setIsTyping(false);
     }
@@ -300,7 +325,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   useEffect(() => {
     if (!showExportMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+      if (
+        exportMenuRef.current &&
+        !exportMenuRef.current.contains(e.target as Node)
+      ) {
         setShowExportMenu(false);
       }
     };
@@ -325,7 +353,11 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         : null;
 
     if (!SpeechRecognitionAPI) {
-      setSpeechError(t("chat.speechNotSupported", { defaultValue: "Speech recognition is not supported in this browser." }));
+      setSpeechError(
+        t("chat.speechNotSupported", {
+          defaultValue: "Speech recognition is not supported in this browser.",
+        }),
+      );
       return;
     }
 
@@ -333,7 +365,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       const recognition = new SpeechRecognitionAPI();
       recognition.continuous = true;
       recognition.interimResults = true;
-      
+
       const currentLang = i18n.language || "en";
       const langMap: Record<string, string> = {
         en: "en-US",
@@ -355,7 +387,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         setInput(
           initialInputRef.current +
             (initialInputRef.current ? " " : "") +
-            sessionTranscript.trim()
+            sessionTranscript.trim(),
         );
       };
 
@@ -363,10 +395,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         const errorCode = event.error;
         if (errorCode === "aborted") return; // ignore manual aborts
 
-        let msg = t("chat.speechError", { defaultValue: `Speech recognition error: ${errorCode}` });
+        let msg = t("chat.speechError", {
+          defaultValue: `Speech recognition error: ${errorCode}`,
+        });
         if (errorCode === "not-allowed") {
           msg = t("chat.micPermissionDenied", {
-            defaultValue: "Microphone access denied. Please enable permissions in settings.",
+            defaultValue:
+              "Microphone access denied. Please enable permissions in settings.",
           });
         } else if (errorCode === "no-speech") {
           msg = t("chat.noSpeechDetected", {
@@ -392,7 +427,11 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       recognitionRef.current = recognition;
       recognition.start();
     } catch (err) {
-      setSpeechError(err instanceof Error ? err.message : "Failed to start speech recognition.");
+      setSpeechError(
+        err instanceof Error
+          ? err.message
+          : "Failed to start speech recognition.",
+      );
       setIsRecording(false);
     }
   };
@@ -425,11 +464,16 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   };
 
   // ── NEW KEYBOARD SHORTCUTS ENGINE EFFECT ──────────────────────────
+  // ── KEYBOARD SHORTCUTS ENGINE EFFECT ──────────────────────────
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 
-      // Shortcut 1: Ctrl/Cmd + Enter -> Send Message (When textarea has focus)
+      // No-op on mobile devices
+      if (isMobile) return;
+
+      // Shortcut 1: Ctrl/Cmd + Enter → Send Message (when textarea focused)
       if (isCmdOrCtrl && e.key === "Enter") {
         if (document.activeElement === textareaRef.current) {
           e.preventDefault();
@@ -437,20 +481,56 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         }
       }
 
-      // Shortcut 2: Escape -> Clear Input / Close Modal
+      // Shortcut 2: Escape → Abort SSE stream OR clear input OR close modal
       if (e.key === "Escape") {
-        if (document.activeElement === textareaRef.current) {
+        if (streaming && abortControllerRef.current) {
           e.preventDefault();
-          setInput(""); // Clear textarea state
+          abortControllerRef.current.abort();
+          setStreaming(false);
+          setIsTyping(false);
+          toast.info("Response cancelled");
+        } else if (document.activeElement === textareaRef.current) {
+          e.preventDefault();
+          setInput("");
         } else if (showHelpModal) {
-          setShowHelpModal(false); // Close shortcuts modal if open
+          setShowHelpModal(false);
+        } else if (showExportMenu) {
+          setShowExportMenu(false);
         }
       }
 
-      // Shortcut 3: Ctrl/Cmd + K -> Focus chat input from anywhere
+      // Shortcut 3: Ctrl/Cmd + K → Focus chat input from anywhere
       if (isCmdOrCtrl && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         textareaRef.current?.focus();
+      }
+
+      // Shortcut 4: Ctrl/Cmd + / → Toggle shortcuts help modal
+      if (isCmdOrCtrl && e.key === "/") {
+        e.preventDefault();
+        setShowHelpModal((prev) => !prev);
+      }
+
+      // Shortcut 5: Ctrl/Cmd + Shift + C → Clear chat history
+      if (isCmdOrCtrl && e.shiftKey && (e.key === "c" || e.key === "C")) {
+        e.preventDefault();
+        handleClear();
+      }
+
+      // Shortcut 6: Ctrl/Cmd + Shift + E → Toggle export menu
+      if (isCmdOrCtrl && e.shiftKey && (e.key === "e" || e.key === "E")) {
+        e.preventDefault();
+        if (messages.length > 0) {
+          setShowExportMenu((prev) => !prev);
+        }
+      }
+
+      // Shortcut 7: Ctrl/Cmd + Shift + M → Toggle mic recording
+      if (isCmdOrCtrl && e.shiftKey && (e.key === "m" || e.key === "M")) {
+        e.preventDefault();
+        if (!streaming) {
+          toggleRecording();
+        }
       }
     };
 
@@ -458,21 +538,37 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [input, streaming, showHelpModal]); // Dependencies updated to capture fresh state data
+  }, [input, streaming, showHelpModal, showExportMenu, messages]); // Dependencies updated to capture fresh state data
 
   return (
     <div className="h-full flex flex-col relative">
       {/* ── Chat Messages ──────────────────────────── */}
-      <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" aria-busy={historyLoading}>
+      <div
+        className="flex-1 px-4 overflow-y-auto custom-scrollbar"
+        aria-busy={historyLoading}
+      >
         {historyLoading ? (
-          <div className="py-6 space-y-5 max-w-3xl mx-auto" aria-label="Loading chat history">
+          <div
+            className="py-6 space-y-5 max-w-3xl mx-auto"
+            aria-label="Loading chat history"
+          >
             {Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={index}
-                className={cn("flex gap-3", index % 2 === 0 ? "justify-end" : "justify-start")}
+                className={cn(
+                  "flex gap-3",
+                  index % 2 === 0 ? "justify-end" : "justify-start",
+                )}
               >
-                {index % 2 !== 0 && <Skeleton className="mt-1 h-8 w-8 rounded-full" />}
-                <div className={cn("space-y-2", index % 2 === 0 ? "w-2/3" : "w-3/4")}>
+                {index % 2 !== 0 && (
+                  <Skeleton className="mt-1 h-8 w-8 rounded-full" />
+                )}
+                <div
+                  className={cn(
+                    "space-y-2",
+                    index % 2 === 0 ? "w-2/3" : "w-3/4",
+                  )}
+                >
                   <Skeleton className="h-4 w-full" />
                   <Skeleton className="h-4 w-5/6" />
                   <Skeleton className="h-4 w-2/3" />
@@ -486,7 +582,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               <MessageSquare className="w-8 h-8 text-primary/60" />
             </div>
             <h3 className="text-lg font-semibold mb-1">
-              {activeDoc ? t("chat.askAboutDocument") : t("chat.selectDocument")}
+              {activeDoc
+                ? t("chat.askAboutDocument")
+                : t("chat.selectDocument")}
             </h3>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               {activeDoc
@@ -501,7 +599,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 <MessageBubble message={msg} />
                 {msg.role === "assistant" && msg.sources.length > 0 && (
                   <div className="ml-10 mt-1 mb-3">
-                    <SourceCard sources={msg.sources} onPageClick={onCitationClick} />
+                    <SourceCard
+                      sources={msg.sources}
+                      onPageClick={onCitationClick}
+                    />
                   </div>
                 )}
               </div>
@@ -532,11 +633,15 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                     </span>
                     <span className="font-medium text-muted-foreground">
-                      {t("chat.listening", { defaultValue: "Listening... Speak now." })}
+                      {t("chat.listening", {
+                        defaultValue: "Listening... Speak now.",
+                      })}
                     </span>
                   </>
                 ) : (
-                  <span className="text-destructive font-medium">{speechError}</span>
+                  <span className="text-destructive font-medium">
+                    {speechError}
+                  </span>
                 )}
               </div>
               <button
@@ -549,7 +654,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                   }
                 }}
                 className="text-muted-foreground hover:text-foreground font-semibold px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
-                aria-label={isRecording ? "Stop speech recording" : "Dismiss speech error"}
+                aria-label={
+                  isRecording ? "Stop speech recording" : "Dismiss speech error"
+                }
               >
                 {isRecording ? t("chat.stop", { defaultValue: "Stop" }) : "✕"}
               </button>
@@ -567,7 +674,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 onKeyDown={handleKeyDown}
                 placeholder={
                   activeDoc
-                    ? t("chat.askPlaceholder", { name: activeDoc.original_name })
+                    ? t("chat.askPlaceholder", {
+                        name: activeDoc.original_name,
+                      })
                     : t("chat.selectPlaceholder")
                 }
                 disabled={streaming}
@@ -576,7 +685,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 aria-label="Chat message"
                 aria-describedby="chat-input-hint"
               />
-              
+
               {/* Mic Button */}
               <Button
                 id="mic-btn"
@@ -589,21 +698,33 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                   "absolute right-10 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
                   isRecording
                     ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
-                    : "hover:text-primary hover:bg-accent"
+                    : "hover:text-primary hover:bg-accent",
                 )}
                 title={
                   isRecording
-                    ? t("chat.stopRecording", { defaultValue: "Stop recording" })
-                    : t("chat.startRecording", { defaultValue: "Start recording" })
+                    ? t("chat.stopRecording", {
+                        defaultValue: "Stop recording",
+                      })
+                    : t("chat.startRecording", {
+                        defaultValue: "Start recording",
+                      })
                 }
                 aria-label={
                   isRecording
-                    ? t("chat.stopRecording", { defaultValue: "Stop recording" })
-                    : t("chat.startRecording", { defaultValue: "Start recording" })
+                    ? t("chat.stopRecording", {
+                        defaultValue: "Stop recording",
+                      })
+                    : t("chat.startRecording", {
+                        defaultValue: "Start recording",
+                      })
                 }
                 aria-pressed={isRecording}
               >
-                {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                {isRecording ? (
+                  <MicOff className="h-4 w-4" />
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
               </Button>
 
               {/* NEW Keyboard Shortcuts Info Button */}
@@ -620,7 +741,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 <HelpCircle className="h-4 w-4" />
               </Button>
             </div>
-            
+
             <div className="flex gap-1.5 shrink-0">
               <Button
                 id="send-btn"
@@ -711,55 +832,142 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           </div>
         </div>
         <p id="chat-input-hint" className="sr-only">
-          Press Enter to send. Press Shift and Enter for a new line.
+          Press Enter to send. Press Shift and Enter for a new line. Press
+          Ctrl+Enter to send from anywhere. Press Escape to cancel streaming.
         </p>
       </div>
 
       {/* ── NEW KEYBOARD SHORTCUTS HELP MODAL OVERLAY ───────────────── */}
       {showHelpModal && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200"
           onClick={() => setShowHelpModal(false)}
         >
-          <div 
+          <div
             className="bg-popover text-popover-foreground border border-border p-6 rounded-xl w-80 relative shadow-2xl animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()} // Stop overlay closing when clicking inside
           >
-            <button 
+            <button
               onClick={() => setShowHelpModal(false)}
               className="absolute top-3 right-4 text-xl font-medium text-muted-foreground hover:text-foreground transition-colors"
               aria-label="Close shortcuts help"
             >
               &times;
             </button>
-            
+
             <h3 className="text-lg font-bold mb-1 flex items-center gap-2 text-foreground">
               ⌨️ Keyboard Shortcuts
             </h3>
-            <p className="text-xs text-muted-foreground mb-4">Enhance your typing productivity</p>
+            <p className="text-xs text-muted-foreground mb-4">
+              Enhance your typing productivity
+            </p>
             <hr className="border-border mb-4" />
-            
+
             <ul className="space-y-4 text-sm">
               <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">Send Message</span>
-                <div className="flex gap-1">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Ctrl</kbd>
+                <span className="text-muted-foreground text-xs font-medium">
+                  Send Message
+                </span>
+                <div className="flex gap-1 items-center">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Ctrl
+                  </kbd>
                   <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Enter</kbd>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Enter
+                  </kbd>
                 </div>
               </li>
               <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">Clear Chat Input</span>
+                <span className="text-muted-foreground text-xs font-medium">
+                  Cancel Streaming / Clear Input
+                </span>
                 <div>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Esc</kbd>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Esc
+                  </kbd>
                 </div>
               </li>
               <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">Focus Chat Input</span>
-                <div className="flex gap-1">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Ctrl</kbd>
+                <span className="text-muted-foreground text-xs font-medium">
+                  Focus Chat Input
+                </span>
+                <div className="flex gap-1 items-center">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Ctrl
+                  </kbd>
                   <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">K</kbd>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    K
+                  </kbd>
+                </div>
+              </li>
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">
+                  Toggle Shortcuts Help
+                </span>
+                <div className="flex gap-1 items-center">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Ctrl
+                  </kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    /
+                  </kbd>
+                </div>
+              </li>
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">
+                  Clear Chat History
+                </span>
+                <div className="flex gap-1 items-center">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Ctrl
+                  </kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Shift
+                  </kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    C
+                  </kbd>
+                </div>
+              </li>
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">
+                  Toggle Export Menu
+                </span>
+                <div className="flex gap-1 items-center">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Ctrl
+                  </kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Shift
+                  </kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    E
+                  </kbd>
+                </div>
+              </li>
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">
+                  Toggle Mic Recording
+                </span>
+                <div className="flex gap-1 items-center">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Ctrl
+                  </kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    Shift
+                  </kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
+                    M
+                  </kbd>
                 </div>
               </li>
             </ul>
