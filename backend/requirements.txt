@@ -15,6 +15,7 @@ pyjwt
 passlib[bcrypt]
 python-dotenv
 google-auth
+google-auth-oauthlib
 google-api-python-client
 APScheduler
 fastapi-mail
@@ -71,4 +72,4 @@ pypdf
 reportlab
 # crawl4ai
 ddgs
-google-auth-oauthlib
+redis>=4.6.0

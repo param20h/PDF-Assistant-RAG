@@ -539,13 +539,8 @@ Pass `--document-id <document-id>` to evaluate one indexed document.
 
 | Command | Description |
 |---------|-------------|
-| `docker compose --profile cpu up --build` | Build and start the full stack (CPU-only, no GPU required) |
-| `docker compose --profile gpu up --build` | Build and start the full stack with NVIDIA GPU acceleration |
-| `docker compose --profile debug up` | Also start pgAdmin at http://localhost:5050 |
+| `docker compose up --build` | Build and start the full stack |
 | `docker compose down` | Stop all containers |
-
-> **CPU profile** — works on any machine. Embeddings run on CPU via `all-MiniLM-L6-v2`.  
-> **GPU profile** — requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html). Sets `DEVICE=cuda` for accelerated embedding inference.
 
 <br/>
 
