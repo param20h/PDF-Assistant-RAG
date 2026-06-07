@@ -3,12 +3,14 @@ FastAPI application entry point.
 Mounts all routes, configures CORS, and serves the Next.js frontend build.
 """
 import os
+import uuid
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
@@ -18,6 +20,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import get_settings
+from app.exceptions import AppException
 from app.rate_limit import limiter
 from app.database import init_db, get_db
 from app.observability import setup_prometheus_metrics
@@ -141,34 +144,85 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(
-    RateLimitExceeded,
-    lambda request, exc: JSONResponse(
+
+
+# ── Request ID Middleware ─────────────────────────────
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = str(uuid.uuid4())[:8]
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+# ── Global Exception Handlers ─────────────────────────
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                "details": exc.details,
+                "request_id": getattr(request.state, "request_id", None),
+            }
+        },
+    )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
         status_code=429,
-        content={"detail": "Rate limit exceeded. Please try again later."},
-    ),
-)
+        content={
+            "error": {
+                "code": "RATE_LIMIT_EXCEEDED",
+                "message": "Rate limit exceeded. Please try again later.",
+                "details": {},
+                "request_id": getattr(request.state, "request_id", None),
+            }
+        },
+    )
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    def _sanitize_error(err):
-        if isinstance(err, dict):
-            sanitized = {}
-            for k, v in err.items():
-                if k == "ctx" and isinstance(v, dict) and "error" in v:
-                    ctx_error = v.get("error")
-                    if isinstance(ctx_error, Exception):
-                        v = {**v, "error": str(ctx_error)}
-                sanitized[k] = _sanitize_error(v)
-            return sanitized
-        if isinstance(err, list):
-            return [_sanitize_error(i) for i in err]
-        return err
-
+    details = [
+        {"field": " -> ".join(str(p) for p in e.get("loc", [])), "message": e.get("msg", "")}
+        for e in exc.errors()
+    ]
     return JSONResponse(
         status_code=422,
-        content={"detail": [_sanitize_error(e) for e in exc.errors()]},
+        content={
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "Request validation failed",
+                "details": {"errors": details},
+                "request_id": getattr(request.state, "request_id", None),
+            }
+        },
     )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception: %s", exc)
+    if settings.DEBUG:
+        raise
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "An unexpected error occurred",
+                "details": {},
+                "request_id": getattr(request.state, "request_id", None),
+            }
+        },
+    )
+
 
 app.add_middleware(SlowAPIMiddleware)
 

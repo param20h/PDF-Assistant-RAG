@@ -10,13 +10,18 @@ from io import BytesIO
 import logging
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.cache import get_cached_response, set_cached_response
 from app.database import get_db
+from app.exceptions import (
+    NotFoundException,
+    UnauthorizedException,
+    ValidationException,
+)
 from app.metrics import record_query_response_time
 from app.models import User, ChatMessage, Document, SharedMessage, ChatSession
 from app.rate_limit import CHAT_QUERY_RATE_LIMIT, limiter
@@ -225,7 +230,7 @@ def get_shared_answer(
     )
 
     if not message or not db.query(SharedMessage).filter(SharedMessage.message_id == message.id).first():
-        raise HTTPException(status_code=404, detail="Shared answer not found")
+        raise NotFoundException("Shared answer")
 
     return _share_answer_response(message)
 
@@ -258,10 +263,10 @@ def create_share_link(
     )
 
     if not message:
-        raise HTTPException(status_code=404, detail="Message not found")
+        raise NotFoundException("Message")
 
     if message.role != "assistant":
-        raise HTTPException(status_code=400, detail="Only assistant messages can be shared")
+        raise ValidationException("Only assistant messages can be shared")
 
     shared_message = db.query(SharedMessage).filter(SharedMessage.message_id == message.id).first()
     if not shared_message:
@@ -337,7 +342,7 @@ def rename_chat_session(
         .first()
     )
     if not session:
-        raise HTTPException(status_code=404, detail="Chat session not found")
+        raise NotFoundException("Chat session")
     session.title = payload.title
     db.commit()
     db.refresh(session)
@@ -364,7 +369,7 @@ def delete_chat_session(
         .first()
     )
     if not session:
-        raise HTTPException(status_code=404, detail="Chat session not found")
+        raise NotFoundException("Chat session")
     db.delete(session)
     db.commit()
     return Response(status_code=204)
@@ -391,7 +396,7 @@ def get_session_history(
         .first()
     )
     if not session:
-        raise HTTPException(status_code=404, detail="Chat session not found")
+        raise NotFoundException("Chat session")
 
     messages = (
         db.query(ChatMessage)
@@ -487,7 +492,7 @@ def ask_question(
         try:
             validate_user_input(payload.question)
         except UnsafePromptError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise ValidationException(str(exc)) from exc
 
         # Validate document exists if specified
         if payload.document_id:
@@ -502,13 +507,10 @@ def ask_question(
             )
 
             if not doc:
-                raise HTTPException(status_code=404, detail="Document not found")
+                raise NotFoundException("Document")
 
             if doc.status != "ready":
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Document is still {doc.status}. Please wait for processing to complete.",
-                )
+                raise ValidationException(f"Document is still {doc.status}. Please wait for processing to complete.")
 
             # Update last_accessed_at timestamp
             doc.last_accessed_at = datetime.now(timezone.utc)
@@ -602,7 +604,7 @@ def ask_question_stream(
     try:
         validate_user_input(payload.question)
     except UnsafePromptError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise ValidationException(str(exc)) from exc
 
     # Validate document
     if payload.document_id:
@@ -617,13 +619,10 @@ def ask_question_stream(
         )
 
         if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+            raise NotFoundException("Document")
 
         if doc.status != "ready":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Document is still {doc.status}. Please wait for processing to complete.",
-            )
+            raise ValidationException(f"Document is still {doc.status}. Please wait for processing to complete.")
 
         # Update last_accessed_at timestamp
         doc.last_accessed_at = datetime.now(timezone.utc)
@@ -811,10 +810,10 @@ def export_chat_history(
             resolved_user = db.query(User).filter(User.id == user_id).first()
 
     if resolved_user is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise UnauthorizedException("Authentication required")
 
     if format not in ("md", "txt", "pdf"):
-        raise HTTPException(status_code=400, detail="Format must be 'md', 'txt', or 'pdf'")
+        raise ValidationException("Format must be 'md', 'txt', or 'pdf'")
 
     # Verify document exists and belongs to user
     doc = db.query(Document).filter(
@@ -824,7 +823,7 @@ def export_chat_history(
     ).first()
 
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise NotFoundException("Document")
 
     messages = (
         db.query(ChatMessage)
@@ -837,7 +836,7 @@ def export_chat_history(
     )
 
     if not messages:
-        raise HTTPException(status_code=404, detail="No chat history found for this document")
+        raise NotFoundException("Chat history")
 
     if format == "md":
         content = _format_markdown(doc, messages)
@@ -914,9 +913,9 @@ def submit_feedback(
     ).first()
 
     if not msg:
-        raise HTTPException(status_code=404, detail="Message not found")
+        raise NotFoundException("Message")
     if msg.role != "assistant":
-        raise HTTPException(status_code=400, detail="Can only provide feedback on assistant messages")
+        raise ValidationException("Can only provide feedback on assistant messages")
 
     msg.feedback = payload.feedback
     db.commit()

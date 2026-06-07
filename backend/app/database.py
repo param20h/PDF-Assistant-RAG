@@ -46,6 +46,39 @@ def get_db():
         db.close()
 
 
+def db_session():
+    """Context manager that catches SQLAlchemyError and converts to typed exception.
+
+    Use in background tasks, streaming generators, or anywhere outside
+    FastAPI's dependency injection lifecycle.
+    """
+    from contextlib import contextmanager
+    from sqlalchemy.exc import SQLAlchemyError
+    from app.exceptions import AppException
+
+    @contextmanager
+    def _session_scope():
+        session = SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except SQLAlchemyError as e:
+            session.rollback()
+            raise AppException(
+                "DATABASE_ERROR",
+                "A database error occurred while processing your request.",
+                500,
+                {"error": str(e)[:200]},
+            ) from e
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return _session_scope()
+
+
 def _migrate_schema():
     """Apply schema migrations for existing databases (SQLite-compatible).
 

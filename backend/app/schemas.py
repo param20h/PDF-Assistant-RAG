@@ -2,10 +2,30 @@
 Pydantic schemas for API request/response validation.
 """
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from app.models import UserRole
 from app.password_validation import validate_password
+
+
+class ErrorDetail(BaseModel):
+    field: str
+    message: str
+
+
+class ErrorEnvelope(BaseModel):
+    code: str
+    message: str
+    details: dict[str, Any] = {}
+    request_id: str | None = None
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorEnvelope
+
+
+class ValidationErrorResponse(BaseModel):
+    error: ErrorEnvelope
 
 
 # ── Auth ─────────────────────────────────────────────
