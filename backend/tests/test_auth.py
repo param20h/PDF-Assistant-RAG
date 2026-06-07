@@ -1,3 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
+import jwt
+
+from app.config import get_settings
+
+
 VALID_TEST_PASSWORD = "Password1!"
 
 
@@ -99,10 +106,53 @@ def test_login_invalid_password(client, user):
     assert response.json()["detail"] == "Invalid email or password"
 
 
+def test_login_invalid_email(client):
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "missing@example.com", "password": "password123"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
+
+
+def test_auth_me_success(client, auth_headers, user):
+    response = client.get("/api/v1/auth/me", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == str(user.id)
+    assert payload["username"] == user.username
+    assert payload["email"] == user.email
+
+
 def test_auth_me_requires_auth(client):
     response = client.get("/api/v1/auth/me")
 
     assert response.status_code in (401, 403)
+
+
+def test_auth_me_rejects_expired_token(client, user):
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    expired_token = jwt.encode(
+        {
+            "sub": str(user.id),
+            "type": "access",
+            "exp": now - timedelta(minutes=1),
+            "iat": now - timedelta(minutes=2),
+        },
+        settings.SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {expired_token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired token"
 
 
 def test_refresh_token_success(client, refresh_token):
