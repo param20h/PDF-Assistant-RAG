@@ -6,6 +6,7 @@ import os
 import glob
 import pickle
 import logging
+import re
 from typing import List, Dict, Any, Optional
 
 from app.config import get_settings
@@ -30,9 +31,8 @@ def get_bm25_path(user_id: str, document_id: str) -> str:
     return os.path.join(get_bm25_dir(user_id), f"{document_id}.pkl")
 
 def tokenize(text: str) -> List[str]:
-    """Simple tokenization for BM25."""
-    # Convert to lowercase and split by whitespace
-    return text.lower().split()
+    """Tokenize by converting to lowercase and extracting all alphanumeric words."""
+    return re.findall(r'\w+', text.lower())
 
 def store_bm25_index(chunks: List[Dict[str, Any]], document_id: str, filename: str, user_id: str):
     """
