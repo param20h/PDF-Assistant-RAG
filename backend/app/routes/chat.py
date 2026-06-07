@@ -9,7 +9,7 @@ from io import BytesIO
 import logging
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -35,6 +35,163 @@ from app.schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+
+
+@router.websocket("/ws")
+async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
+    """WebSocket endpoint for streaming agentic thoughts and tokens.
+
+    Authenticate via `token` query param or expect first JSON message
+    containing `{token, question, document_id?, session_id?}`.
+    """
+    await websocket.accept()
+
+    # Simple DB-backed auth similar to get_current_user
+    from app.database import SessionLocal
+    from app.auth import decode_token
+    from app.models import ApiKey, User
+
+    db = SessionLocal()
+    user = None
+
+    try:
+        # Try token from query param
+        if token:
+            tok = token
+            initial_payload = None
+        else:
+            # Expect first message to contain token and the payload
+            msg = await websocket.receive_json()
+            tok = msg.get("token")
+            initial_payload = msg
+
+        if not tok:
+            await websocket.send_json({"type": "error", "data": "Missing token"})
+            await websocket.close()
+            return
+
+        # API key check
+        if tok.startswith("pdf_rag_"):
+            import hashlib
+            hashed = hashlib.sha256(tok.encode("utf-8")).hexdigest()
+            api_key = db.query(ApiKey).filter(ApiKey.hashed_key == hashed, ApiKey.is_active == True).first()
+            if not api_key:
+                await websocket.send_json({"type": "error", "data": "Invalid API key"})
+                await websocket.close()
+                return
+            user = api_key.user
+        else:
+            user_id = decode_token(tok)
+            if not user_id:
+                await websocket.send_json({"type": "error", "data": "Invalid or expired token"})
+                await websocket.close()
+                return
+            user = db.query(User).filter(User.id == user_id).first()
+
+        if not user:
+            await websocket.send_json({"type": "error", "data": "User not found"})
+            await websocket.close()
+            return
+
+        # Receive or reuse initial payload
+        if initial_payload:
+            payload = initial_payload
+        else:
+            payload = await websocket.receive_json()
+
+        question = payload.get("question")
+        document_id = payload.get("document_id")
+        session_id = payload.get("session_id")
+
+        from app.rag.security import validate_user_input, UnsafePromptError
+
+        try:
+            validate_user_input(question)
+        except UnsafePromptError as exc:
+            await websocket.send_json({"type": "error", "data": str(exc)})
+            await websocket.close()
+            return
+
+        # Validate document if given
+        if document_id:
+            doc = db.query(Document).filter(
+                Document.id == document_id,
+                Document.user_id == user.id,
+                Document.is_deleted.is_(False),
+            ).first()
+            if not doc:
+                await websocket.send_json({"type": "error", "data": "Document not found"})
+                await websocket.close()
+                return
+            if doc.status != "ready":
+                await websocket.send_json({"type": "error", "data": f"Document is still {doc.status}."})
+                await websocket.close()
+                return
+
+        # Resolve or create session
+        if not session_id:
+            session = db.query(ChatSession).filter(ChatSession.user_id == user.id).first()
+            if not session:
+                session = ChatSession(user_id=user.id, title="Default Chat")
+                db.add(session)
+                db.commit()
+                db.refresh(session)
+            session_id = session.id
+
+        # Build chat history
+        recent_messages = (
+            db.query(ChatMessage)
+            .filter(
+                ChatMessage.session_id == session_id,
+                ChatMessage.user_id == user.id,
+            )
+            .order_by(ChatMessage.created_at.desc())
+            .limit(12)
+            .all()
+        )
+        recent_messages.reverse()
+        chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
+
+        # Save user message
+        _save_message(db, user.id, document_id, "user", question, session_id=session_id)
+
+        # Stream answer using existing generator and forward structured events
+        try:
+            for chunk in generate_answer_stream(
+                question=question,
+                user_id=user.id,
+                document_id=document_id,
+                hf_token=user.hf_token,
+                chat_history=chat_history,
+            ):
+                # chunk is SSE-style string like 'data: {json}\n\n' or similar
+                try:
+                    if chunk.startswith("data: "):
+                        payload = json.loads(chunk[6:].strip())
+                        await websocket.send_json(payload)
+                    else:
+                        # Fallback: send raw token
+                        await websocket.send_json({"type": "token", "data": chunk})
+                except Exception:
+                    await websocket.send_json({"type": "token", "data": chunk})
+
+            # Notify client
+            await websocket.send_json({"type": "done"})
+
+        except WebSocketDisconnect:
+            return
+        except Exception as e:
+            await websocket.send_json({"type": "error", "data": str(e)})
+
+    except WebSocketDisconnect:
+        return
+    except Exception as e:
+        try:
+            await websocket.send_json({"type": "error", "data": str(e)})
+        except Exception:
+            pass
+    finally:
+        db.close()
 
 
 @router.get(
