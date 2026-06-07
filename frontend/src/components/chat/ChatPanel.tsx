@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import { Send, Loader2, Trash2, MessageSquare, Download } from "lucide-react";
+import { Send, Trash2, MessageSquare, Download, Square } from "lucide-react";
 
 interface Props {
   activeDoc: DocInfo | null;
@@ -107,6 +107,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     abortRef.current?.abort();
     setStreaming(false);
     setIsTyping(false);
+    abortRef.current = null;
   };
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
@@ -330,14 +331,14 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           />
           <div className="flex gap-1.5 shrink-0">
             <Button
-              id="send-btn"
+              id={streaming ? "stop-btn" : "send-btn"}
               size="icon"
-              onClick={handleSend}
-              disabled={!input.trim() || streaming}
+              onClick={streaming ? handleStop : handleSend}
+              disabled={!streaming && !input.trim()}
               className="h-[44px] w-[44px]"
             >
               {streaming ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Square className="w-4 h-4" />
               ) : (
                 <Send className="w-4 h-4" />
               )}
