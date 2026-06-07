@@ -84,20 +84,14 @@ export default function DocumentSidebar({
       const data = await api.getTrashDocuments<{ items?: DocInfo[] }>();
       setTrashDocuments(data?.items || []);
     } catch (err) {
+      console.error(err);
       toast.error("Failed to load trash");
     } finally {
       setTrashLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    if (viewMode === "trash") {
-      loadTrash();
-      setSelectedDocs(new Set());
-    } else {
-      setSelectedDocs(new Set());
-    }
-  }, [viewMode, loadTrash]);
+
 
   const toggleSelection = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -116,6 +110,7 @@ export default function DocumentSidebar({
       setSelectedDocs(new Set());
       await onDocumentsChange();
     } catch (err) {
+      console.error(err);
       toast.error("Failed to delete documents");
     } finally {
       setBulkActionLoading(false);
@@ -131,6 +126,7 @@ export default function DocumentSidebar({
       await loadTrash();
       await onDocumentsChange();
     } catch (err) {
+      console.error(err);
       toast.error("Failed to restore documents");
     } finally {
       setBulkActionLoading(false);
@@ -146,6 +142,7 @@ export default function DocumentSidebar({
       setSelectedDocs(new Set());
       await loadTrash();
     } catch (err) {
+      console.error(err);
       toast.error("Failed to permanently delete documents");
     } finally {
       setBulkActionLoading(false);
@@ -353,7 +350,7 @@ export default function DocumentSidebar({
           variant={viewMode === "active" ? "secondary" : "ghost"} 
           size="sm" 
           className="flex-1 h-8 text-xs font-medium"
-          onClick={() => setViewMode("active")}
+          onClick={() => { setViewMode("active"); setSelectedDocs(new Set()); }}
         >
           Active
         </Button>
@@ -361,7 +358,7 @@ export default function DocumentSidebar({
           variant={viewMode === "trash" ? "secondary" : "ghost"} 
           size="sm" 
           className="flex-1 h-8 text-xs font-medium text-muted-foreground hover:text-foreground"
-          onClick={() => setViewMode("trash")}
+          onClick={() => { setViewMode("trash"); setSelectedDocs(new Set()); loadTrash(); }}
         >
           <Trash2 className="w-3 h-3 mr-1.5" />
           Recycle Bin

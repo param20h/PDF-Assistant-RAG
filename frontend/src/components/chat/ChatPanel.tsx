@@ -205,7 +205,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         const connectTimeout = setTimeout(() => {
           try {
             ws.close();
-          } catch (e) {
+          } catch {
             // ignore
           }
           reject(new Error("WebSocket connection timeout"));
@@ -252,12 +252,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               ws.close();
               resolve();
             }
-          } catch (err) {
+          } catch {
             // ignore malformed messages
           }
         };
 
-        ws.onerror = (ev) => {
+        ws.onerror = () => {
           clearTimeout(connectTimeout);
           reject(new Error("WebSocket error"));
         };
@@ -268,7 +268,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       });
 
       await wsDone;
-    } catch (err) {
+    } catch {
       // Fallback to existing SSE stream if WebSocket fails
       try {
         const stream = api.streamPost("/api/v1/chat/ask/stream", {
@@ -516,6 +516,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, streaming, showHelpModal]); // Dependencies updated to capture fresh state data
 
   return (

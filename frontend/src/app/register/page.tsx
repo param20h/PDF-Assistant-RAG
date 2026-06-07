@@ -28,7 +28,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   const passwordValid = isPasswordValid(password);
-  const canSubmit = username.trim().length >= 3 && email.trim().length > 0 && passwordValid && !loading;
+
   // Redirect if already logged in
   useEffect(() => {
     if (initialized && user) {
