@@ -16,11 +16,18 @@ import socket
 import ipaddress
 import tempfile
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, UploadFile, File, status, Query, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.exceptions import (
+    ExternalServiceException,
+    NotFoundException,
+    ValidationException,
+    AppException,
+    ForbiddenException,
+)
 from app.models import User, Document
 from app.schemas import (
     DocumentResponse,
@@ -81,13 +88,13 @@ async def validate_upload(file: UploadFile):
             - 'python-magic' dependency is missing on the server.
     """
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
+        raise ValidationException("No filename provided")
 
     ext = Path(file.filename).suffix.lower()
 
     # extension without leading dot in settings
     if ext.lstrip(".") not in settings.ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Only PDF, DOCX, TEXT, AND MARKDOWN files are allowed")
+        raise ValidationException("Only PDF, DOCX, TEXT, AND MARKDOWN files are allowed")
 
     # save to a temporary file
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
@@ -100,7 +107,7 @@ async def validate_upload(file: UploadFile):
 
         if size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
             Path(temp_path).unlink(missing_ok=True)
-            raise HTTPException(status_code=400, detail="File too large")
+            raise ValidationException("File too large")
 
         # libmagic may not be installed in all environments — import lazily
         try:
@@ -108,13 +115,13 @@ async def validate_upload(file: UploadFile):
             # make sure you have installed libmagic in your system, otherwise it will not work
         except Exception:
             Path(temp_path).unlink(missing_ok=True)
-            raise HTTPException(status_code=500, detail="Server missing 'python-magic' dependency")
+            raise ExternalServiceException("dependency", "Server missing 'python-magic' dependency")
 
         mime = magic.from_file(temp_path, mime=True)
 
         if mime not in ALLOWED_MIME_TYPES.get(ext, []):
             Path(temp_path).unlink(missing_ok=True)
-            raise HTTPException(status_code=400, detail=f"Invalid file type: {mime}")
+            raise ValidationException(f"Invalid file type: {mime}")
 
         # Deep validation: try to parse the file — import parsers lazily
         try:
@@ -128,7 +135,7 @@ async def validate_upload(file: UploadFile):
                 DocxDocument(temp_path)
         except Exception:
             Path(temp_path).unlink(missing_ok=True)
-            raise HTTPException(status_code=400, detail="Corrupted or invalid file")
+            raise ValidationException("Corrupted or invalid file")
 
         return temp_path
 
@@ -204,13 +211,12 @@ async def upload_document(
     """
     # ── Validate file type ───────────────────────────
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
+        raise ValidationException("No filename provided")
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in settings.ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type '.{ext}' not supported. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}",
+        raise ValidationException(
+            f"File type '.{ext}' not supported. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}",
         )
 
     # ── Validate and save file to disk ───────────────
@@ -278,32 +284,29 @@ async def upload_document_url(
     On Linux (production) a plain new_event_loop() is used instead.
     """
     if CRAWL4AI_IMPORT_ERROR is not None:
-        raise HTTPException(
-            status_code=503,
-            detail="URL upload is unavailable because crawl4ai is not installed",
-        )
+        raise ExternalServiceException("crawl4ai", "URL upload is unavailable because crawl4ai is not installed")
 
     temp_path: Optional[str] = None
     try:
         parsed = urlparse(payload.url)
         if not all([parsed.scheme, parsed.netloc]):
-            raise HTTPException(status_code=400, detail="Invalid URL")
+            raise ValidationException("Invalid URL")
 
         # SSRF protection
         BLOCKED_SCHEMES = {"file", "ftp", "gopher", "dict", "smb", "ldap"}
         if parsed.scheme.lower() in BLOCKED_SCHEMES:
-            raise HTTPException(status_code=400, detail=f"URL scheme '{parsed.scheme}' is not allowed")
+            raise ValidationException(f"URL scheme '{parsed.scheme}' is not allowed")
         if parsed.scheme.lower() not in ("http", "https"):
-            raise HTTPException(status_code=400, detail="Only http and https URLs are allowed")
+            raise ValidationException("Only http and https URLs are allowed")
         try:
             hostname = parsed.hostname
             if hostname:
                 addr = socket.getaddrinfo(hostname, 80)[0][4][0]
                 ip = ipaddress.ip_address(addr)
                 if ip.is_private or ip.is_loopback or ip.is_link_local:
-                    raise HTTPException(status_code=400, detail="Internal or private URLs are not allowed")
+                    raise ValidationException("Internal or private URLs are not allowed")
         except (socket.gaierror, ValueError, IndexError):
-            raise HTTPException(status_code=400, detail="Could not resolve URL host")
+            raise ValidationException("Could not resolve URL host")
 
         # Run in a worker thread with its own event loop to avoid
         # NotImplementedError on Windows (SelectorEventLoop can't spawn subprocesses)
@@ -313,7 +316,7 @@ async def upload_document_url(
             )
 
         if not markdown:
-            raise HTTPException(status_code=422, detail="No content could be extracted from the URL")
+            raise ValidationException("No content could be extracted from the URL")
 
 
         with tempfile.NamedTemporaryFile(
@@ -377,13 +380,13 @@ async def upload_document_url(
 
         return DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
 
-    except HTTPException:
+    except AppException:
         raise
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid URL")
+        raise ValidationException("Invalid URL")
     except Exception as e:
         logger.error(f"URL upload error: {e}")
-        raise HTTPException(status_code=400, detail=f"Something went wrong with URL processing: {str(e)}")
+        raise ValidationException(f"Something went wrong with URL processing: {str(e)}")
     finally:
         '''Runs whether the request succeeded, raised an HTTPException,
         or hit an unexpected error — no temp files are ever left behind.'''
@@ -412,7 +415,7 @@ def get_document_status(
     ).first()
 
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise NotFoundException("Document")
 
     return DocumentStatusResponse.model_validate(doc)
 
@@ -489,10 +492,10 @@ def rename_document(
     ).first()
 
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise NotFoundException("Document")
 
     if str(doc.user_id) != str(user.id):
-        raise HTTPException(status_code=403, detail="You do not have permission to rename this document")
+        raise ForbiddenException("You do not have permission to rename this document")
 
     doc.original_name = rename.name
     db.commit()
@@ -532,7 +535,7 @@ def get_document(
     ).first()
 
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise NotFoundException("Document")
 
     return DocumentResponse.model_validate(doc)
 
@@ -569,12 +572,12 @@ def serve_pdf(
     ).first()
 
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise NotFoundException("Document")
 
     filepath = os.path.join(settings.UPLOAD_DIR, user.id, doc.filename)
 
     if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail="File not found on disk")
+        raise NotFoundException("File")
 
     return FileResponse(
         filepath,
@@ -619,7 +622,7 @@ def delete_document(
     ).first()
 
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise NotFoundException("Document")
 
     doc.is_deleted = True
     doc.deleted_at = datetime.now(timezone.utc)
@@ -662,16 +665,16 @@ def update_chunk_settings(
     ).first()
 
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise NotFoundException("Document")
     
     if settings_update.chunk_size is not None:
         if settings_update.chunk_size < 100:
-            raise HTTPException(400, "Chunk size must be at least 100")
+            raise ValidationException("Chunk size must be at least 100")
         doc.chunk_size = settings_update.chunk_size
     if settings_update.chunk_overlap is not None:
         chunk_size_val = settings_update.chunk_size if settings_update.chunk_size is not None else (doc.chunk_size or settings.CHUNK_SIZE)
         if settings_update.chunk_overlap >= chunk_size_val:
-            raise HTTPException(400, "Chunk overlap cannot be greater than or equal to chunk size")
+            raise ValidationException("Chunk overlap cannot be greater than or equal to chunk size")
         doc.chunk_overlap = settings_update.chunk_overlap    
 
     # Refresh the document record to update the chunk settings before re-ingestion
@@ -731,10 +734,10 @@ def retry_document_processing(
     ).first()
 
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise NotFoundException("Document")
 
     if doc.status != "failed":
-        raise HTTPException(status_code=400, detail="Only failed documents can be retried")
+        raise ValidationException("Only failed documents can be retried")
 
     doc.status = "pending"
     doc.processing_progress = 0

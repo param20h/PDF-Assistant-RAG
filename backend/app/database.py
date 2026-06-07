@@ -49,15 +49,27 @@ def get_db():
 
 @contextmanager
 def get_db_session():
-    """Sync context manager for background tasks and streaming.
+    """Context manager for background tasks, streaming, and other uses outside FastAPI DI.
 
-    Creates a new session, commits on success, rolls back on error,
-    and always closes. Safe to use outside FastAPI's DI lifecycle.
+    Creates a new session, commits on success, rolls back SQLAlchemy errors
+    (converting them to typed AppException), re-raises non-DB exceptions,
+    and always closes the session.
     """
+    from sqlalchemy.exc import SQLAlchemyError
+    from app.exceptions import AppException
+
     session = SessionLocal()
     try:
         yield session
         session.commit()
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise AppException(
+            "DATABASE_ERROR",
+            "A database error occurred while processing your request.",
+            500,
+            {"error": str(e)[:200]},
+        ) from e
     except Exception:
         session.rollback()
         raise
