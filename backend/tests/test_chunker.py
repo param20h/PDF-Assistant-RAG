@@ -145,3 +145,61 @@ def test_unstructured_table_detection(monkeypatch):
     assert table_chunks[0]["page"] == 3
     assert "| Name | Amount |" in table_chunks[0]["text"]
     assert "| Delta | $40 |" in table_chunks[0]["text"]
+
+
+def test_pdf_image_captioning_on_the_fly(monkeypatch):
+    # Mock extract_pdf_images to yield one image on page 1
+    def fake_extract_images(doc_or_path, **kwargs):
+        yield {
+            "image_bytes": b"fake_png_bytes",
+            "page": 1,
+            "width": 100,
+            "height": 100,
+        }
+
+    monkeypatch.setattr(chunker, "extract_pdf_images", fake_extract_images)
+
+    # Mock caption_image to return a custom caption
+    from app.rag import vision
+    monkeypatch.setattr(vision, "caption_image", lambda img_bytes, page=None: f"Captured image on page {page}")
+
+    # Mock extract_pdf to return a text page
+    def fake_extract_pdf(filepath):
+        return [{"text": "Hello world on page 1", "page": 1, "chunk_type": "text"}]
+
+    monkeypatch.setattr(chunker, "extract_pdf", fake_extract_pdf)
+
+    # Mock fitz.open
+    class FakePage:
+        rect = type('Rect', (), {'width': 100, 'height': 100})()
+        def search_for(self, text):
+            return []
+
+    class FakePdf:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __len__(self):
+            return 1
+        def __getitem__(self, idx):
+            return FakePage()
+        def close(self):
+            pass
+
+    import fitz
+    monkeypatch.setattr(fitz, "open", lambda *args, **kwargs: FakePdf())
+
+    # Run chunk_document
+    chunks = chunk_document("dummy.pdf")
+
+    # The result should contain the text chunk and the image chunk
+    assert len(chunks) == 2
+    assert chunks[0]["text"] == "Hello world on page 1"
+    assert chunks[0]["page"] == 1
+    
+    assert chunks[1]["text"] == "Captured image on page 1"
+    assert chunks[1]["page"] == 1
+    assert chunks[1]["is_image"] is True
+    assert chunks[1]["image_caption"] == "Captured image on page 1"
+    # Ensure image_bytes is not in the chunk dictionary (preventing memory leak)
+    assert "image_bytes" not in chunks[1]
+
