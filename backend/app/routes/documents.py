@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from pathlib import Path
 import shutil
+import socket
+import ipaddress
 import tempfile
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks
@@ -287,6 +289,21 @@ async def upload_document_url(
         if not all([parsed.scheme, parsed.netloc]):
             raise HTTPException(status_code=400, detail="Invalid URL")
 
+        # SSRF protection
+        BLOCKED_SCHEMES = {"file", "ftp", "gopher", "dict", "smb", "ldap"}
+        if parsed.scheme.lower() in BLOCKED_SCHEMES:
+            raise HTTPException(status_code=400, detail=f"URL scheme '{parsed.scheme}' is not allowed")
+        if parsed.scheme.lower() not in ("http", "https"):
+            raise HTTPException(status_code=400, detail="Only http and https URLs are allowed")
+        try:
+            hostname = parsed.hostname
+            if hostname:
+                addr = socket.getaddrinfo(hostname, 80)[0][4][0]
+                ip = ipaddress.ip_address(addr)
+                if ip.is_private or ip.is_loopback or ip.is_link_local:
+                    raise HTTPException(status_code=400, detail="Internal or private URLs are not allowed")
+        except (socket.gaierror, ValueError, IndexError):
+            raise HTTPException(status_code=400, detail="Could not resolve URL host")
 
         # Run in a worker thread with its own event loop to avoid
         # NotImplementedError on Windows (SelectorEventLoop can't spawn subprocesses)
