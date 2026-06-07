@@ -168,7 +168,7 @@ def _crawl_in_new_loop(url: str) -> str:
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
-    request: Request,
+    request: Request = None,
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
     user: User = Depends(get_current_user),
@@ -228,8 +228,9 @@ async def upload_document(
     file_size = Path(filepath).stat().st_size
 
     # Bind upload metadata to request state and context variables
-    request.state.filename = file.filename
-    request.state.filesize = file_size
+    if request is not None:
+        request.state.filename = file.filename
+        request.state.filesize = file_size
     from app.observability import upload_filename_var, upload_filesize_var
     upload_filename_var.set(file.filename)
     upload_filesize_var.set(file_size)
@@ -273,8 +274,8 @@ async def upload_document(
 
 @router.post("/urlupload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document_url(
-        request: Request,
         payload: UploadUrl,
+        request: Request = None,
         background_tasks: BackgroundTasks = None,
         user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
@@ -336,8 +337,9 @@ async def upload_document_url(
         original_name = f"{parsed.netloc}{url_path or ''}.txt"
 
         # Bind URL crawl metadata to request state and context variables
-        request.state.filename = original_name
-        request.state.filesize = file_size
+        if request is not None:
+            request.state.filename = original_name
+            request.state.filesize = file_size
         from app.observability import upload_filename_var, upload_filesize_var
         upload_filename_var.set(original_name)
         upload_filesize_var.set(file_size)

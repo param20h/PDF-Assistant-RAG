@@ -285,8 +285,8 @@ def generate_answer_stream(question: str, user_id: str, document_id: Optional[st
 )
 @limiter.limit(CHAT_QUERY_RATE_LIMIT)
 def ask_question(
-    request: Request,
     payload: ChatRequest,
+    request: Request = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -294,7 +294,8 @@ def ask_question(
     started_at = time.perf_counter()
     
     # Bind query parameters to request context variables and state
-    request.state.query = payload.question
+    if request is not None:
+        request.state.query = payload.question
     from app.observability import query_text_var
     query_text_var.set(payload.question)
     logger.info(f"Processing RAG chat query: '{payload.question}'")
@@ -362,7 +363,8 @@ def ask_question(
 
         # Bind chunks retrieved to request state and context variables
         chunks_count = len(result.get("sources", []))
-        request.state.chunks_retrieved = chunks_count
+        if request is not None:
+            request.state.chunks_retrieved = chunks_count
         from app.observability import chunks_retrieved_var
         chunks_retrieved_var.set(chunks_count)
         logger.info(f"RAG chat query processed successfully, retrieved {chunks_count} chunks")
@@ -390,14 +392,15 @@ def ask_question(
 )
 @limiter.limit(CHAT_QUERY_RATE_LIMIT)
 def ask_question_stream(
-    request: Request,
     payload: ChatRequest,
+    request: Request = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Ask a question and stream the answer using Server-Sent Events."""
     # Bind query parameters to request context variables and state
-    request.state.query = payload.question
+    if request is not None:
+        request.state.query = payload.question
     from app.observability import query_text_var
     query_text_var.set(payload.question)
     logger.info(f"Processing streaming RAG chat query: '{payload.question}'")
