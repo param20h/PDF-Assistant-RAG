@@ -734,10 +734,10 @@ def retry_document_processing(
     ).first()
 
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise NotFoundException("Document")
 
     if doc.status != "failed":
-        raise HTTPException(status_code=400, detail="Only failed documents can be retried")
+        raise ValidationException("Only failed documents can be retried")
 
     doc.status = "pending"
     doc.processing_progress = 0
