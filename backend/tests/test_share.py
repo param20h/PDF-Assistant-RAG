@@ -17,7 +17,7 @@ def test_share_link_unauthorized_for_other_users_message(client, auth_headers, o
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Message not found"
+    assert response.json()["error"]["message"] == "Message not found"
 
 
 def test_cannot_share_user_message(client, auth_headers, user_message):
@@ -27,14 +27,14 @@ def test_cannot_share_user_message(client, auth_headers, user_message):
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Only assistant messages can be shared"
+    assert response.json()["error"]["message"] == "Only assistant messages can be shared"
 
 
 def test_public_fetch_fails_before_share(client, assistant_message):
     response = client.get(f"/api/v1/chat/share/{assistant_message.id}")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Shared answer not found"
+    assert response.json()["error"]["message"] == "Shared answer not found"
 
 
 def test_public_fetch_shared_answer_success_after_share(client, auth_headers, assistant_message):
@@ -58,4 +58,4 @@ def test_missing_message_returns_404(client):
     response = client.get("/api/v1/chat/share/missing-message-id")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Shared answer not found"
+    assert response.json()["error"]["message"] == "Shared answer not found"
