@@ -187,3 +187,22 @@ services:
 volumes:
   postgres_data:
   app_data:
+
+  # ── Frontend (Next.js static export served by nginx) ─────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:7860}
+    container_name: pdf_rag_frontend
+    profiles: ["cpu", "gpu"]
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
