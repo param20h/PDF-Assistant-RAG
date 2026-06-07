@@ -22,10 +22,18 @@ import {
   Moon,
   Shield,
   Sun,
+  Settings,
 } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, useState } from "react";
 import { useTheme } from "next-themes";
 import ApiKeyManager from "@/components/auth/ApiKeyManager";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useEffect } from "react";
 
 
 interface HeaderProps {
@@ -45,6 +53,18 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot); // ← replaces useState + useEffect
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [temperature, setTemperature] = useState(0.5);
+  useEffect(() => {
+    const saved = localStorage.getItem("temperature");
+    if (saved) {
+      setTemperature(Number(saved));
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("temperature", temperature.toString());
+  }, [temperature]);
 
   const isDark = theme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
@@ -85,27 +105,27 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
 
       {/* Right */}
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleViewer} title={viewerOpen ? t("header.closeViewer") : t("header.openViewer")}>
-          {viewerOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
-        </Button>
-
-        {mounted && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme} title={isDark ? t("header.lightMode") : t("header.darkMode")}>
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </Button>
-        )}
-
-        <select
-          aria-label={t("common.language")}
-          value={i18n.resolvedLanguage || "en"}
-          onChange={(e) => void i18n.changeLanguage(e.target.value)}
-          className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={onToggleViewer}
+          title={viewerOpen ? "Close Viewer" : "Open Viewer"}
         >
-          <option value="en">{languageLabel("en")}</option>
-          <option value="hi">{languageLabel("hi")}</option>
-          <option value="es">{languageLabel("es")}</option>
-          <option value="fr">{languageLabel("fr")}</option>
-        </select>
+          {viewerOpen ? (
+            <PanelRightClose className="w-4 h-4" />
+          ) : (
+            <PanelRightOpen className="w-4 h-4" />
+          )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings className="w-4 h-4" />
+        </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -141,6 +161,36 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <Dialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              LLM Settings
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <label className="text-sm">
+              Temperature: {temperature}
+            </label>
+
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={temperature}
+              onChange={(e) =>
+                setTemperature(Number(e.target.value))
+              }
+              className="w-full"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }

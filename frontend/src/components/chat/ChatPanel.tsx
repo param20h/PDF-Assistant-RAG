@@ -32,6 +32,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -101,9 +102,15 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       cancelled = true;
     };
   }, [activeDoc, resetChat, setMessages]);
-
+  
+  const handleStop = () => {
+    abortRef.current?.abort();
+    setStreaming(false);
+    setIsTyping(false);
+  };
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
+
 
     const question = input.trim();
     setInput("");
@@ -124,11 +131,17 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     setStreaming(true);
     setIsTyping(true);
 
+    abortRef.current = new AbortController();
+
     try {
-      const stream = api.streamPost("/api/v1/chat/ask/stream", {
+    const stream = api.streamPost(
+      "/api/v1/chat/ask/stream",
+      {
         question,
         document_id: activeDoc?.id || null,
-      });
+      },
+      abortRef.current.signal
+    );
 
       for await (const event of stream) {
         if (event.type === "token") {
@@ -181,21 +194,32 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         }
       }
     } catch (err) {
-      setIsTyping(false);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-            ? {
-                ...m,
-                content: t("chat.fallbackError", {
-                  message: err instanceof Error ? err.message : "Unknown error",
-                }),
-                isStreaming: false,
-              }
-            : m
-        )
-      );
-    } finally {
+        if (
+          err instanceof Error &&
+          err.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setIsTyping(false);
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: t("chat.fallbackError", {
+                    message:
+                      err instanceof Error
+                        ? err.message
+                        : "Unknown error",
+                  }),
+                  isStreaming: false,
+                }
+              : m
+          )
+        );
+      }finally {
       setStreaming(false);
       setIsTyping(false);
     }
