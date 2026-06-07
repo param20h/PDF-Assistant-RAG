@@ -89,6 +89,7 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
 
     except Exception as e:
         logger.error("Ingestion error for %s: %s", document_id, e)
+        db.rollback()
         try:
             doc = db.query(Document).filter(
                 Document.id == document_id,
