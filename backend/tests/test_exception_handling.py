@@ -151,6 +151,7 @@ def test_app_exception_handler():
 
 def test_app_exception_handler_no_request_id():
     request = Mock()
+    request.state = Mock(spec_set=[])
     response = asyncio.run(
         app_exception_handler(request, AppException("E", "e", 500))
     )
@@ -200,5 +201,9 @@ def test_unhandled_exception_handler(monkeypatch):
 def test_unhandled_exception_handler_debug_raises(monkeypatch):
     monkeypatch.setattr("app.main.settings.DEBUG", True)
     request = _mock_request()
-    with pytest.raises(ValueError, match="unexpected"):
-        asyncio.run(unhandled_exception_handler(request, ValueError("unexpected")))
+    exc = ValueError("unexpected")
+    try:
+        raise exc
+    except ValueError:
+        with pytest.raises(ValueError, match="unexpected"):
+            asyncio.run(unhandled_exception_handler(request, exc))
