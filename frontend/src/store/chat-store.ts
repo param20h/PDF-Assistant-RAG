@@ -21,6 +21,8 @@ export interface SourceChunk {
 }
 
 export interface ChatMsg {
+  branch_id?: string;
+parent_message_id?: string;
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -38,6 +40,7 @@ export interface ChatSession {
 type Setter<T> = T | ((prev: T) => T);
 
 interface ChatStore {
+  
   messages: ChatMsg[];
   input: string;
   streaming: boolean;
@@ -45,7 +48,11 @@ interface ChatStore {
   historyLoading: boolean;
   sessions: ChatSession[];
   activeSessionId: string | null;
-  setMessages: (value: Setter<ChatMsg[]>) => void;
+
+currentBranchId: string | null;
+setCurrentBranchId: (id: string | null) => void;
+
+setMessages: (value: Setter<ChatMsg[]>) => void;
   setInput: (value: Setter<string>) => void;
   setStreaming: (value: Setter<boolean>) => void;
   setIsTyping: (value: Setter<boolean>) => void;
@@ -70,8 +77,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isTyping: false,
   historyLoading: false,
   sessions: [],
-  activeSessionId: null,
-
+activeSessionId: null,
+currentBranchId: null,
+  
   setMessages(value) {
     set((state) => ({ messages: resolveValue(value, state.messages) }));
   },
@@ -99,6 +107,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setActiveSessionId(value) {
     set((state) => ({ activeSessionId: resolveValue(value, state.activeSessionId) }));
   },
+
+  setCurrentBranchId(id) {
+  set({ currentBranchId: id });
+},
 
   async fetchSessions() {
     try {
@@ -187,6 +199,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       historyLoading: false,
       sessions: [],
       activeSessionId: null,
+      currentBranchId: null,
     });
   },
 }));

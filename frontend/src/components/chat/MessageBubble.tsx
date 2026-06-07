@@ -7,7 +7,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/store/chat-store";
 
@@ -71,10 +71,11 @@ export default function MessageBubble({ message }: Props) {
 };
   }, []);
 
-  const [feedbackState, setFeedbackState] = useState<"up" | "down" | null>(
-  message.feedback ?? null
+ 
+
+const setCurrentBranchId = useChatStore(
+  (s) => s.setCurrentBranchId
 );
- const setMessages = useChatStore((s) => s.setMessages);
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -139,21 +140,13 @@ export default function MessageBubble({ message }: Props) {
     window.speechSynthesis.speak(utterance);
   };
 
-  const handleFeedback = async (value: "up" | "down") => {
-    const next = feedbackState === value ? null : value;
-    setFeedbackState(next);
-    setMessages((prev) =>
-      prev.map((msg) => (msg.id === message.id ? { ...msg, feedback: next } : msg)),
-    );
-    try {
-      await api.patch(`/api/v1/chat/feedback/${message.id}`, { feedback: next });
-    } catch {
-      setFeedbackState(message.feedback ?? null);
-      setMessages((prev) =>
-        prev.map((msg) => (msg.id === message.id ? { ...msg, feedback: message.feedback } : msg)),
-      );
-    }
-  };
+const handleBranch = () => {
+  setCurrentBranchId(message.id);
+
+  console.log("Branch created from:", message.id);
+};
+    
+  
   return (
     <div
       className={`flex gap-3 py-3 animate-fade-in-up ${isUser ? "justify-end" : "justify-start"}`}
@@ -252,6 +245,18 @@ export default function MessageBubble({ message }: Props) {
                   </div>
                 )}
 
+
+             {/* Branch button */}
+<Button
+  type="button"
+  variant="ghost"
+  size="icon-xs"
+  className="absolute top-2 right-24 text-muted-foreground hover:text-foreground transition-opacity opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+  onClick={handleBranch}
+  aria-label="Branch conversation"
+>
+  <GitBranch className="w-3.5 h-3.5" />
+</Button>
                 
                 {/* Play / Pause button */}
 <Button
