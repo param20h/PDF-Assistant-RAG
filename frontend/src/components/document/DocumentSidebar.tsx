@@ -17,6 +17,7 @@ import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
 import { toast } from "sonner";
+import { useWorkspaceStore } from "@/store/workspace-store";
 
 interface Props {
   documents: DocInfo[];
@@ -58,6 +59,7 @@ export default function DocumentSidebar({
   onDocumentRenamed,
 }: Props) {
   const { t } = useTranslation();
+  const workspace = useWorkspaceStore((s) => s.workspace);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
@@ -105,6 +107,7 @@ export default function DocumentSidebar({
             const file = acceptedFiles[i];
             const formData = new FormData();
             formData.append("file", file);
+            formData.append("workspace", workspace);
             
             toast.info(`⏳ Uploading '${file.name}'...`);
             await api.postForm("/api/v1/documents/upload", formData);
@@ -122,7 +125,7 @@ export default function DocumentSidebar({
         }
       })();
     },
-    [onDocumentsChange, t]
+    [onDocumentsChange, t, workspace]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

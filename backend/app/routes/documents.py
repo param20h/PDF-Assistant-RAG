@@ -14,12 +14,12 @@ from pathlib import Path
 import shutil
 import tempfile
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, Document
+from app.models import User, Document, Workspace, WorkspaceMembership
 from app.schemas import (
     DocumentResponse,
     DocumentListResponse,
@@ -49,6 +49,50 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+
+
+def get_target_workspace_id(workspace_param: Optional[str], user_id: str, db: Session) -> Optional[str]:
+    if not workspace_param or workspace_param == "personal":
+        return None
+    
+    if workspace_param == "company":
+        # Check if the user is a member of any workspace
+        membership = db.query(WorkspaceMembership).filter(
+            WorkspaceMembership.user_id == user_id
+        ).first()
+        if membership:
+            return membership.workspace_id
+        
+        # If not, create a default "Company" workspace for them
+        workspace = Workspace(name="Company")
+        db.add(workspace)
+        db.commit()
+        db.refresh(workspace)
+        
+        membership = WorkspaceMembership(
+            workspace_id=workspace.id,
+            user_id=user_id,
+            role="admin",
+        )
+        db.add(membership)
+        db.commit()
+        return workspace.id
+    
+    # If a specific workspace ID was passed, just return it
+    return workspace_param
+
+
+def check_document_access(doc: Document, user_id: str, db: Session) -> bool:
+    if str(doc.user_id) == str(user_id):
+        return True
+    if doc.workspace_id:
+        membership = db.query(WorkspaceMembership).filter(
+            WorkspaceMembership.workspace_id == doc.workspace_id,
+            WorkspaceMembership.user_id == user_id,
+        ).first()
+        if membership:
+            return True
+    return False
 
 
 ALLOWED_MIME_TYPES = settings.ALLOWED_MIME_TYPES
@@ -169,6 +213,7 @@ def _crawl_in_new_loop(url: str) -> str:
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
     file: UploadFile = File(...),
+    workspace: Optional[str] = Form(None),
     background_tasks: BackgroundTasks = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -184,10 +229,11 @@ async def upload_document(
 
     Args:
         file: The uploaded file, provided as a multipart/form-data field in the request.
+        workspace: Optional workspace context ('personal', 'company', or specific UUID).
         background_tasks: FastAPI BackgroundTasks instance for in-process fallback execution.
         user: The currently authenticated user, injected by the `get_current_user` dependency.
         db: Database session, injected by the `get_db` dependency.
-
+ 
     Returns:
         DocumentResponse: The created document record, validated against the
         response model (includes id, filename, original_name, file_size, status, etc.).
@@ -225,6 +271,11 @@ async def upload_document(
 
     file_size = Path(filepath).stat().st_size
 
+    # Resolve target workspace
+    if not isinstance(workspace, str):
+        workspace = None
+    target_workspace_id = get_target_workspace_id(workspace, user.id, db)
+
     # ── Create database record ───────────────────────
     document = Document(
         user_id=user.id,
@@ -232,6 +283,7 @@ async def upload_document(
         original_name=file.filename,
         file_size=file_size,
         status="pending",
+        workspace_id=target_workspace_id,
     )
     db.add(document)
     db.commit()
@@ -324,6 +376,9 @@ async def upload_document_url(
         url_path = parsed.path.rstrip("/")
         original_name = f"{parsed.netloc}{url_path or ''}.txt"
 
+        # Resolve target workspace
+        target_workspace_id = get_target_workspace_id(payload.workspace, user.id, db)
+
         # ── Create database record ─────────────────────────────
         document = Document(
             user_id=user.id,
@@ -331,6 +386,7 @@ async def upload_document_url(
             original_name=original_name,
             file_size=file_size,
             status="pending",
+            workspace_id=target_workspace_id,
         )
         db.add(document)
         db.commit()
@@ -390,11 +446,10 @@ def get_document_status(
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
-        Document.user_id == user.id,
         Document.is_deleted.is_(False),
     ).first()
 
-    if not doc:
+    if not doc or not check_document_access(doc, user.id, db):
         raise HTTPException(status_code=404, detail="Document not found")
 
     return DocumentStatusResponse.model_validate(doc)
@@ -404,36 +459,53 @@ def get_document_status(
 def list_documents(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1),
+    workspace: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    List all documents for the authenticated user with pagination.
+    List all documents for the authenticated user with pagination, filtered by workspace.
 
-    Returns a paginated list of documents belonging to the current user,
+    Returns a paginated list of documents belonging to the current user or their workspaces,
     ordered by upload date (newest first).
-
-    Args:
-        page: The page number to retrieve (1: indexed). Defaults to 1.
-        per_page: The number of documents to return per page. Defaults to 20.
-        user: The currently authenticated user, injected by the `get_current_user` dependency.
-        db: Database session, injected by the `get_db` dependency.
-        
-    Returns:
-        DocumentListResponse: A response model containing:
-            - items: A list of DocumentResponse objects for the current page.
-            - total: The total number of documents for the user.
-            - page: The current page number.
-            - pages: The total number of pages available.
     """
 
     """Number of rows to skip"""
     skip: int = (page - 1) * per_page
 
+    # Base query filters
+    filters = [Document.is_deleted.is_(False)]
+
+    if workspace == "company":
+        memberships = db.query(WorkspaceMembership).filter(
+            WorkspaceMembership.user_id == user.id
+        ).all()
+        workspace_ids = [m.workspace_id for m in memberships]
+        if not workspace_ids:
+            return DocumentListResponse(items=[], total=0, page=page, pages=0)
+        filters.append(Document.workspace_id.in_(workspace_ids))
+    elif workspace == "personal" or not workspace:
+        # Default to personal: own documents with no workspace
+        filters.append(Document.user_id == user.id)
+        filters.append(Document.workspace_id.is_(None))
+    else:
+        # Filter by a specific workspace ID
+        # Verify user has access to this workspace
+        membership = db.query(WorkspaceMembership).filter(
+            WorkspaceMembership.workspace_id == workspace,
+            WorkspaceMembership.user_id == user.id,
+        ).first()
+        if not membership:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this workspace.",
+            )
+        filters.append(Document.workspace_id == workspace)
+
     """Total Pages"""
     totalDocuments = (
         db.query(Document)
-        .filter(Document.user_id == user.id, Document.is_deleted.is_(False))
+        .filter(*filters)
         .count()
     )
     """Total Pages"""
@@ -442,7 +514,7 @@ def list_documents(
     """List all documents for the authenticated user in Paginated form"""
     docs = ((
             db.execute(select(Document)
-            .where(Document.user_id == user.id, Document.is_deleted.is_(False))
+            .where(*filters)
             .order_by(Document.uploaded_at.desc())
             .limit(per_page).offset(skip))
             )
@@ -510,11 +582,10 @@ def get_document(
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
-        Document.user_id == user.id,
         Document.is_deleted.is_(False),
     ).first()
 
-    if not doc:
+    if not doc or not check_document_access(doc, user.id, db):
         raise HTTPException(status_code=404, detail="Document not found")
 
     return DocumentResponse.model_validate(doc)
@@ -547,14 +618,13 @@ def serve_pdf(
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
-        Document.user_id == user.id,
         Document.is_deleted.is_(False),
     ).first()
 
-    if not doc:
+    if not doc or not check_document_access(doc, user.id, db):
         raise HTTPException(status_code=404, detail="Document not found")
 
-    filepath = os.path.join(settings.UPLOAD_DIR, user.id, doc.filename)
+    filepath = os.path.join(settings.UPLOAD_DIR, str(doc.user_id), doc.filename)
 
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="File not found on disk")
@@ -597,11 +667,10 @@ def delete_document(
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
-        Document.user_id == user.id,
         Document.is_deleted.is_(False),
     ).first()
 
-    if not doc:
+    if not doc or not check_document_access(doc, user.id, db):
         raise HTTPException(status_code=404, detail="Document not found")
 
     doc.is_deleted = True
@@ -637,14 +706,13 @@ def update_chunk_settings(
         HTTPException: With status code 404 if the document is not found or does not belong to the authenticated user.
         HTTPException: With status code 400 if the provided chunk size or overlap values are invalid (e.g., chunk size less than 100, or overlap greater than or equal to chunk size).
     """
-    # Validate if the document exists and belongs to the user
+    # Validate if the document exists and belongs to the user or workspace
     doc = db.query(Document).filter(
         Document.id == document_id,
-        Document.user_id == user.id,
         Document.is_deleted.is_(False),
     ).first()
 
-    if not doc:
+    if not doc or not check_document_access(doc, user.id, db):
         raise HTTPException(status_code=404, detail="Document not found")
     
     if settings_update.chunk_size is not None:
@@ -674,9 +742,9 @@ def update_chunk_settings(
     try:
         task = process_document.delay(
             document_id=doc.id,
-            filepath=os.path.join(settings.UPLOAD_DIR, user.id, doc.filename), 
+            filepath=os.path.join(settings.UPLOAD_DIR, str(doc.user_id), doc.filename), 
             original_name=doc.original_name,
-            user_id=user.id,
+            user_id=str(doc.user_id),
         )
         task_id = task.id
     except Exception as e:
@@ -685,9 +753,9 @@ def update_chunk_settings(
             background_tasks.add_task(
                 ingest_document,
                 document_id=doc.id,
-                filepath=os.path.join(settings.UPLOAD_DIR, user.id, doc.filename), 
+                filepath=os.path.join(settings.UPLOAD_DIR, str(doc.user_id), doc.filename), 
                 original_name=doc.original_name,
-                user_id=user.id,
+                user_id=str(doc.user_id),
             )
         task_id = f"local_{uuid.uuid4().hex}"
 

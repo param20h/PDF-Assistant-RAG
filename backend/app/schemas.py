@@ -86,6 +86,21 @@ class WorkspaceInviteResponse(BaseModel):
     expires_in_hours: int
 
 
+class WorkspaceInviteVerifyResponse(BaseModel):
+    workspace_name: str
+    inviter_email: str
+    inviter_username: str
+    email: str
+    expires_at: datetime
+    is_expired: bool
+    is_accepted: bool
+
+
+class WorkspaceInviteAcceptResponse(BaseModel):
+    message: str
+    workspace_name: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -160,6 +175,7 @@ class DocumentResponse(BaseModel):
     uploaded_at: datetime
     summary: Optional[str] = None # New field for document summary
     task_id: Optional[str] = None
+    workspace_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -224,6 +240,7 @@ class ChatRequest(BaseModel):
     document_ids: Optional[List[str]] = None
     session_id: Optional[str] = None
     top_k: int = Field(default=5, ge=1, le=20)
+    workspace: Optional[str] = None
 
 
 class SourceChunk(BaseModel):
@@ -268,6 +285,7 @@ class ChunkSettings(BaseModel):
       
 class UploadUrl(BaseModel):
     url: str
+    workspace: Optional[str] = None
 
 class ShareAnswerResponse(BaseModel):
     id: str

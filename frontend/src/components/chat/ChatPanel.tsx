@@ -13,6 +13,7 @@ import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useWorkspaceStore } from "@/store/workspace-store";
 
 interface ISpeechRecognitionEvent {
   resultIndex: number;
@@ -60,6 +61,7 @@ interface Props {
 
 export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const { t, i18n } = useTranslation();
+  const workspace = useWorkspaceStore((s) => s.workspace);
   const messages = useChatStore((state) => state.messages);
   const input = useChatStore((state) => state.input);
   const streaming = useChatStore((state) => state.streaming);
@@ -190,6 +192,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         question,
         document_id: activeDoc?.id || null,
         session_id: activeSessionId,
+        workspace,
       });
 
       for await (const event of stream) {

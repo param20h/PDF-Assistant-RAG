@@ -163,6 +163,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    workspace_memberships = relationship(
+        "WorkspaceMembership",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApiKey(Base):
@@ -183,6 +188,32 @@ class ApiKey(Base):
 
     # Relationships
     user = relationship("User", back_populates="api_keys")
+
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    name = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    memberships = relationship("WorkspaceMembership", back_populates="workspace", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="workspace")
+
+
+class WorkspaceMembership(Base):
+    __tablename__ = "workspace_memberships"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=False, index=True)
+    user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
+    role = Column(String(20), default="member", nullable=False)  # "admin" | "member"
+    joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    workspace = relationship("Workspace", back_populates="memberships")
+    user = relationship("User", back_populates="workspace_memberships")
 
 
 class WorkspaceInvitation(Base):
@@ -254,9 +285,11 @@ class Document(Base):
     drive_synced_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=True, index=True)
 
     # Relationships
     owner = relationship("User", back_populates="documents")
+    workspace = relationship("Workspace", back_populates="documents")
     messages = relationship(
         "ChatMessage",
         back_populates="document",

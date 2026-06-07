@@ -224,6 +224,7 @@ def retrieve(
     query: str,
     user_id: str,
     document_id: Optional[str] = None,
+    workspace: Optional[str] = None,
     top_k: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
@@ -234,7 +235,7 @@ def retrieve(
     Returns chunks with confidence scores.
     """
     from app.database import SessionLocal
-    from app.models import Document
+    from app.models import Document, WorkspaceMembership
 
     # Fetch active document IDs
     db = SessionLocal()
@@ -243,18 +244,51 @@ def retrieve(
             # Check if specific document is active (not deleted)
             doc = db.query(Document).filter(
                 Document.id == document_id,
-                Document.user_id == user_id,
                 Document.is_deleted.is_(False),
             ).first()
             if not doc:
                 return []
+            
+            # Verify user has access to the document
+            has_access = False
+            if str(doc.user_id) == str(user_id):
+                has_access = True
+            elif doc.workspace_id:
+                membership = db.query(WorkspaceMembership).filter(
+                    WorkspaceMembership.workspace_id == doc.workspace_id,
+                    WorkspaceMembership.user_id == user_id,
+                ).first()
+                if membership:
+                    has_access = True
+            
+            if not has_access:
+                return []
             active_doc_ids = [str(doc.id)]
         else:
-            # Check all active documents for this user
-            docs = db.query(Document).filter(
-                Document.user_id == user_id,
-                Document.is_deleted.is_(False),
-            ).all()
+            # Filter documents by workspace
+            filters = [Document.is_deleted.is_(False)]
+            if workspace == "company":
+                memberships = db.query(WorkspaceMembership).filter(
+                    WorkspaceMembership.user_id == user_id
+                ).all()
+                workspace_ids = [m.workspace_id for m in memberships]
+                if not workspace_ids:
+                    return []
+                filters.append(Document.workspace_id.in_(workspace_ids))
+            elif workspace == "personal" or not workspace:
+                filters.append(Document.user_id == user_id)
+                filters.append(Document.workspace_id.is_(None))
+            else:
+                # Specific workspace ID
+                membership = db.query(WorkspaceMembership).filter(
+                    WorkspaceMembership.workspace_id == workspace,
+                    WorkspaceMembership.user_id == user_id,
+                ).first()
+                if not membership:
+                    return []
+                filters.append(Document.workspace_id == workspace)
+
+            docs = db.query(Document).filter(*filters).all()
             if not docs:
                 return []
             active_doc_ids = [str(doc.id) for doc in docs]

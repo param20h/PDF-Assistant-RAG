@@ -10,6 +10,7 @@ import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatSessionSidebar from "@/components/chat/ChatSessionSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
+import { useWorkspaceStore } from "@/store/workspace-store";
 function PDFViewerSkeleton() {
   return (
     <div
@@ -58,6 +59,7 @@ export interface DocInfo {
 export default function DashboardPage() {
   const { user, loading, initialized } = useAuth();
   const router = useRouter();
+  const workspace = useWorkspaceStore((s) => s.workspace);
 
   const [documents, setDocuments] = useState<DocInfo[]>([]);
   const prevDocsRef = useRef<Record<string, string>>({});
@@ -91,6 +93,21 @@ export default function DashboardPage() {
     if (initialized && !user) router.replace("/login");
   }, [user, initialized, router]);
 
+  // Handle pending workspace invitations after login/register
+  useEffect(() => {
+    if (initialized && user) {
+      try {
+        const pendingToken = sessionStorage.getItem("pending_invite_token");
+        if (pendingToken) {
+          sessionStorage.removeItem("pending_invite_token");
+          router.replace(`/invite?token=${encodeURIComponent(pendingToken)}`);
+        }
+      } catch (e) {
+        console.warn("sessionStorage not accessible", e);
+      }
+    }
+  }, [user, initialized, router]);
+
   // Check if Hugging Face token configuration is present
   useEffect(() => {
     if (user) {
@@ -110,7 +127,7 @@ export default function DashboardPage() {
     setDocumentsLoading(true);
     try {
       const data = await api.get<{ documents?: DocInfo[]; items?: DocInfo[] }>(
-        "/api/v1/documents/"
+        `/api/v1/documents/?workspace=${encodeURIComponent(workspace)}`
       );
       setDocuments(data?.documents ?? data?.items ?? []);
       setConnectionError("");
@@ -124,7 +141,7 @@ export default function DashboardPage() {
     } finally {
       setDocumentsLoading(false);
     }
-  }, []);
+  }, [workspace]);
 
   useEffect(() => {
     if (!user) return;
