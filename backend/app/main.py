@@ -162,7 +162,6 @@ async def app_exception_handler(request: Request, exc: AppException):
     return JSONResponse(
         status_code=exc.status_code,
         content={
-            "detail": exc.message,
             "error": {
                 "code": exc.code,
                 "message": exc.message,
@@ -178,7 +177,6 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=429,
         content={
-            "detail": "Rate limit exceeded. Please try again later.",
             "error": {
                 "code": "RATE_LIMIT_EXCEEDED",
                 "message": "Rate limit exceeded. Please try again later.",
@@ -198,7 +196,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=422,
         content={
-            "detail": exc.errors(),
             "error": {
                 "code": "VALIDATION_ERROR",
                 "message": "Request validation failed",
@@ -217,7 +214,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={
-            "detail": "An unexpected error occurred",
             "error": {
                 "code": "INTERNAL_ERROR",
                 "message": "An unexpected error occurred",
