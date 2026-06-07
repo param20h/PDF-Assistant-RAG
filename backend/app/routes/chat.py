@@ -131,7 +131,14 @@ async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
                 await websocket.close()
                 return
             if doc.status != "ready":
-                await websocket.send_json({"type": "error", "data": f"Document is still {doc.status}."})
+                progress = getattr(doc, "processing_progress", None)
+                stage = getattr(doc, "processing_stage", None)
+                detail = f"Document is still {doc.status}."
+                if progress is not None:
+                    detail += f" Progress: {progress}%"
+                if stage:
+                    detail += f" Stage: {stage}"
+                await websocket.send_json({"type": "error", "data": detail})
                 await websocket.close()
                 return
 
@@ -510,7 +517,14 @@ def ask_question(
                 raise NotFoundException("Document")
 
             if doc.status != "ready":
-                raise ValidationException(f"Document is still {doc.status}. Please wait for processing to complete.")
+                progress = getattr(doc, "processing_progress", None)
+                stage = getattr(doc, "processing_stage", None)
+                detail = f"Document is still {doc.status}. Please wait for processing to complete."
+                if progress is not None:
+                    detail += f" Progress: {progress}%"
+                if stage:
+                    detail += f" Stage: {stage}"
+                raise ValidationException(detail)
 
             # Update last_accessed_at timestamp
             doc.last_accessed_at = datetime.now(timezone.utc)
@@ -622,7 +636,14 @@ def ask_question_stream(
             raise NotFoundException("Document")
 
         if doc.status != "ready":
-            raise ValidationException(f"Document is still {doc.status}. Please wait for processing to complete.")
+            progress = getattr(doc, "processing_progress", None)
+            stage = getattr(doc, "processing_stage", None)
+            detail = f"Document is still {doc.status}. Please wait for processing to complete."
+            if progress is not None:
+                detail += f" Progress: {progress}%"
+            if stage:
+                detail += f" Stage: {stage}"
+            raise ValidationException(detail)
 
         # Update last_accessed_at timestamp
         doc.last_accessed_at = datetime.now(timezone.utc)

@@ -4,6 +4,7 @@ Uses synchronous SQLAlchemy for simplicity and compatibility.
 """
 import os
 import logging
+from contextlib import contextmanager
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import get_settings
@@ -46,37 +47,34 @@ def get_db():
         db.close()
 
 
-def db_session():
-    """Context manager that catches SQLAlchemyError and converts to typed exception.
+@contextmanager
+def get_db_session():
+    """Context manager for background tasks, streaming, and other uses outside FastAPI DI.
 
-    Use in background tasks, streaming generators, or anywhere outside
-    FastAPI's dependency injection lifecycle.
+    Creates a new session, commits on success, rolls back SQLAlchemy errors
+    (converting them to typed AppException), re-raises non-DB exceptions,
+    and always closes the session.
     """
-    from contextlib import contextmanager
     from sqlalchemy.exc import SQLAlchemyError
     from app.exceptions import AppException
 
-    @contextmanager
-    def _session_scope():
-        session = SessionLocal()
-        try:
-            yield session
-            session.commit()
-        except SQLAlchemyError as e:
-            session.rollback()
-            raise AppException(
-                "DATABASE_ERROR",
-                "A database error occurred while processing your request.",
-                500,
-                {"error": str(e)[:200]},
-            ) from e
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
-    return _session_scope()
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise AppException(
+            "DATABASE_ERROR",
+            "A database error occurred while processing your request.",
+            500,
+            {"error": str(e)[:200]},
+        ) from e
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def _migrate_schema():

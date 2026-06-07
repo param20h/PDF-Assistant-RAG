@@ -713,3 +713,63 @@ def update_chunk_settings(
 
     # Return the updated document record with new chunk settings
     return DocumentResponse.model_validate(doc).model_copy(update={"task_id": task_id})
+
+
+@router.post("/{document_id}/retry", response_model=DocumentResponse)
+def retry_document_processing(
+    document_id: str,
+    background_tasks: BackgroundTasks = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retry processing for a failed document.
+
+    Resets the document status back to 'pending', clears error fields,
+    and re-queues the document for ingestion.
+    """
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user.id,
+        Document.is_deleted.is_(False),
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if doc.status != "failed":
+        raise HTTPException(status_code=400, detail="Only failed documents can be retried")
+
+    doc.status = "pending"
+    doc.processing_progress = 0
+    doc.processing_stage = "queued"
+    doc.error_message = None
+    doc.last_error_traceback = None
+    doc.completed_at = None
+    doc.chunk_count = 0
+    doc.page_count = 0
+    db.commit()
+
+    # Re-queue ingestion
+    filepath = os.path.join(settings.UPLOAD_DIR, user.id, doc.filename)
+    task_id = None
+    try:
+        task = process_document.delay(
+            document_id=doc.id,
+            filepath=filepath,
+            original_name=doc.original_name,
+            user_id=user.id,
+        )
+        task_id = task.id
+    except Exception as e:
+        logger.warning(f"Celery queue failed for retry, falling back to background task: {e}")
+        if background_tasks:
+            background_tasks.add_task(
+                ingest_document,
+                document_id=doc.id,
+                filepath=filepath,
+                original_name=doc.original_name,
+                user_id=user.id,
+            )
+        task_id = f"local_{uuid.uuid4().hex}"
+
+    return DocumentResponse.model_validate(doc).model_copy(update={"task_id": task_id})
