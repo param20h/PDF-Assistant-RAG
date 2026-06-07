@@ -222,6 +222,10 @@ class DocumentListResponse(BaseModel):
     pages: int
 
 
+class BulkDocumentAction(BaseModel):
+    document_ids: List[str] = Field(..., min_length=1)
+
+
 # Admin
 
 class DiskUsageResponse(BaseModel):

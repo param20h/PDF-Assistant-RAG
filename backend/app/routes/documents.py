@@ -36,6 +36,7 @@ from app.schemas import (
     DocumentRename,
     ChunkSettings,
     UploadUrl,
+    BulkDocumentAction,
 )
 from app.auth import get_current_user
 from app.config import get_settings
@@ -258,26 +259,17 @@ async def upload_document(
     db.refresh(document)
 
     # ── Queue background ingestion ─────────────────
-    task_id = None
-    try:
-        task = process_document.delay(
+    task_id = f"local_{uuid.uuid4().hex}"
+    if background_tasks:
+        background_tasks.add_task(
+            ingest_document,
             document_id=document.id,
             filepath=filepath,
             original_name=file.filename,
             user_id=user.id,
         )
-        task_id = task.id
-    except Exception as e:
-        logger.warning(f"Celery queue failed, falling back to background task: {e}")
-        if background_tasks:
-            background_tasks.add_task(
-                ingest_document,
-                document_id=document.id,
-                filepath=filepath,
-                original_name=file.filename,
-                user_id=user.id,
-            )
-        task_id = f"local_{uuid.uuid4().hex}"
+    else:
+        logger.warning("No background_tasks provided, ingestion will not run.")
 
     return DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
 
@@ -369,26 +361,17 @@ async def upload_document_url(
         db.refresh(document)
 
         # ── Queue background ingestion ───────────────────────
-        task_id = None
-        try:
-            task = process_document.delay(
+        task_id = f"local_{uuid.uuid4().hex}"
+        if background_tasks:
+            background_tasks.add_task(
+                ingest_document,
                 document_id=document.id,
                 filepath=filepath,
                 original_name=original_name,
                 user_id=user.id,
             )
-            task_id = task.id
-        except Exception as e:
-            logger.warning(f"Celery queue failed, falling back to background task: {e}")
-            if background_tasks:
-                background_tasks.add_task(
-                    ingest_document,
-                    document_id=document.id,
-                    filepath=filepath,
-                    original_name=original_name,
-                    user_id=user.id,
-                )
-            task_id = f"local_{uuid.uuid4().hex}"
+        else:
+            logger.warning("No background_tasks provided, ingestion will not run.")
 
         return DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
 
@@ -430,6 +413,39 @@ def get_document_status(
         raise NotFoundException("Document")
 
     return DocumentStatusResponse.model_validate(doc)
+
+
+@router.get("/trash", response_model=DocumentListResponse)
+def list_trash(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all soft-deleted documents."""
+    skip: int = (page - 1) * per_page
+
+    total_documents = (
+        db.query(Document)
+        .filter(Document.user_id == user.id, Document.is_deleted.is_(True))
+        .count()
+    )
+    pages = (total_documents + per_page - 1) // per_page
+    
+    docs = ((
+        db.execute(select(Document)
+        .where(Document.user_id == user.id, Document.is_deleted.is_(True))
+        .order_by(Document.deleted_at.desc())
+        .limit(per_page).offset(skip))
+        )
+        .scalars().all())
+
+    return DocumentListResponse(
+        items=[_deserialize_doc(d) for d in docs],
+        total=total_documents,
+        page=page,
+        pages=pages
+    )
 
 
 @router.get("/", response_model=DocumentListResponse)
@@ -641,6 +657,94 @@ def delete_document(
     db.commit()
 
     return {"message": f"Document '{doc.original_name}' deleted successfully"}
+
+
+@router.post("/bulk-delete", status_code=status.HTTP_200_OK)
+def bulk_delete_documents(
+    action: BulkDocumentAction,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bulk soft-delete documents."""
+    docs = db.query(Document).filter(
+        Document.id.in_(action.document_ids),
+        Document.user_id == user.id,
+        Document.is_deleted.is_(False)
+    ).all()
+    
+    deleted_ids = []
+    now = datetime.now(timezone.utc)
+    for doc in docs:
+        doc.is_deleted = True
+        doc.deleted_at = now
+        deleted_ids.append(str(doc.id))
+        
+    db.commit()
+    return {"deleted": deleted_ids}
+
+
+
+
+
+@router.post("/restore", status_code=status.HTTP_200_OK)
+def restore_documents(
+    action: BulkDocumentAction,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Restore soft-deleted documents."""
+    docs = db.query(Document).filter(
+        Document.id.in_(action.document_ids),
+        Document.user_id == user.id,
+        Document.is_deleted.is_(True)
+    ).all()
+    
+    restored_ids = []
+    for doc in docs:
+        doc.is_deleted = False
+        doc.deleted_at = None
+        restored_ids.append(str(doc.id))
+        
+    db.commit()
+    return {"restored": restored_ids}
+
+
+@router.post("/permanent-delete", status_code=status.HTTP_200_OK)
+def permanent_delete_documents(
+    action: BulkDocumentAction,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete documents from the database and disk."""
+    from app.rag.vectorstore import delete_document_chunks
+    docs = db.query(Document).filter(
+        Document.id.in_(action.document_ids),
+        Document.user_id == user.id,
+        Document.is_deleted.is_(True)
+    ).all()
+    
+    deleted_ids = []
+    for doc in docs:
+        # Delete file
+        filepath = os.path.join(settings.UPLOAD_DIR, str(user.id), doc.filename)
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except Exception as e:
+                logger.warning(f"Failed to delete file {filepath}: {e}")
+        
+        # Delete chunks
+        try:
+            delete_document_chunks(document_id=str(doc.id), user_id=str(user.id))
+        except Exception as e:
+            logger.warning(f"Error deleting chunks for {doc.id}: {e}")
+            
+        db.delete(doc)
+        deleted_ids.append(str(doc.id))
+        
+    db.commit()
+    return {"deleted": deleted_ids}
+
 
 
 @router.post("/{document_id}/chunk_settings", response_model=DocumentResponse)

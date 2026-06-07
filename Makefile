@@ -22,7 +22,7 @@ help:
 	@echo "  make docker-logs     Tail Docker logs"
 
 dev-backend:
-	cd $(BACKEND_DIR) && uvicorn app.main:app --host 0.0.0.0 --port $(BACKEND_PORT) --reload
+	cd $(BACKEND_DIR) && uvicorn app.main:app --host 0.0.0.0 --port $(BACKEND_PORT) --reload --reload-dir app
 
 dev-frontend:
 	cd $(FRONTEND_DIR) && npm run dev

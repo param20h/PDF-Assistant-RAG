@@ -255,6 +255,22 @@ class ApiClient {
     return this.patch<T>(`/api/v1/documents/${documentId}`, { name });
   }
 
+  async bulkDeleteDocuments<T>(documentIds: string[]): Promise<T> {
+    return this.post<T>("/api/v1/documents/bulk-delete", { document_ids: documentIds });
+  }
+
+  async restoreDocuments<T>(documentIds: string[]): Promise<T> {
+    return this.post<T>("/api/v1/documents/restore", { document_ids: documentIds });
+  }
+
+  async permanentDeleteDocuments<T>(documentIds: string[]): Promise<T> {
+    return this.post<T>("/api/v1/documents/permanent-delete", { document_ids: documentIds });
+  }
+
+  async getTrashDocuments<T>(page = 1, perPage = 20): Promise<T> {
+    return this.get<T>(`/api/v1/documents/trash?page=${page}&per_page=${perPage}`);
+  }
+
   async postForm<T>(path: string, formData: FormData, options?: FetchOptions): Promise<T> {
     const token = options?.token || this.getToken();
     const headers: HeadersInit = {};
