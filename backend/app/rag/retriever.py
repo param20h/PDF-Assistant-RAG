@@ -41,6 +41,7 @@ MAX_QUERY_VARIANTS = 4
 class CustomVectorRetriever(BaseRetriever):
     user_id: str = Field(description="User ID")
     document_id: Optional[str] = Field(default=None, description="Document ID")
+    document_ids: Optional[List[str]] = Field(default=None, description="List of Document IDs")
     top_k: int = Field(default=10, description="Top K results")
 
     def _get_relevant_documents(
@@ -51,6 +52,7 @@ class CustomVectorRetriever(BaseRetriever):
             query_embedding=query_vector,
             user_id=self.user_id,
             document_id=self.document_id,
+            document_ids=self.document_ids,
             top_k=self.top_k,
         )
         return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
@@ -59,6 +61,7 @@ class CustomVectorRetriever(BaseRetriever):
 class CustomBM25Retriever(BaseRetriever):
     user_id: str = Field(description="User ID")
     document_id: Optional[str] = Field(default=None, description="Document ID")
+    document_ids: Optional[List[str]] = Field(default=None, description="List of Document IDs")
     top_k: int = Field(default=10, description="Top K results")
 
     def _get_relevant_documents(
@@ -69,9 +72,11 @@ class CustomBM25Retriever(BaseRetriever):
             query=query,
             user_id=self.user_id,
             document_id=self.document_id,
+            document_ids=self.document_ids,
             top_k=self.top_k,
         )
         return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
+
 
 
 def transform_query(query: str) -> List[str]:
@@ -228,17 +233,47 @@ def retrieve(
 
     Returns chunks with confidence scores.
     """
+    from app.database import SessionLocal
+    from app.models import Document
+
+    # Fetch active document IDs
+    db = SessionLocal()
+    try:
+        if document_id:
+            # Check if specific document is active (not deleted)
+            doc = db.query(Document).filter(
+                Document.id == document_id,
+                Document.user_id == user_id,
+                Document.is_deleted.is_(False),
+            ).first()
+            if not doc:
+                return []
+            active_doc_ids = [str(doc.id)]
+        else:
+            # Check all active documents for this user
+            docs = db.query(Document).filter(
+                Document.user_id == user_id,
+                Document.is_deleted.is_(False),
+            ).all()
+            if not docs:
+                return []
+            active_doc_ids = [str(doc.id) for doc in docs]
+    finally:
+        db.close()
+
     # ── Stage 1: Hybrid Search with Query Transformation ─────────────
     effective_top_k = top_k if top_k is not None else settings.TOP_K_RETRIEVAL
     vector_retriever = CustomVectorRetriever(
         user_id=user_id,
         document_id=document_id,
+        document_ids=active_doc_ids if not document_id else None,
         top_k=effective_top_k,
     )
 
     bm25_retriever = CustomBM25Retriever(
         user_id=user_id,
         document_id=document_id,
+        document_ids=active_doc_ids if not document_id else None,
         top_k=effective_top_k,
     )
 

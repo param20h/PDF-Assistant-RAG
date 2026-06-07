@@ -108,6 +108,7 @@ def query_bm25(
     query: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     top_k: int = 10,
 ) -> List[Dict[str, Any]]:
     """
@@ -127,6 +128,11 @@ def query_bm25(
     all_results = []
     
     for path in glob.glob(os.path.join(user_dir, "*.pkl")):
+        # Filter by document_ids if provided
+        if document_ids is not None:
+            doc_id = os.path.basename(path).rsplit(".", 1)[0]
+            if doc_id not in document_ids:
+                continue
         results = _query_single_index(path, tokenized_query, top_k)
         all_results.extend(results)
         
