@@ -1,13 +1,20 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useSyncExternalStore } from "react";
+import { formatDistanceToNow } from "date-fns";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X } from "lucide-react";
+import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useChatStore } from "@/store/chat-store";
+import { useSettingsStore } from "@/store/settings-store";
+
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 interface Props {
   message: ChatMsg;
@@ -41,7 +48,6 @@ const markdownComponents: Components = {
   ),
   code: ({ className, children, ...props }) => {
     const language = /language-(\w+)/.exec(className ?? "")?.[1];
-
     return (
       <code className={className} data-language={language} {...props}>
         {children}
@@ -55,8 +61,32 @@ export default function MessageBubble({ message }: Props) {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
   const [shareFailed, setShareFailed] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Component unmount ആകുമ്പോൾ speech cancel ചെയ്യും
+  useEffect(() => {
+    return () => {
+      if (utteranceRef.current) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const [feedbackState, setFeedbackState] = useState<"up" | "down" | null>(message.feedback ?? null);
+  const setMessages = useChatStore((s) => s.setMessages);
+
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const fontSize = useSettingsStore((s) => s.fontSize);
+
+  const activeFontSize = mounted ? fontSize : "medium";
+  const fontSizeClass = {
+    small: "text-xs",
+    medium: "text-sm",
+    large: "text-base",
+  }[activeFontSize];
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -64,7 +94,7 @@ export default function MessageBubble({ message }: Props) {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
       if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
-      copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      copiedTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
     } catch {
       setCopied(false);
     }
@@ -72,7 +102,6 @@ export default function MessageBubble({ message }: Props) {
 
   const handleShare = async () => {
     if (!message.content || message.isStreaming) return;
-
     try {
       const data = await api.post<{ message_id: string; share_url: string }>(
         `/api/v1/chat/share/${message.id}`
@@ -95,6 +124,48 @@ export default function MessageBubble({ message }: Props) {
     }
   };
 
+  const handleSpeech = () => {
+    if (!message.content || message.isStreaming) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(message.content);
+    utteranceRef.current = utterance;
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleFeedback = async (value: "up" | "down") => {
+    const next = feedbackState === value ? null : value;
+    setFeedbackState(next);
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === message.id ? { ...msg, feedback: next } : msg)),
+    );
+    try {
+      await api.patch(`/api/v1/chat/feedback/${message.id}`, { feedback: next });
+    } catch {
+      setFeedbackState(message.feedback ?? null);
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === message.id ? { ...msg, feedback: message.feedback } : msg)),
+      );
+    }
+  };
   return (
     <div
       className={`flex gap-3 py-3 animate-fade-in-up ${isUser ? "justify-end" : "justify-start"}`}
@@ -113,11 +184,12 @@ export default function MessageBubble({ message }: Props) {
         }`}
       >
         {isUser ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          <p className={`leading-relaxed whitespace-pre-wrap ${fontSizeClass}`}>{message.content}</p>
         ) : (
           <>
             {message.content && (
               <>
+                {/* Share button */}
                 {!message.isStreaming && (
                   <Button
                     type="button"
@@ -140,6 +212,30 @@ export default function MessageBubble({ message }: Props) {
                     )}
                   </Button>
                 )}
+
+                {/* Speech button */}
+                {!message.isStreaming && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
+                      isSpeaking
+                        ? "opacity-100"
+                        : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                    }`}
+                    onClick={handleSpeech}
+                    aria-label={isSpeaking ? "Stop reading" : "Read response"}
+                  >
+                    {isSpeaking ? (
+                      <Pause className="w-3.5 h-3.5" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                )}
+
+                {/* Copy button */}
                 <Button
                   type="button"
                   variant="ghost"
@@ -158,9 +254,40 @@ export default function MessageBubble({ message }: Props) {
                     <Copy className="w-3.5 h-3.5" />
                   )}
                 </Button>
+                {copied && (
+                  <div 
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded-md whitespace-nowrap opacity-100 transition-opacity pointer-events-none"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Copied!
+                  </div>
+                )}
+
+                {/* Play / Pause button */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
+                    isSpeaking
+                      ? "opacity-100"
+                      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                  }`}
+                  onClick={handleSpeech}
+                  disabled={message.isStreaming}
+                  aria-label={isSpeaking ? "Stop speech" : "Play speech"}
+                >
+                  {isSpeaking ? (
+                    <Pause className="w-3.5 h-3.5 text-primary" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5" />
+                  )}
+                </Button>
               </>
             )}
-            <div className={`prose-chat text-sm ${message.content ? "pr-14" : ""}`}>
+
+            <div className={`prose-chat ${fontSizeClass} ${message.content ? "pr-20" : ""}`}>
               {message.content ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -180,11 +307,51 @@ export default function MessageBubble({ message }: Props) {
                 <span className="inline-block w-0.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
               )}
             </div>
+            {!message.isStreaming && !isUser && (
+              <div className="flex items-center gap-1 pt-2 border-t border-border/40 mt-3">
+                <span className="text-[11px] text-muted-foreground/60 mr-1">Was this helpful?</span>
+                <button
+                  type="button"
+                  onClick={() => handleFeedback("up")}
+                  className={`p-1 rounded transition-colors ${
+                    feedbackState === "up"
+                      ? "text-emerald-500 bg-emerald-500/10"
+                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
+                  }`}
+                  aria-label="Thumbs up"
+                >
+                  <ThumbsUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFeedback("down")}
+                  className={`p-1 rounded transition-colors ${
+                    feedbackState === "down"
+                      ? "text-red-500 bg-red-500/10"
+                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
+                  }`}
+                  aria-label="Thumbs down"
+                >
+                  <ThumbsDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </>
         )}
+        
+         <div
+          className={`text-xs text-muted-foreground mt-2 ${
+            isUser ? "text-right" : "text-left"
+          }`}
+          title={new Date(Number(message.id.split("-")[1])).toLocaleString()}
+        >
+          {formatDistanceToNow(
+            new Date(Number(message.id.split("-")[1])),
+            { addSuffix: true }
+          )}
+        </div>
       </div>
-
-      {isUser && (
+       {isUser && (
         <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
           <User className="w-4 h-4 text-primary-foreground" />
         </div>

@@ -4,27 +4,41 @@ Uses synchronous SQLAlchemy for simplicity and compatibility.
 """
 import os
 import logging
-from sqlalchemy import create_engine, inspect, text
+from contextlib import contextmanager
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# ── Ensure data directory exists ─────────────────────
-db_path = settings.DATABASE_URL.replace("sqlite:///", "")
-os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
-
 # ── Engine & Session ─────────────────────────────────
-engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Required for SQLite
-    echo=settings.DEBUG,
-)
+is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
+if is_sqlite:
+    # ── Ensure data directory exists ─────────────────────
+    db_path = settings.DATABASE_URL.replace("sqlite:///", "")
+    if db_path and os.path.dirname(db_path):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    
+    engine = create_engine(
+        settings.DATABASE_URL,
+        connect_args={"check_same_thread": False},  # Required for SQLite
+        echo=settings.DEBUG,
+    )
+else:
+    engine = create_engine(
+        settings.DATABASE_URL,
+        echo=settings.DEBUG,
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        pool_pre_ping=settings.DATABASE_POOL_PRE_PING,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
 
 
 def get_db():
@@ -36,6 +50,55 @@ def get_db():
         db.close()
 
 
+@contextmanager
+def get_db_session():
+    """Context manager for background tasks, streaming, and other uses outside FastAPI DI.
+
+    Creates a new session, commits on success, rolls back SQLAlchemy errors
+    (converting them to typed AppException), re-raises non-DB exceptions,
+    and always closes the session.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+    from app.exceptions import AppException
+
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise AppException(
+            "DATABASE_ERROR",
+            "A database error occurred while processing your request.",
+            500,
+            {"error": str(e)[:200]},
+        ) from e
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+# ── Session Lifecycle Logging (DEBUG only) ───────────
+if settings.DEBUG:
+    @event.listens_for(SessionLocal, "after_begin")
+    def _receive_after_begin(session, transaction, connection):
+        logger.debug("Session %s began transaction", id(session))
+
+    @event.listens_for(SessionLocal, "after_commit")
+    def _receive_after_commit(session):
+        logger.debug("Session %s committed", id(session))
+
+    @event.listens_for(SessionLocal, "after_rollback")
+    def _receive_after_rollback(session):
+        logger.debug("Session %s rolled back", id(session))
+
+    @event.listens_for(SessionLocal, "after_close")
+    def _receive_after_close(session):
+        logger.debug("Session %s closed", id(session))
+
+
 def _migrate_schema():
     """Apply schema migrations for existing databases (SQLite-compatible).
 
@@ -44,14 +107,23 @@ def _migrate_schema():
     for non-destructive changes such as new nullable columns.
     """
     inspector = inspect(engine)
-    existing_columns = {c["name"] for c in inspector.get_columns("users")}
-
-    migrations = [
+    # Migrate users
+    existing_users_columns = {c["name"] for c in inspector.get_columns("users")}
+    users_migrations = [
         ("users", "hf_token", "ALTER TABLE users ADD COLUMN hf_token VARCHAR(255)"),
+        ("users", "google_refresh_token", "ALTER TABLE users ADD COLUMN google_refresh_token TEXT"),
+        ("users", "role", "ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'"),
+        ("users", "last_login", "ALTER TABLE users ADD COLUMN last_login TIMESTAMP"),
+        ("users", "is_verified", "ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT TRUE NOT NULL"),
+        ("users", "verification_token_hash", "ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR(64)"),
+        (
+            "users",
+            "verification_token_created_at",
+            "ALTER TABLE users ADD COLUMN verification_token_created_at TIMESTAMP",
+        ),
     ]
-
-    for table, column, ddl in migrations:
-        if column not in existing_columns:
+    for table, column, ddl in users_migrations:
+        if column not in existing_users_columns:
             try:
                 with engine.begin() as conn:
                     conn.execute(text(ddl))
@@ -60,6 +132,71 @@ def _migrate_schema():
                 logger.warning(
                     "Migration skipped (may already exist): %s.%s", table, column
                 )
+
+    # Migrate api_keys
+    try:
+        existing_keys_columns = {c["name"] for c in inspector.get_columns("api_keys")}
+    except Exception:
+        existing_keys_columns = set()
+    keys_migrations = [
+        ("api_keys", "name", "ALTER TABLE api_keys ADD COLUMN name VARCHAR(100) DEFAULT 'default'"),
+        ("api_keys", "is_active", "ALTER TABLE api_keys ADD COLUMN is_active BOOLEAN DEFAULT 1 NOT NULL"),
+        ("api_keys", "last_used_at", "ALTER TABLE api_keys ADD COLUMN last_used_at TIMESTAMP"),
+    ]
+    for table, column, ddl in keys_migrations:
+        if column not in existing_keys_columns:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+                logger.info("Migration: added column %s.%s", table, column)
+            except Exception:
+                logger.warning(
+                    "Migration skipped (may already exist): %s.%s", table, column
+                )
+
+    # Migrate documents
+    existing_docs_columns = {c["name"] for c in inspector.get_columns("documents")}
+    docs_migrations = [
+        ("documents", "last_accessed_at", "ALTER TABLE documents ADD COLUMN last_accessed_at TIMESTAMP"),
+        ("documents", "is_deleted", "ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP"),
+        ("documents", "summary", "ALTER TABLE documents ADD COLUMN summary TEXT"),
+        ("documents", "chunk_size", "ALTER TABLE documents ADD COLUMN chunk_size INTEGER"),
+        ("documents", "chunk_overlap", "ALTER TABLE documents ADD COLUMN chunk_overlap INTEGER"),
+        ("documents", "drive_file_id", "ALTER TABLE documents ADD COLUMN drive_file_id VARCHAR(255)"),
+        ("documents", "drive_folder_id", "ALTER TABLE documents ADD COLUMN drive_folder_id VARCHAR(255)"),
+        ("documents", "drive_synced_at", "ALTER TABLE documents ADD COLUMN drive_synced_at TIMESTAMP"),
+    ]
+    for table, column, ddl in docs_migrations:
+        if column not in existing_docs_columns:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+                logger.info("Migration: added column %s.%s", table, column)
+            except Exception:
+                logger.warning(
+                    "Migration skipped (may already exist): %s.%s", table, column
+                )
+
+    # Migrate chat_messages
+    try:
+        existing_chat_columns = {c["name"] for c in inspector.get_columns("chat_messages")}
+    except Exception:
+        existing_chat_columns = set()
+    chat_migrations = [
+        ("chat_messages", "feedback", "ALTER TABLE chat_messages ADD COLUMN feedback VARCHAR(10)"),
+    ]
+    for table, column, ddl in chat_migrations:
+        if column not in existing_chat_columns:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+                logger.info("Migration: added column %s.%s", table, column)
+            except Exception:
+                logger.warning(
+                    "Migration skipped (may already exist): %s.%s", table, column
+                )
+
 
 
 def init_db():

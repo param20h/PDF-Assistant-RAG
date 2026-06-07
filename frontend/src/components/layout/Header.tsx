@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { useTranslation } from "react-i18next";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -11,6 +13,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import {
   Brain,
@@ -19,53 +27,50 @@ import {
   PanelRightClose,
   PanelRightOpen,
   LogOut,
-  Moon,
-  Shield,
+  Menu,
+  X,
+  Palette,
+  Briefcase,
+  ChevronDown,
   Sun,
-  Settings,
+  Moon
 } from "lucide-react";
-import { useSyncExternalStore, useState } from "react";
+import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
+import { api } from "@/lib/api";
 import { useTheme } from "next-themes";
-import ApiKeyManager from "@/components/auth/ApiKeyManager";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useEffect } from "react";
 
+import { useSyncExternalStore } from "react";
 
 interface HeaderProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   viewerOpen: boolean;
   onToggleViewer: () => void;
+  /** Pass DocumentSidebar JSX so the mobile sheet can render it */
+  mobileSheetContent?: React.ReactNode;
 }
 
 const subscribe = () => () => {};
 const getSnapshot = () => true;
 const getServerSnapshot = () => false;
 
-export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onToggleViewer }: HeaderProps) {
+export default function Header({
+  sidebarOpen,
+  onToggleSidebar,
+  viewerOpen,
+  onToggleViewer,
+  mobileSheetContent,
+}: HeaderProps) {
   const { user, logout } = useAuth();
-  const { t, i18n } = useTranslation();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot); // ← replaces useState + useEffect
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [temperature, setTemperature] = useState(0.5);
-  useEffect(() => {
-    const saved = localStorage.getItem("temperature");
-    if (saved) {
-      setTemperature(Number(saved));
-    }
-  }, []);
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const workspace = useWorkspaceStore((s) => s.workspace);
+  const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
 
-  useEffect(() => {
-    localStorage.setItem("temperature", temperature.toString());
-  }, [temperature]);
-
+  const currentWorkspaceLabel = WORKSPACES.find((w) => w.id === workspace)?.label ?? workspace;
   const isDark = theme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
@@ -74,123 +79,208 @@ export default function Header({ sidebarOpen, onToggleSidebar, viewerOpen, onTog
     router.replace("/login");
   };
 
-  const languageLabel = (language: string) => {
-    switch (language) {
-      case "hi":
-        return t("common.hindi");
-      case "es":
-        return t("common.spanish");
-      case "fr":
-        return t("common.french");
-      default:
-        return t("common.english");
+  const fetchDocumentsForWorkspace = async (id: string) => {
+    setWorkspaceLoading(true);
+    try {
+      const res = await api.get(`/api/v1/documents?workspace=${encodeURIComponent(id)}`).catch(() => null);
+      console.log("workspace change, fetched documents:", res);
+    } catch (err) {
+      console.warn("Failed to fetch documents for workspace", id, err);
+    } finally {
+      setWorkspaceLoading(false);
     }
   };
 
   return (
-    <header className="h-14 flex items-center justify-between px-4 border-b border-border/50 bg-card/50 backdrop-blur-md flex-shrink-0 z-50">
-      {/* Left */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleSidebar} title={sidebarOpen ? t("header.closeSidebar") : t("header.openSidebar")}>
-          {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
-        </Button>
+    <>
+      <header className="h-14 flex items-center justify-between px-4 border-b border-border/50 bg-card/50 backdrop-blur-md flex-shrink-0 z-50">
+        {/* Left */}
+        <div className="flex items-center gap-3">
+          {/* Hamburger - mobile only */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 md:hidden"
+            onClick={() => setSheetOpen(true)}
+            title="Open sidebar"
+            aria-label="Open document navigation"
+            aria-expanded={sheetOpen}
+            aria-controls="mobile-document-navigation"
+          >
+            <Menu className="w-4 h-4" />
+          </Button>
 
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
-            <Brain className="w-4 h-4 text-primary" />
-          </div>
-          <span className="font-semibold text-sm hidden sm:inline">{t("common.appName")}</span>
-        </div>
-      </div>
-
-      {/* Right */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onToggleViewer}
-          title={viewerOpen ? "Close Viewer" : "Open Viewer"}
-        >
-          {viewerOpen ? (
-            <PanelRightClose className="w-4 h-4" />
-          ) : (
-            <PanelRightOpen className="w-4 h-4" />
-          )}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <Settings className="w-4 h-4" />
-        </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
-                <Avatar className="w-6 h-6">
-                  <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
-                    {user?.username?.slice(0, 2).toUpperCase() || "U"}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-sm hidden sm:inline">{user?.username}</span>
-              </button>
-            }
-          />
-
-          <DropdownMenuContent align="end" className="w-56">
-            <div className="px-3 py-2">
-              <p className="text-sm font-medium">{user?.username}</p>
-              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-            </div>
-            <DropdownMenuSeparator />
-            {user?.is_admin && (
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin")}>
-                <Shield className="w-4 h-4 mr-2" />
-                Admin metrics
-              </DropdownMenuItem>
+          {/* Desktop sidebar toggle - hidden on mobile */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 hidden md:inline-flex"
+            onClick={onToggleSidebar}
+            title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+            aria-label={sidebarOpen ? "Close document sidebar" : "Open document sidebar"}
+            aria-pressed={sidebarOpen}
+          >
+            {sidebarOpen ? (
+              <PanelLeftClose className="w-4 h-4" />
+            ) : (
+              <PanelLeftOpen className="w-4 h-4" />
             )}
-            {user?.is_admin && <DropdownMenuSeparator />}
-            <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              {t("header.signOut")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <Dialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
+          </Button>
+
+          {/* LOGO — clicking navigates to dashboard */}
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 hover:opacity-75 transition-opacity cursor-pointer"
+            aria-label="Go to homepage"
+          >
+            <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
+              <Brain className="w-4 h-4 text-primary" />
+            </div>
+            <span className="font-semibold text-sm hidden sm:inline">Document AI Analyst</span>
+          </Link>
+        </div>
+
+        {/* Right */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={onToggleViewer}
+            title={viewerOpen ? "Close viewer" : "Open viewer"}
+            aria-label={viewerOpen ? "Close PDF viewer" : "Open PDF viewer"}
+            aria-pressed={viewerOpen}
+          >
+            {viewerOpen ? (
+              <PanelRightClose className="w-4 h-4" />
+            ) : (
+              <PanelRightOpen className="w-4 h-4" />
+            )}
+          </Button>
+
+          {mounted && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={toggleTheme}
+              title={isDark ? "Light mode" : "Dark mode"}
+              aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+          )}
+
+          {/* Workspace switcher */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer"
+              aria-label={`Select workspace. Current workspace: ${currentWorkspaceLabel}`}
+              aria-busy={workspaceLoading}
+            >
+              {workspaceLoading ? (
+                <>
+                  <Skeleton className="h-4 w-4 rounded-sm" />
+                  <Skeleton className="hidden h-4 w-16 sm:block" />
+                </>
+              ) : (
+                <>
+                  <Briefcase className="w-4 h-4" />
+                  <span className="text-sm hidden sm:inline">{currentWorkspaceLabel}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </>
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              {WORKSPACES.map((w) => (
+                <DropdownMenuItem
+                  key={w.id}
+                  className={`cursor-pointer ${w.id === workspace ? "font-medium" : ""}`}
+                  onClick={async () => {
+                    setWorkspace(w.id as WorkspaceId);
+                    await fetchDocumentsForWorkspace(w.id);
+                  }}
+                >
+                  {w.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer"
+              aria-label={`Open user menu for ${user?.username ?? "current user"}`}
+            >
+              <Avatar className="w-6 h-6">
+                <AvatarFallback className="text-[10px] bg-primary text-primary-foreground">
+                  {user?.username?.slice(0, 2).toUpperCase() || "U"}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm hidden sm:inline">{user?.username}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <div className="px-3 py-2">
+                <p className="text-sm font-medium">{user?.username}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      {/* Mobile navigation sheet - backdrop */}
+      {sheetOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+          onClick={() => setSheetOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        id="mobile-document-navigation"
+        className={[
+          "fixed inset-y-0 left-0 z-50 w-72 flex flex-col",
+          "bg-sidebar border-r border-sidebar-border",
+          "transform transition-transform duration-300 ease-in-out md:hidden",
+          sheetOpen ? "translate-x-0" : "-translate-x-full",
+        ].join(" ")}
+        aria-label="Mobile navigation"
+        aria-hidden={!sheetOpen}
+        inert={!sheetOpen ? true : undefined}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              LLM Settings
-            </DialogTitle>
-          </DialogHeader>
+        <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border flex-shrink-0">
+          {/* MOBILE LOGO — clicking navigates to dashboard and closes the sheet */}
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 hover:opacity-75 transition-opacity cursor-pointer"
+            aria-label="Go to homepage"
+            onClick={() => setSheetOpen(false)}
+          >
+            <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
+              <Brain className="w-4 h-4 text-primary" />
+            </div>
+            <span className="font-semibold text-sm">Document AI Analyst</span>
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setSheetOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
 
-          <div className="space-y-4">
-            <label className="text-sm">
-              Temperature: {temperature}
-            </label>
-
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={temperature}
-              onChange={(e) =>
-                setTemperature(Number(e.target.value))
-              }
-              className="w-full"
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </header>
+        <div className="flex-1 overflow-hidden">{sheetOpen ? mobileSheetContent : null}</div>
+      </aside>
+    </>
   );
 }
