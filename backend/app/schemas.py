@@ -53,6 +53,13 @@ class UpdatePassword(BaseModel):
     password: str
     confirm_password: str
 
+class ChangePasswordRequest(BaseModel):
+    currentPassword: str = Field(..., min_length=1)
+    newPassword: str = Field(..., min_length=6)
+
+class ChangePasswordResponse(BaseModel):
+    message: str = "Password changed successfully"
+
 class UpdatePasswordResponse(BaseModel):
     id: str
     username: str

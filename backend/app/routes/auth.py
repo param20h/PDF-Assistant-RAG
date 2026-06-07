@@ -19,6 +19,8 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import User, ApiKey, UserRole
 from app.schemas import (
+    ChangePasswordRequest,
+    ChangePasswordResponse,
     GoogleLoginRequest,
     HFTokenUpdate,
     RefreshRequest,
@@ -546,6 +548,49 @@ def update_password(payload:UpdatePassword,
         return user
     except HTTPException:
         raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Database error")
+
+@router.post("/change-password", response_model=ChangePasswordResponse)
+def change_password(
+    payload: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Change the authenticated user's password.
+
+    Validates the current password before updating to a new one. Uses
+    `currentPassword` and `newPassword` field names for frontend consistency.
+
+    Args:
+        payload: ChangePasswordRequest with `currentPassword` and `newPassword`.
+        user: The currently authenticated user.
+        db: Database session.
+
+    Returns:
+        ChangePasswordResponse with a success message.
+
+    Raises:
+        HTTPException: 401 if current password is wrong.
+        HTTPException: 400 if new password is invalid or a DB error occurs.
+    """
+    if not verify_password(payload.currentPassword, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect",
+        )
+
+    if len(payload.newPassword) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters",
+        )
+
+    try:
+        user.hashed_password = hash_password(payload.newPassword)
+        db.commit()
+        return ChangePasswordResponse()
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Database error")
