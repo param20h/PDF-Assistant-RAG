@@ -12,7 +12,7 @@ on:
     branches: ["dev"]
 
 jobs:
-  # ── 1. Backend Lint & Import Check ─────────────────────
+  # ── 1. Backend Lint & Import Check ─────────────────────_
   backend-check:
     name: 🐍 Backend — Lint & Import Check
     runs-on: ubuntu-latest
@@ -21,12 +21,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Cache Pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
-          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -55,7 +61,10 @@ jobs:
         run: |
           python -c "import sys; sys.path.insert(0, 'backend'); from app.config import get_settings; get_settings(); print('Config imports OK')"
 
-      - name: Run backend pytest suite
+      - name: Install pytest-cov
+        run: pip install pytest-cov
+
+      - name: Run backend pytest suite with coverage
         env:
           SECRET_KEY: ci-dummy-secret
           DATABASE_URL: sqlite:///./ci_test.db
@@ -63,9 +72,126 @@ jobs:
           HF_TOKEN: ci-dummy-token
           UPLOAD_DIR: /tmp/uploads
           CHROMA_PERSIST_DIR: /tmp/chroma
-        run: pytest backend/tests -v
+        run: |
+          pytest backend/tests -v \
+            --cov=backend/app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov \
+            --cov-fail-under=40
 
-  # ── 2. Frontend Build Check ─────────────────────────────
+      - name: Upload coverage XML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          retention-days: 7
+
+      - name: Coverage summary comment (PR only)
+        if: github.event_name == 'pull_request'
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: 40
+          MINIMUM_ORANGE: 30
+        continue-on-error: true
+
+  # ── 2. CodeQL Static Security Analysis ──────────────────
+  codeql-analysis:
+    name: 🔎 CodeQL — Static Security Analysis (${{ matrix.language }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["python", "javascript-typescript"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-extended,security-and-quality
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+          output: ${{ runner.temp }}/codeql-results/${{ matrix.language }}
+          upload: false
+
+      - name: Fail on critical security findings
+        env:
+          SARIF_DIR: ${{ runner.temp }}/codeql-results/${{ matrix.language }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          sarif_dir = pathlib.Path(os.environ["SARIF_DIR"])
+          critical_findings = []
+
+          for sarif_path in sarif_dir.rglob("*.sarif"):
+              with sarif_path.open(encoding="utf-8") as handle:
+                  sarif = json.load(handle)
+
+              for run in sarif.get("runs", []):
+                  rule_severity = {
+                      rule.get("id"): float(
+                          rule.get("properties", {}).get(
+                              "security-severity",
+                              "0",
+                          )
+                      )
+                      for rule in run.get("tool", {})
+                      .get("driver", {})
+                      .get("rules", [])
+                      if rule.get("id")
+                  }
+
+                  for result in run.get("results", []):
+                      rule_id = result.get("ruleId")
+                      severity = rule_severity.get(rule_id, 0.0)
+                      if severity < 9.0:
+                          continue
+
+                      location = result.get("locations", [{}])[0].get(
+                          "physicalLocation",
+                          {},
+                      )
+                      artifact = location.get("artifactLocation", {}).get(
+                          "uri",
+                          "unknown file",
+                      )
+                      region = location.get("region", {})
+                      line = region.get("startLine", "?")
+                      message = result.get("message", {}).get("text", "")
+                      critical_findings.append(
+                          f"{rule_id} ({severity}) at {artifact}:{line} — {message}"
+                      )
+
+          if critical_findings:
+              print("Critical CodeQL security findings detected:")
+              for finding in critical_findings:
+                  print(f"- {finding}")
+              sys.exit(1)
+
+          print("No critical CodeQL security findings detected.")
+          PY
+
+  # ── 3. Frontend Build Check ─────────────────────────────
   frontend-check:
     name: ⚛️ Frontend — TypeScript & Build
     runs-on: ubuntu-latest
@@ -73,13 +199,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Cache Node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         working-directory: frontend
@@ -99,7 +231,7 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
 
-  # ── 3. PR Size Gate ─────────────────────────────────────
+  # ── 4. PR Size Gate ─────────────────────────────────────
   pr-size-check:
     name: 📏 PR Size Check
     runs-on: ubuntu-latest

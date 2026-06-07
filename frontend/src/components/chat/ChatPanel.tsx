@@ -1,38 +1,95 @@
 "use client";
 
+import { toast } from "sonner";
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api, API_BASE } from "@/lib/api";
-import { useChatStore, type ChatMsg, type SourceChunk } from "@/store/chat-store";
+import { useChatStore, type ChatMsg, type SourceBoundingBox, type SourceChunk } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import { Send, Loader2, Trash2, MessageSquare, Download } from "lucide-react";
+import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff, HelpCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+interface ISpeechRecognitionEvent {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+      isFinal: boolean;
+    };
+  };
+}
+
+interface ISpeechRecognitionErrorEvent {
+  error: string;
+  message: string;
+}
+
+interface ISpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: ISpeechRecognitionEvent) => void) | null;
+  onerror: ((event: ISpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface WindowWithSpeech extends Window {
+  SpeechRecognition?: new () => ISpeechRecognition;
+  webkitSpeechRecognition?: new () => ISpeechRecognition;
+}
+
+interface CitationTarget {
+  page: number;
+  highlightRects?: SourceBoundingBox[];
+}
 
 interface Props {
   activeDoc: DocInfo | null;
-  onCitationClick: (page: number) => void;
+  onCitationClick: (target: CitationTarget) => void;
 }
 
 export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const messages = useChatStore((state) => state.messages);
   const input = useChatStore((state) => state.input);
   const streaming = useChatStore((state) => state.streaming);
   const isTyping = useChatStore((state) => state.isTyping);
+  const historyLoading = useChatStore((state) => state.historyLoading);
+  const activeSessionId = useChatStore((state) => state.activeSessionId);
   const setMessages = useChatStore((state) => state.setMessages);
   const setInput = useChatStore((state) => state.setInput);
   const setStreaming = useChatStore((state) => state.setStreaming);
   const setIsTyping = useChatStore((state) => state.setIsTyping);
   const resetChat = useChatStore((state) => state.resetChat);
+  const fetchSessionHistory = useChatStore((state) => state.fetchSessionHistory);
+  
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const MAX_CHARACTERS = 2000;
+  const [isRecording, setIsRecording] = useState(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  
+  // New State for Keyboard Shortcuts Help Modal
+  const [showHelpModal, setShowHelpModal] = useState(false);
+
+  const recognitionRef = useRef<ISpeechRecognition | null>(null);
+  const initialInputRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const showEmptyState = messages.length === 0 && !isTyping && !historyLoading;
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -62,8 +119,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     };
   }, [resetChat]);
 
-  // Load history on doc change
+  // Load history on activeSessionId or fallback to activeDoc change
   useEffect(() => {
+    if (activeSessionId) {
+      fetchSessionHistory(activeSessionId);
+      return;
+    }
+
     if (!activeDoc) {
       prevDocId.current = null;
       setMessages([]);
@@ -108,6 +170,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     setStreaming(false);
     setIsTyping(false);
   };
+  }, [activeSessionId, activeDoc, fetchSessionHistory, setMessages]);
+
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
 
@@ -124,7 +188,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    
     const assistantId = `assistant-${Date.now()}`;
     let assistantCreated = false;
 
@@ -134,64 +197,141 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     abortRef.current = new AbortController();
 
     try {
-    const stream = api.streamPost(
-      "/api/v1/chat/ask/stream",
-      {
-        question,
-        document_id: activeDoc?.id || null,
-      },
-      abortRef.current.signal
-    );
+      // Try WebSocket first for real-time agentic thought streaming
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const base = API_BASE || window.location.origin;
+      const wsScheme = base.startsWith("https") ? "wss" : base.startsWith("http") ? "ws" : "wss";
+      const host = base.replace(/^https?:/, "");
+      const wsUrl = `${wsScheme}:${host}/api/v1/chat/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 
-      for await (const event of stream) {
-        if (event.type === "token") {
-          // Create assistant message only when first token arrives
-          if (!assistantCreated) {
-            assistantCreated = true;
-            setIsTyping(false);
+      const ws = new WebSocket(wsUrl);
 
-            const assistantMsg: ChatMsg = {
-              id: assistantId,
-              role: "assistant",
-              content: event.data as string,
-              sources: [],
-              isStreaming: true,
-            };
+      const wsDone = new Promise<void>((resolve, reject) => {
+        ws.onopen = () => {
+          // Send initial payload
+          ws.send(JSON.stringify({ question, document_id: activeDoc?.id || null, session_id: activeSessionId }));
+        };
 
-            setMessages((prev) => [...prev, assistantMsg]);
-          } else {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, content: m.content + (event.data as string) }
-                  : m
-              )
-            );
+        // If WS doesn't open within 800ms, treat as failure and fallback
+        const connectTimeout = setTimeout(() => {
+          try {
+            ws.close();
+          } catch (e) {
+            // ignore
           }
-        } else if (event.type === "sources") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, sources: event.data as SourceChunk[] }
-                : m
-            )
-          );
-        } else if (event.type === "error") {
-          setIsTyping(false);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: `Error: ${event.data}`, isStreaming: false }
-                : m
-            )
-          );
-        } else if (event.type === "done") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, isStreaming: false } : m
-            )
-          );
+          reject(new Error("WebSocket connection timeout"));
+        }, 800);
+
+        ws.onmessage = (ev) => {
+          clearTimeout(connectTimeout);
+          try {
+            const event = JSON.parse(ev.data);
+            if (event.type === "token") {
+              if (!assistantCreated) {
+                assistantCreated = true;
+                setIsTyping(false);
+
+                const assistantMsg: ChatMsg = {
+                  id: assistantId,
+                  role: "assistant",
+                  content: event.data as string,
+                  sources: [],
+                  isStreaming: true,
+                };
+
+                setMessages((prev) => [...prev, assistantMsg]);
+              } else {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
+                );
+              }
+            } else if (event.type === "sources") {
+              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, sources: event.data as SourceChunk[] } : m)));
+            } else if (event.type === "thought") {
+              // Append thoughts as a temporary assistant note (optional UI handling)
+              // For simplicity, add to assistant message content in brackets
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + `\n[thought] ${event.data}` } : m))
+              );
+            } else if (event.type === "error") {
+              setIsTyping(false);
+              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m)));
+              ws.close();
+              reject(new Error(String(event.data)));
+            } else if (event.type === "done") {
+              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)));
+              ws.close();
+              resolve();
+            }
+          } catch (err) {
+            // ignore malformed messages
+          }
+        };
+
+        ws.onerror = (ev) => {
+          clearTimeout(connectTimeout);
+          reject(new Error("WebSocket error"));
+        };
+
+        ws.onclose = () => {
+          resolve();
+        };
+      });
+
+      await wsDone;
+    } catch (err) {
+      // Fallback to existing SSE stream if WebSocket fails
+      try {
+        const stream = api.streamPost("/api/v1/chat/ask/stream", {
+          question,
+          document_id: activeDoc?.id || null,
+          session_id: activeSessionId,
+        });
+
+        for await (const event of stream) {
+          if (event.type === "token") {
+            if (!assistantCreated) {
+              assistantCreated = true;
+              setIsTyping(false);
+
+              const assistantMsg: ChatMsg = {
+                id: assistantId,
+                role: "assistant",
+                content: event.data as string,
+                sources: [],
+                isStreaming: true,
+              };
+
+              setMessages((prev) => [...prev, assistantMsg]);
+            } else {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
+              );
+            }
+          } else if (event.type === "sources") {
+            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, sources: event.data as SourceChunk[] } : m)));
+          } else if (event.type === "error") {
+            setIsTyping(false);
+            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m)));
+          } else if (event.type === "done") {
+            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)));
+          }
         }
+      } catch (err2) {
+        setIsTyping(false);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: t("chat.fallbackError", {
+                    message: err2 instanceof Error ? err2.message : "Unknown error",
+                  }),
+                  isStreaming: false,
+                }
+              : m
+          )
+        );
       }
     } catch (err) {
         if (
@@ -220,6 +360,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           )
         );
       }finally {
+    } finally {
+
       setStreaming(false);
       setIsTyping(false);
     }
@@ -230,8 +372,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     try {
       await api.delete(`/api/v1/chat/history/${activeDoc.id}`);
       setMessages([]);
+      toast.info("Chat history cleared");
     } catch {
-        //silent fail
+      // silent fail preserved; no additional toast for this scenario
     }
   };
 
@@ -261,6 +404,109 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showExportMenu]);
 
+  // Cleanup speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  const startRecording = () => {
+    const SpeechRecognitionAPI =
+      typeof window !== "undefined"
+        ? (window as unknown as WindowWithSpeech).SpeechRecognition ||
+          (window as unknown as WindowWithSpeech).webkitSpeechRecognition
+        : null;
+
+    if (!SpeechRecognitionAPI) {
+      setSpeechError(t("chat.speechNotSupported", { defaultValue: "Speech recognition is not supported in this browser." }));
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionAPI();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      
+      const currentLang = i18n.language || "en";
+      const langMap: Record<string, string> = {
+        en: "en-US",
+        hi: "hi-IN",
+        es: "es-ES",
+        fr: "fr-FR",
+      };
+      recognition.lang = langMap[currentLang] || "en-US";
+
+      initialInputRef.current = input;
+      setSpeechError(null);
+      setIsRecording(true);
+
+      recognition.onresult = (event: ISpeechRecognitionEvent) => {
+        let sessionTranscript = "";
+        for (let i = 0; i < event.results.length; ++i) {
+          sessionTranscript += event.results[i][0].transcript;
+        }
+        setInput(
+          initialInputRef.current +
+            (initialInputRef.current ? " " : "") +
+            sessionTranscript.trim()
+        );
+      };
+
+      recognition.onerror = (event: ISpeechRecognitionErrorEvent) => {
+        const errorCode = event.error;
+        if (errorCode === "aborted") return; // ignore manual aborts
+
+        let msg = t("chat.speechError", { defaultValue: `Speech recognition error: ${errorCode}` });
+        if (errorCode === "not-allowed") {
+          msg = t("chat.micPermissionDenied", {
+            defaultValue: "Microphone access denied. Please enable permissions in settings.",
+          });
+        } else if (errorCode === "no-speech") {
+          msg = t("chat.noSpeechDetected", {
+            defaultValue: "No speech was detected. Please try again.",
+          });
+        } else if (errorCode === "audio-capture") {
+          msg = t("chat.audioCaptureError", {
+            defaultValue: "No microphone found or microphone is not working.",
+          });
+        } else if (errorCode === "network") {
+          msg = t("chat.networkError", {
+            defaultValue: "Network error occurred during speech recognition.",
+          });
+        }
+        setSpeechError(msg);
+        setIsRecording(false);
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      setSpeechError(err instanceof Error ? err.message : "Failed to start speech recognition.");
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -268,11 +514,69 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     }
   };
 
+  const handleExportMenuKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setShowExportMenu(false);
+    }
+  };
+
+  // ── NEW KEYBOARD SHORTCUTS ENGINE EFFECT ──────────────────────────
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+
+      // Shortcut 1: Ctrl/Cmd + Enter -> Send Message (When textarea has focus)
+      if (isCmdOrCtrl && e.key === "Enter") {
+        if (document.activeElement === textareaRef.current) {
+          e.preventDefault();
+          handleSend();
+        }
+      }
+
+      // Shortcut 2: Escape -> Clear Input / Close Modal
+      if (e.key === "Escape") {
+        if (document.activeElement === textareaRef.current) {
+          e.preventDefault();
+          setInput(""); // Clear textarea state
+        } else if (showHelpModal) {
+          setShowHelpModal(false); // Close shortcuts modal if open
+        }
+      }
+
+      // Shortcut 3: Ctrl/Cmd + K -> Focus chat input from anywhere
+      if (isCmdOrCtrl && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        textareaRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [input, streaming, showHelpModal]); // Dependencies updated to capture fresh state data
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
       {/* ── Chat Messages ──────────────────────────── */}
-        <div className="flex-1 px-4 overflow-y-auto custom-scrollbar">
-          {messages.length === 0 && !isTyping ? (
+      <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" aria-busy={historyLoading}>
+        {historyLoading ? (
+          <div className="py-6 space-y-5 max-w-3xl mx-auto" aria-label="Loading chat history">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className={cn("flex gap-3", index % 2 === 0 ? "justify-end" : "justify-start")}
+              >
+                {index % 2 !== 0 && <Skeleton className="mt-1 h-8 w-8 rounded-full" />}
+                <div className={cn("space-y-2", index % 2 === 0 ? "w-2/3" : "w-3/4")}>
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-5/6" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : showEmptyState ? (
           <div className="h-full flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
               <MessageSquare className="w-8 h-8 text-primary/60" />
@@ -311,94 +615,253 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       </div>
 
       {/* ── Input Area ─────────────────────────────── */}
-      <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm">
-        <div className="max-w-3xl mx-auto flex gap-2 items-end">
-          <Textarea
-            ref={textareaRef}
-            id="chat-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              activeDoc
-                ? t("chat.askPlaceholder", { name: activeDoc.original_name })
-                : t("chat.selectPlaceholder")
-            }
-            disabled={streaming}
-            className="min-h-[44px] max-h-32 resize-none bg-background/50 border-border/50"
-            rows={1}
-          />
-          <div className="flex gap-1.5 shrink-0">
-            <Button
-              id="send-btn"
-              size="icon"
-              onClick={handleSend}
-              disabled={!input.trim() || streaming}
-              className="h-[44px] w-[44px]"
-            >
-              {streaming ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
-            {messages.length > 0 && (
-              <>
-                {/* Export dropdown */}
-                <div className="relative" ref={exportMenuRef}>
+      <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm relative">
+        <div className="max-w-3xl mx-auto relative">
+          {/* Status / Error Message Area */}
+          {(isRecording || speechError) && (
+            <div className="absolute bottom-full mb-2 left-0 right-0 flex items-center justify-between bg-card border border-border/80 shadow-md rounded-lg px-3 py-1.5 text-xs animate-in fade-in slide-in-from-bottom-1 z-40 max-w-3xl mx-auto">
+              <div className="flex items-center gap-2">
+                {isRecording ? (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                    <span className="font-medium text-muted-foreground">
+                      {t("chat.listening", { defaultValue: "Listening... Speak now." })}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-destructive font-medium">{speechError}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isRecording) {
+                    stopRecording();
+                  } else {
+                    setSpeechError(null);
+                  }
+                }}
+                className="text-muted-foreground hover:text-foreground font-semibold px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
+                aria-label={isRecording ? "Stop speech recording" : "Dismiss speech error"}
+              >
+                {isRecording ? t("chat.stop", { defaultValue: "Stop" }) : "✕"}
+              </button>
+            </div>
+          )}
+
+          <div className="flex gap-2 items-end">
+            <div className="relative flex-1 flex items-center">
+              <Textarea
+                ref={textareaRef}
+                id="chat-input"
+                maxLength={MAX_CHARACTERS}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  activeDoc
+                    ? t("chat.askPlaceholder", { name: activeDoc.original_name })
+                    : t("chat.selectPlaceholder")
+                }
+                disabled={streaming}
+                className="min-h-[44px] max-h-32 resize-none bg-background/50 border-border/50 pr-16"
+                rows={1}
+                aria-label="Chat message"
+                aria-describedby="chat-input-hint"
+              />
+              
+              {/* Mic Button */}
+              <Button
+                id="mic-btn"
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={streaming}
+                onClick={toggleRecording}
+                className={cn(
+                  "absolute right-10 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
+                  isRecording
+                    ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
+                    : "hover:text-primary hover:bg-accent"
+                )}
+                title={
+                  isRecording
+                    ? t("chat.stopRecording", { defaultValue: "Stop recording" })
+                    : t("chat.startRecording", { defaultValue: "Start recording" })
+                }
+                aria-label={
+                  isRecording
+                    ? t("chat.stopRecording", { defaultValue: "Stop recording" })
+                    : t("chat.startRecording", { defaultValue: "Start recording" })
+                }
+                aria-pressed={isRecording}
+              >
+                {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </Button>
+
+              {/* NEW Keyboard Shortcuts Info Button */}
+              <Button
+                id="shortcut-help-btn"
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowHelpModal(true)}
+                className="absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-all duration-200"
+                title="Keyboard Shortcuts"
+                aria-label="View Keyboard Shortcuts"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="flex gap-1.5 shrink-0">
+              <Button
+                id="send-btn"
+                size="icon"
+                onClick={handleSend}
+                disabled={!input.trim() || streaming}
+                className="h-[44px] w-[44px]"
+                aria-label={streaming ? "Sending message" : "Send message"}
+              >
+                {streaming ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </Button>
+              {messages.length > 0 && (
+                <>
+                  {/* Export dropdown */}
+                  <div className="relative" ref={exportMenuRef}>
+                    <Button
+                      id="export-chat-btn"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowExportMenu((v) => !v)}
+                      className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
+                      title={t("chat.exportTitle")}
+                      aria-label={t("chat.exportTitle")}
+                      aria-expanded={showExportMenu}
+                      aria-controls="chat-export-menu"
+                      aria-haspopup="menu"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    {showExportMenu && (
+                      <div
+                        id="chat-export-menu"
+                        role="menu"
+                        aria-label="Export chat"
+                        onKeyDown={handleExportMenuKeyDown}
+                        className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
+                      >
+                        <button
+                          id="export-md-btn"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleExport("md")}
+                          className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        >
+                          <span className="text-base">📝</span>
+                          {t("chat.markdown")}
+                        </button>
+                        <button
+                          id="export-txt-btn"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleExport("txt")}
+                          className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        >
+                          <span className="text-base">📄</span>
+                          {t("chat.plainText")}
+                        </button>
+                        <button
+                          id="export-pdf-btn"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleExport("pdf")}
+                          className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        >
+                          <span className="text-base">📕</span>
+                          {t("chat.pdf")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {/* Clear history */}
                   <Button
-                    id="export-chat-btn"
                     variant="ghost"
                     size="icon"
-                    onClick={() => setShowExportMenu((v) => !v)}
-                    className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
-                    title={t("chat.exportTitle")}
+                    onClick={handleClear}
+                    className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
+                    aria-label="Clear chat history"
                   >
-                    <Download className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" />
                   </Button>
-                  {showExportMenu && (
-                    <div className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50">
-                      <button
-                        id="export-md-btn"
-                        onClick={() => handleExport("md")}
-                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                      >
-                        <span className="text-base">📝</span>
-                        {t("chat.markdown")}
-                      </button>
-                      <button
-                        id="export-txt-btn"
-                        onClick={() => handleExport("txt")}
-                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                      >
-                        <span className="text-base">📄</span>
-                        {t("chat.plainText")}
-                      </button>
-                      <button
-                        id="export-pdf-btn"
-                        onClick={() => handleExport("pdf")}
-                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                      >
-                        <span className="text-base">📕</span>
-                        {t("chat.pdf")}
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {/* Clear history */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleClear}
-                  className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
+        <p id="chat-input-hint" className="sr-only">
+          Press Enter to send. Press Shift and Enter for a new line.
+        </p>
       </div>
+
+      {/* ── NEW KEYBOARD SHORTCUTS HELP MODAL OVERLAY ───────────────── */}
+      {showHelpModal && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200"
+          onClick={() => setShowHelpModal(false)}
+        >
+          <div 
+            className="bg-popover text-popover-foreground border border-border p-6 rounded-xl w-80 relative shadow-2xl animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()} // Stop overlay closing when clicking inside
+          >
+            <button 
+              onClick={() => setShowHelpModal(false)}
+              className="absolute top-3 right-4 text-xl font-medium text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Close shortcuts help"
+            >
+              &times;
+            </button>
+            
+            <h3 className="text-lg font-bold mb-1 flex items-center gap-2 text-foreground">
+              ⌨️ Keyboard Shortcuts
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">Enhance your typing productivity</p>
+            <hr className="border-border mb-4" />
+            
+            <ul className="space-y-4 text-sm">
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">Send Message</span>
+                <div className="flex gap-1">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Ctrl</kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Enter</kbd>
+                </div>
+              </li>
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">Clear Chat Input</span>
+                <div>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Esc</kbd>
+                </div>
+              </li>
+              <li className="flex flex-col gap-1.5">
+                <span className="text-muted-foreground text-xs font-medium">Focus Chat Input</span>
+                <div className="flex gap-1">
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Ctrl</kbd>
+                  <span className="text-muted-foreground text-xs">+</span>
+                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">K</kbd>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

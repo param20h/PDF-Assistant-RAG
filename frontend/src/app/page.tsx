@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { FileText, MessageSquare, Brain, Shield, Zap, Search } from "lucide-react";
+import { FileText, MessageSquare, Brain, Shield, Zap, Search, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import ContributorsPanel from "@/components/layout/ContributorsPanel";
@@ -13,6 +14,20 @@ export default function HomePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  useEffect(() => {
+    // Force only light/dark mode on the home page
+    if (mounted && theme !== "light" && theme !== "dark") {
+      setTheme("dark");
+    }
+  }, [mounted, theme, setTheme]);
 
   useEffect(() => {
     if (!loading && user) {
@@ -29,7 +44,19 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      {mounted && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-4 right-4 z-50 rounded-full"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          title="Toggle theme"
+        >
+          {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+        </Button>
+      )}
+
       {/* ── Hero ────────────────────────────────────── */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-20">
         {/* Glow effect */}
@@ -128,8 +155,18 @@ export default function HomePage() {
       </div>
 
       {/* ── Footer ──────────────────────────────────── */}
-      <footer className="text-center py-6 text-xs text-muted-foreground border-t border-border/50">
-        Built with FastAPI • LangChain • ChromaDB • HuggingFace • Next.js
+      <footer className="py-8 text-xs text-muted-foreground border-t border-border/50">
+        <div className="max-w-4xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <span>Built with FastAPI • LangChain • ChromaDB • HuggingFace • Next.js</span>
+          <div className="flex items-center gap-4">
+            <Link href="/privacy" className="hover:text-foreground transition-colors">
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className="hover:text-foreground transition-colors">
+              Terms of Service
+            </Link>
+          </div>
+        </div>
       </footer>
 
       {/* Hall of Fame Modal */}

@@ -5,6 +5,7 @@ import { AuthProvider } from "@/lib/auth";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import I18nProvider from "@/components/providers/I18nProvider";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
+import { Toaster } from "sonner";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -32,10 +33,13 @@ export default function RootLayout({
           defaultTheme="dark"
           enableSystem={false}
           disableTransitionOnChange
+          themes={["light", "dark", "ocean", "forest", "sunset"]}
         >
           <AuthProvider>
             <I18nProvider>
-              <TooltipProvider>{children}</TooltipProvider>
+              <TooltipProvider>
+                {children}
+              </TooltipProvider>
             </I18nProvider>
           </AuthProvider>
         </ThemeProvider>

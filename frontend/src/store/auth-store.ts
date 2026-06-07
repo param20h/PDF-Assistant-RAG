@@ -19,7 +19,11 @@ interface AuthStore {
   initialized: boolean;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  register: (
+    username: string,
+    email: string,
+    password: string
+  ) => Promise<{ message: string; email: string; verification_url?: string | null }>;
   logout: () => void;
   initializeAuth: () => Promise<void>;
   syncTokensRefreshed: (detail?: { accessToken?: string; user?: AuthUser | null }) => void;
@@ -75,22 +79,27 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   async register(username, email, password) {
-    const data = await api.post<{ access_token: string; refresh_token: string; user: AuthUser }>(
+    const data = await api.post<{ message: string; email: string; verification_url?: string | null }>(
       "/api/v1/auth/register",
       { username, email, password }
     );
 
-    localStorage.setItem("token", data.access_token);
-    localStorage.setItem("refresh_token", data.refresh_token);
+    clearStoredTokens();
     set({
-      token: data.access_token,
-      user: data.user,
+      token: null,
+      user: null,
       loading: false,
       initialized: true,
     });
+    return data;
   },
 
-  logout() {
+  async logout() {
+    try {
+      await api.post("/api/v1/auth/logout");
+    } catch {
+      // Ignore network errors on logout
+    }
     clearStoredTokens();
     set({
       token: null,
@@ -105,16 +114,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (initialized) return;
 
     const storedToken = token ?? getStoredToken();
-    if (!storedToken) {
-      set({ token: null, user: null, loading: false, initialized: true });
-      return;
-    }
-
-    set({ token: storedToken, loading: true });
+    set({ loading: true });
 
     try {
-      const user = await api.get<AuthUser>("/api/v1/auth/me", { token: storedToken });
-      set({ user, token: storedToken, loading: false, initialized: true });
+      const user = await api.get<AuthUser>(
+        "/api/v1/auth/me",
+        storedToken ? { token: storedToken } : undefined
+      );
+      set({
+        user,
+        token: storedToken || "cookie",
+        loading: false,
+        initialized: true,
+      });
     } catch {
       clearStoredTokens();
       set({ user: null, token: null, loading: false, initialized: true });

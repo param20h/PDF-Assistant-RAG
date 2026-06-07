@@ -61,6 +61,36 @@ cp ../.env.example .env            # Fill in your own dev values
 uvicorn app.main:app --reload --port 8000
 ```
 
+### Pre-commit Hooks (Required)
+
+We use [`pre-commit`](https://pre-commit.com/) to enforce code style automatically before every commit. This prevents style-related CI failures.
+
+```bash
+# Install pre-commit (one-time setup)
+pip install pre-commit
+
+# Install the hooks into your local clone (one-time per checkout)
+pre-commit install
+
+# (Optional) Run against all files to verify setup
+pre-commit run --all-files
+```
+
+**What the hooks check:**
+
+| Hook | Tool | Scope |
+|------|------|-------|
+| Python formatting | `black` (line-length 120) | `backend/` |
+| Python linting | `flake8` (errors only) | `backend/` |
+| JS/TS/JSON/CSS/MD formatting | `prettier` | `frontend/` |
+| Trailing whitespace | `pre-commit-hooks` | All files |
+| YAML/JSON validity | `pre-commit-hooks` | All files |
+| Merge-conflict markers | `pre-commit-hooks` | All files |
+| Large file guard (>1 MB) | `pre-commit-hooks` | All files |
+| Secret detection | `detect-secrets` | All files |
+
+> ⚠️ If a hook modifies files, it will block your commit. Just `git add` the auto-fixed files and commit again.
+
 ### Frontend (Next.js)
 
 ```bash
@@ -70,6 +100,38 @@ npm run dev                         # Runs on http://localhost:3000
 ```
 
 Make sure the backend is running first — the frontend proxies API requests to `localhost:8000`.
+
+### Email Verification Setup
+
+Password registration sends a verification link before users can log in. Add SMTP values to your local `.env` file:
+
+```env
+FRONTEND_URL=http://localhost:3000
+EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS=24
+MAIL_USERNAME=your_smtp_username
+MAIL_PASSWORD=your_smtp_or_gmail_app_password
+MAIL_FROM=your_sender_email@example.com
+MAIL_SERVER=smtp.example.com
+MAIL_PORT=587
+MAIL_STARTTLS=True
+MAIL_SSL_TLS=False
+```
+
+For Gmail, enable 2-Step Verification on the sender Google account, create a 16-character App Password from Google Account > Security > App passwords, then use:
+
+```env
+MAIL_USERNAME=yourgmail@gmail.com
+MAIL_PASSWORD=your_16_character_app_password
+MAIL_FROM=yourgmail@gmail.com
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_STARTTLS=True
+MAIL_SSL_TLS=False
+```
+
+The verification link opens `/verify-email?token=...` in the frontend, which calls `GET /api/v1/auth/verify?token=...`. Users who miss the first email can request another link through `POST /api/v1/auth/resend-verification`.
+
+When SMTP is not configured in a non-production environment, registration returns a local `verification_url` so contributors can test the verification flow without private email credentials. With SMTP configured, the app sends the link by email.
 
 ---
 
