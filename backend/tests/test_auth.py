@@ -111,7 +111,7 @@ def test_login_invalid_email(client):
     )
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid email or password"
+    assert response.json()["error"]["message"] == "Invalid email or password"
 
 
 def test_auth_me_success(client, auth_headers, user):
