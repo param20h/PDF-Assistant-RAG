@@ -1,6 +1,7 @@
 """
 Chat routes — ask questions with RAG, stream responses via SSE, manage history.
 """
+
 import html
 import json
 import time
@@ -14,6 +15,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.cache import get_cached_response, set_cached_response
 from app.database import get_db
 from app.metrics import record_query_response_time
 from app.models import User, ChatMessage, Document, SharedMessage, ChatSession
@@ -213,10 +215,14 @@ def get_shared_answer(
     exposed. User prompts, private chat history, and unshared answers remain
     protected.
     """
-    message = db.query(ChatMessage).filter(
-        ChatMessage.id == message_id,
-        ChatMessage.role == "assistant",
-    ).first()
+    message = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.id == message_id,
+            ChatMessage.role == "assistant",
+        )
+        .first()
+    )
 
     if not message or not db.query(SharedMessage).filter(SharedMessage.message_id == message.id).first():
         raise HTTPException(status_code=404, detail="Shared answer not found")
@@ -229,8 +235,7 @@ def get_shared_answer(
     response_model=ShareLinkResponse,
     summary="Create a public share link for an assistant answer",
     description=(
-        "Marks one authenticated user's assistant message as shareable and "
-        "returns the frontend share URL."
+        "Marks one authenticated user's assistant message as shareable and " "returns the frontend share URL."
     ),
 )
 def create_share_link(
@@ -243,10 +248,14 @@ def create_share_link(
     The message must belong to the authenticated user and must have the
     assistant role. User-authored messages cannot be shared through this route.
     """
-    message = db.query(ChatMessage).filter(
-        ChatMessage.id == message_id,
-        ChatMessage.user_id == user.id,
-    ).first()
+    message = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.id == message_id,
+            ChatMessage.user_id == user.id,
+        )
+        .first()
+    )
 
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -278,10 +287,7 @@ def get_chat_sessions(
 ):
     """Retrieve all chat sessions for the authenticated user."""
     sessions = (
-        db.query(ChatSession)
-        .filter(ChatSession.user_id == user.id)
-        .order_by(ChatSession.created_at.desc())
-        .all()
+        db.query(ChatSession).filter(ChatSession.user_id == user.id).order_by(ChatSession.created_at.desc()).all()
     )
     return sessions
 
@@ -419,16 +425,44 @@ def get_session_history(
     return ChatHistoryResponse(messages=formatted, document_id=None)
 
 
-def generate_answer(question: str, user_id: str, document_id: Optional[str] = None, hf_token: Optional[str] = None, top_k: Optional[int] = None, chat_history: Optional[list] = None):
+def generate_answer(
+    question: str,
+    user_id: str,
+    document_id: Optional[str] = None,
+    hf_token: Optional[str] = None,
+    top_k: Optional[int] = None,
+    chat_history: Optional[list] = None,
+):
     from app.rag.agent import generate_answer as _generate_answer
 
-    return _generate_answer(question=question, user_id=user_id, document_id=document_id, hf_token=hf_token, top_k=top_k, chat_history=chat_history)
+    return _generate_answer(
+        question=question,
+        user_id=user_id,
+        document_id=document_id,
+        hf_token=hf_token,
+        top_k=top_k,
+        chat_history=chat_history,
+    )
 
 
-def generate_answer_stream(question: str, user_id: str, document_id: Optional[str] = None, hf_token: Optional[str] = None, top_k: Optional[int] = None, chat_history: Optional[list] = None):
+def generate_answer_stream(
+    question: str,
+    user_id: str,
+    document_id: Optional[str] = None,
+    hf_token: Optional[str] = None,
+    top_k: Optional[int] = None,
+    chat_history: Optional[list] = None,
+):
     from app.rag.agent import generate_answer_stream as _generate_answer_stream
 
-    return _generate_answer_stream(question=question, user_id=user_id, document_id=document_id, hf_token=hf_token, top_k=top_k, chat_history=chat_history)
+    return _generate_answer_stream(
+        question=question,
+        user_id=user_id,
+        document_id=document_id,
+        hf_token=hf_token,
+        top_k=top_k,
+        chat_history=chat_history,
+    )
 
 
 @router.post(
@@ -457,11 +491,15 @@ def ask_question(
 
         # Validate document exists if specified
         if payload.document_id:
-            doc = db.query(Document).filter(
-                Document.id == payload.document_id,
-                Document.user_id == user.id,
-                Document.is_deleted.is_(False),
-            ).first()
+            doc = (
+                db.query(Document)
+                .filter(
+                    Document.id == payload.document_id,
+                    Document.user_id == user.id,
+                    Document.is_deleted.is_(False),
+                )
+                .first()
+            )
 
             if not doc:
                 raise HTTPException(status_code=404, detail="Document not found")
@@ -501,6 +539,19 @@ def ask_question(
         recent_messages.reverse()
         chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
 
+        # Cache check — return instantly if this (question, document) was answered before
+        cached_answer = get_cached_response(
+            document_id=str(payload.document_id or ""),
+            question=payload.question,
+        )
+        if cached_answer is not None:
+            logger.debug("Returning cached response for question: %s", payload.question[:40])
+            return ChatResponse(
+                answer=cached_answer,
+                sources=[],
+                document_id=payload.document_id,
+            )
+
         result = generate_answer(
             question=payload.question,
             user_id=user.id,
@@ -510,9 +561,18 @@ def ask_question(
             chat_history=chat_history,
         )
 
+        # Store result in cache for future identical questions
+        set_cached_response(
+            document_id=str(payload.document_id or ""),
+            question=payload.question,
+            answer=result["answer"],
+        )
+
         # Save to chat history
         _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
-        _save_message(db, user.id, payload.document_id, "assistant", result["answer"], result["sources"], session_id=session_id)
+        _save_message(
+            db, user.id, payload.document_id, "assistant", result["answer"], result["sources"], session_id=session_id
+        )
 
         return ChatResponse(
             answer=result["answer"],
@@ -546,11 +606,15 @@ def ask_question_stream(
 
     # Validate document
     if payload.document_id:
-        doc = db.query(Document).filter(
-            Document.id == payload.document_id,
-            Document.user_id == user.id,
-            Document.is_deleted.is_(False),
-        ).first()
+        doc = (
+            db.query(Document)
+            .filter(
+                Document.id == payload.document_id,
+                Document.user_id == user.id,
+                Document.is_deleted.is_(False),
+            )
+            .first()
+        )
 
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
@@ -595,6 +659,30 @@ def ask_question_stream(
     # Save user message immediately
     _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
 
+    # Cache check before starting the stream
+    cached_answer = get_cached_response(
+        document_id=str(payload.document_id or ""),
+        question=payload.question,
+    )
+    if cached_answer is not None:
+        logger.debug("Returning cached stream response for question: %s", payload.question[:40])
+
+        async def cached_event_stream():
+            payload_json = json.dumps({"type": "token", "data": cached_answer})
+            yield f"data: {payload_json}\n\n"
+            done_json = json.dumps({"type": "done"})
+            yield f"data: {done_json}\n\n"
+
+        return StreamingResponse(
+            cached_event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     # Stream response
     def event_stream():
         full_answer = ""
@@ -622,11 +710,22 @@ def ask_question_stream(
                 except Exception:
                     pass
 
+            # Cache the full answer for future identical questions
+            if full_answer:
+                set_cached_response(
+                    document_id=str(payload.document_id or ""),
+                    question=payload.question,
+                    answer=full_answer,
+                )
+
             # Save assistant response to history
             from app.database import SessionLocal
+
             save_db = SessionLocal()
             try:
-                _save_message(save_db, user.id, payload.document_id, "assistant", full_answer, sources, session_id=session_id)
+                _save_message(
+                    save_db, user.id, payload.document_id, "assistant", full_answer, sources, session_id=session_id
+                )
             finally:
                 save_db.close()
         finally:
@@ -674,14 +773,16 @@ def get_chat_history(
             except Exception:
                 pass
 
-        formatted.append(ChatMessageResponse(
-            id=str(msg.id),
-            role=msg.role,
-            content=msg.content,
-            sources=sources,
-            feedback=msg.feedback,
-            created_at=msg.created_at,
-        ))
+        formatted.append(
+            ChatMessageResponse(
+                id=str(msg.id),
+                role=msg.role,
+                content=msg.content,
+                sources=sources,
+                feedback=msg.feedback,
+                created_at=msg.created_at,
+            )
+        )
 
     return ChatHistoryResponse(messages=formatted, document_id=document_id)
 
@@ -715,6 +816,7 @@ def export_chat_history(
     if format not in ("md", "txt", "pdf"):
         raise HTTPException(status_code=400, detail="Format must be 'md', 'txt', or 'pdf'")
 
+    # Verify document exists and belongs to user
     doc = db.query(Document).filter(
         Document.id == document_id,
         Document.user_id == resolved_user.id,
@@ -747,6 +849,7 @@ def export_chat_history(
         extension = "txt"
     else:
         from app.routes.chat_export import format_pdf as _format_pdf
+
         content = _format_pdf(doc, messages)
         media_type = "application/pdf"
         extension = "pdf"
@@ -790,7 +893,21 @@ def submit_feedback(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Submit thumbs up/down feedback for an assistant message."""
+    """Submit thumbs up/down feedback for an assistant message.
+
+    Args:
+        message_id: The ID of the chat message to add feedback to.
+        payload: FeedbackRequest containing `feedback` ("up", "down", or null to clear).
+        user: The currently authenticated user.
+        db: SQLAlchemy database session.
+
+    Returns:
+        ChatMessageResponse: The updated message with feedback.
+
+    Raises:
+        HTTPException: 404 if the message does not exist or does not belong to the user.
+        HTTPException: 400 if the message is not an assistant message.
+    """
     msg = db.query(ChatMessage).filter(
         ChatMessage.id == message_id,
         ChatMessage.user_id == user.id,
@@ -892,9 +1009,11 @@ def _format_markdown(doc, messages) -> str:
                     lines.append("**Sources:**")
                     lines.append("")
                     for i, src in enumerate(sources, 1):
-                        lines.append(f"> **[{i}]** {src.get('filename', 'Unknown')}, "
-                                     f"Page {src.get('page', '?')} "
-                                     f"(Confidence: {src.get('confidence', 0)}%)")
+                        lines.append(
+                            f"> **[{i}]** {src.get('filename', 'Unknown')}, "
+                            f"Page {src.get('page', '?')} "
+                            f"(Confidence: {src.get('confidence', 0)}%)"
+                        )
                         text_preview = src.get("text", "")[:150]
                         if text_preview:
                             lines.append(f"> {text_preview}...")
@@ -933,9 +1052,11 @@ def _format_plaintext(doc, messages) -> str:
                     lines.append("")
                     lines.append("Sources:")
                     for i, src in enumerate(sources, 1):
-                        lines.append(f"  [{i}] {src.get('filename', 'Unknown')}, "
-                                     f"Page {src.get('page', '?')} "
-                                     f"(Confidence: {src.get('confidence', 0)}%)")
+                        lines.append(
+                            f"  [{i}] {src.get('filename', 'Unknown')}, "
+                            f"Page {src.get('page', '?')} "
+                            f"(Confidence: {src.get('confidence', 0)}%)"
+                        )
             except Exception:
                 pass
 
