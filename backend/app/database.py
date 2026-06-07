@@ -4,6 +4,7 @@ Uses synchronous SQLAlchemy for simplicity and compatibility.
 """
 import os
 import logging
+from contextlib import contextmanager
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import get_settings
@@ -44,6 +45,24 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+@contextmanager
+def get_db_session():
+    """Sync context manager for background tasks and streaming.
+
+    Creates a new session, commits on success, rolls back on error,
+    and always closes. Safe to use outside FastAPI's DI lifecycle.
+    """
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def _migrate_schema():
