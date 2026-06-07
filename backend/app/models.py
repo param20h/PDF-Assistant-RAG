@@ -260,6 +260,7 @@ class Document(Base):
     last_error_traceback = Column(Text, nullable=True)
     processing_started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+    extracted_urls = Column(Text, nullable=True)
 
     # Relationships
     owner = relationship("User", back_populates="documents")

@@ -117,6 +117,29 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
             logger.warning("Could not generate summary for document %s: %s", document_id, e)
             doc.summary = None
 
+        # ── URL extraction pass (PDF only) ────────────────────────────────
+        ext = filepath.rsplit(".", 1)[-1].lower()
+        if ext == "pdf":
+            try:
+                from app.rag.url_extractor import extract_urls_from_pdf
+                import json
+
+                urls = extract_urls_from_pdf(filepath)
+                doc.extracted_urls = json.dumps(urls) if urls else None
+                db.commit()
+                logger.info(
+                    "Extracted %s URLs from document %s",
+                    len(urls),
+                    document_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "URL extraction failed for document %s: %s",
+                    document_id,
+                    exc,
+                )
+        # ── End URL extraction pass ───────────────────────────────────────
+
         doc.chunk_count = chunk_count
         doc.status = "ready"
         doc.processing_progress = 100
