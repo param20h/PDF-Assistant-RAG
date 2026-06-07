@@ -233,7 +233,7 @@ class Document(Base):
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
-    filename = Column(String(255), nullable=False)
+    filename = Column(String(255), nullable=False, index=True)
     original_name = Column(String(255), nullable=False)
     file_size = Column(Integer, default=0)
     page_count = Column(Integer, default=0)
