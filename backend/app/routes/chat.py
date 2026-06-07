@@ -739,15 +739,12 @@ def ask_question_stream(
                 )
 
             # Save assistant response to history
-            from app.database import SessionLocal
+            from app.database import get_db_session
 
-            save_db = SessionLocal()
-            try:
+            with get_db_session() as save_db:
                 _save_message(
                     save_db, user.id, payload.document_id, "assistant", full_answer, sources, session_id=session_id
                 )
-            finally:
-                save_db.close()
         finally:
             record_query_response_time(time.perf_counter() - started_at)
 
