@@ -252,15 +252,25 @@ def retrieve(
         docs = ensemble_retriever.invoke(search_query)
         for i, doc in enumerate(docs):
             chunk = doc.metadata.copy()
+            # Preserve raw similarity (ChromaDB cosine similarity or BM25 score)
+            chunk["raw_score"] = chunk.get("score")
             # Preserve a mock score based on rank for fallback if reranker fails
             # We use 1.0/(i+1) as a base RRF-like score
             chunk["score"] = 1.0 / (i + 1)
             all_candidates.append(chunk)
 
     if not all_candidates:
+        logger.debug(f"Stage 1 retrieval: 0 candidates found for query '{query}'")
         return []
 
     candidates = _merge_candidates(all_candidates)
+
+    # Log raw scores before reranking/filtering
+    raw_scores_log = [
+        f"[Chunk {c.get('chunk_index')}]: raw_score={c.get('raw_score')}"
+        for c in candidates
+    ]
+    logger.debug(f"Stage 1 candidates count: {len(candidates)}, raw scores: {', '.join(raw_scores_log)}")
 
     # ── Stage 2: Cross-encoder reranking ─────────────
     reranker = get_reranker()
@@ -271,6 +281,12 @@ def retrieve(
             documents=candidates,
             top_k=settings.TOP_K_RERANK
         )
+        # Log reranker scores
+        rerank_scores_log = [
+            f"[Chunk {c.get('chunk_index')}]: rerank_score={c.get('rerank_score')}"
+            for c in top_chunks
+        ]
+        logger.debug(f"Stage 2 reranked chunks count: {len(top_chunks)}, scores: {', '.join(rerank_scores_log)}")
     else:
         # Fall back to hybrid scores (no reranker)
         candidates.sort(key=lambda x: x.get("score", 0), reverse=True)
