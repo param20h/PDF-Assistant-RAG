@@ -36,7 +36,7 @@ def test_chat_ask_document_not_found(client, auth_headers):
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Document not found"
+    assert response.json()["error"]["message"] == "Document not found"
 
 
 def test_chat_ask_document_not_ready(client, auth_headers, pending_document):
@@ -47,7 +47,7 @@ def test_chat_ask_document_not_ready(client, auth_headers, pending_document):
     )
 
     assert response.status_code == 400
-    assert "Document is still pending" in response.json()["detail"]
+    assert "Document is still pending" in response.json()["error"]["message"]
 
 
 def test_chat_ask_blocks_prompt_injection_before_generation(client, auth_headers, ready_document, monkeypatch):
@@ -70,7 +70,7 @@ def test_chat_ask_blocks_prompt_injection_before_generation(client, auth_headers
     )
 
     assert response.status_code == 400
-    assert "prompt-injection" in response.json()["detail"]
+    assert "prompt-injection" in response.json()["error"]["message"]
     assert called is False
 
 
@@ -94,7 +94,7 @@ def test_chat_stream_blocks_prompt_injection_before_generation(client, auth_head
     )
 
     assert response.status_code == 400
-    assert "prompt-injection" in response.json()["detail"]
+    assert "prompt-injection" in response.json()["error"]["message"]
     assert called is False
 
 

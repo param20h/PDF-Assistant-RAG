@@ -48,6 +48,12 @@ async function mockDashboardApis(page: Page, documents: typeof uploadedDocument[
       },
     });
   });
+
+  await page.route("**/api/v1/chat/sessions", async (route) => {
+    await route.fulfill({
+      json: [],
+    });
+  });
 }
 
 test("logs in with email and password", async ({ page }) => {
@@ -61,9 +67,10 @@ test("logs in with email and password", async ({ page }) => {
   await page.goto("/login");
   await page.locator("#login-email").fill(user.email);
   await page.locator("#login-password").fill("password123");
-  await page.locator("#sign-in-btn").click();
-
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await Promise.all([
+    page.waitForURL("/dashboard"),
+    page.locator("#sign-in-btn").click(),
+  ]);
   await expect(page.getByText("No documents yet")).toBeVisible();
 });
 
@@ -142,7 +149,6 @@ test("uploads a PDF document and chats with it", async ({ page }) => {
 
   await page.goto("/dashboard");
   
-  // Upload as a PDF
   await page.locator('input[type="file"]').setInputFiles({
     name: "test.pdf",
     mimeType: "application/pdf",
@@ -184,12 +190,9 @@ test("deletes a document successfully", async ({ page }) => {
   const documentButton = page.getByRole("button", { name: /test\.pdf/ });
   await expect(documentButton).toBeVisible();
   
-  // Handle confirm dialog (must be registered BEFORE click)
   page.on('dialog', dialog => dialog.accept());
 
-  // Delete the document
   await documentButton.hover();
-  // Find the button with Trash2 icon
   await page.locator('button.shrink-0:has(svg.lucide-trash2)').click();
 
   await expect(page.getByText("No documents yet")).toBeVisible();
