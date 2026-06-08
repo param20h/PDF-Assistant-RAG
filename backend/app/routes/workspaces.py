@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth import create_invite_token, get_admin_user
 from app.config import get_settings
 from app.database import get_db
-from app.email_service import send_email
+from app.email_service import send_workspace_invite_email
 from app.models import User, WorkspaceInvitation
 from app.schemas import WorkspaceInviteRequest, WorkspaceInviteResponse
 
@@ -50,20 +50,14 @@ def invite_workspace(
     db.refresh(invitation)
 
     join_link = f"{settings.APP_URL.rstrip('/')}/invite?token={quote(token, safe='')}"
-    subject = f"Invitation to join workspace '{payload.workspace_name}'"
-    body_lines = [
-        f"Hello,",
-        "",
-        f"You have been invited to join the workspace '{payload.workspace_name}'.",
-        "Click the link below to accept the invitation:",
-        join_link,
-    ]
-    if payload.message:
-        body_lines.insert(3, payload.message)
-        body_lines.insert(4, "")
-    body = "\n".join(body_lines)
 
-    send_email(payload.email, subject, body)
+    send_workspace_invite_email(
+        to=payload.email,
+        workspace_name=payload.workspace_name,
+        invite_link=join_link,
+        expires_in_hours=settings.INVITE_TOKEN_EXPIRY_HOURS,
+        personal_message=payload.message or None,
+    )
 
     return WorkspaceInviteResponse(
         email=payload.email,
