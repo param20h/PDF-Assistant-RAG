@@ -1,6 +1,7 @@
 """
 Pydantic schemas for API request/response validation.
 """
+import json
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
@@ -160,6 +161,19 @@ class DocumentResponse(BaseModel):
     uploaded_at: datetime
     summary: Optional[str] = None # New field for document summary
     task_id: Optional[str] = None
+    keywords: Optional[List[str]] = []
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def parse_keywords(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        try:
+            return json.loads(v)
+        except (ValueError, TypeError):
+            return []
 
     class Config:
         from_attributes = True

@@ -16,6 +16,7 @@ import {
 import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
+import DocumentCard from "./DocumentCard";
 import { toast } from "sonner";
 
 interface Props {
@@ -111,7 +112,7 @@ export default function DocumentSidebar({
             setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
             toast.success(`📤 '${file.name}' uploaded successfully! Ingestion started.`);
           }
-          await onDocumentsChange();
+          onDocumentsChange();
         } catch (err) {
           const message = err instanceof Error ? err.message : t("documents.uploadFailed");
           setUploadError(message);
@@ -142,7 +143,7 @@ export default function DocumentSidebar({
     setDeleting(docId);
     try {
       await api.delete(`/api/v1/documents/${docId}`);
-      await onDocumentsChange();
+      onDocumentsChange();
     } catch (err) {
       console.error("Delete failed:", err);
     } finally {
@@ -425,6 +426,7 @@ export default function DocumentSidebar({
                         </Badge>
                       )}
                     </div>
+                    <DocumentCard document={doc} />
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                     {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */} 
