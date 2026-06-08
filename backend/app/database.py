@@ -4,7 +4,8 @@ Uses synchronous SQLAlchemy for simplicity and compatibility.
 """
 import os
 import logging
-from sqlalchemy import create_engine, inspect, text
+from contextlib import contextmanager
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import get_settings
 
@@ -29,6 +30,9 @@ else:
     engine = create_engine(
         settings.DATABASE_URL,
         echo=settings.DEBUG,
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        pool_pre_ping=settings.DATABASE_POOL_PRE_PING,
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -44,6 +48,55 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+@contextmanager
+def get_db_session():
+    """Context manager for background tasks, streaming, and other uses outside FastAPI DI.
+
+    Creates a new session, commits on success, rolls back SQLAlchemy errors
+    (converting them to typed AppException), re-raises non-DB exceptions,
+    and always closes the session.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+    from app.exceptions import AppException
+
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise AppException(
+            "DATABASE_ERROR",
+            "A database error occurred while processing your request.",
+            500,
+            {"error": str(e)[:200]},
+        ) from e
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+# ── Session Lifecycle Logging (DEBUG only) ───────────
+if settings.DEBUG:
+    @event.listens_for(SessionLocal, "after_begin")
+    def _receive_after_begin(session, transaction, connection):
+        logger.debug("Session %s began transaction", id(session))
+
+    @event.listens_for(SessionLocal, "after_commit")
+    def _receive_after_commit(session):
+        logger.debug("Session %s committed", id(session))
+
+    @event.listens_for(SessionLocal, "after_rollback")
+    def _receive_after_rollback(session):
+        logger.debug("Session %s rolled back", id(session))
+
+    @event.listens_for(SessionLocal, "after_close")
+    def _receive_after_close(session):
+        logger.debug("Session %s closed", id(session))
 
 
 def _migrate_schema():
