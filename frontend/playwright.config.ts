@@ -24,8 +24,6 @@ export default defineConfig({
     trace: "on-first-retry",
     // Consistent viewport for snapshot reproducibility
     viewport: { width: 1280, height: 720 },
-    // Disable animations globally for stable screenshots
-    reducedMotion: "reduce",
     colorScheme: "dark",
   },
   webServer: {
