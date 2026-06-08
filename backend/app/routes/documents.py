@@ -106,6 +106,18 @@ def check_document_access(doc: Document, user_id: str, db: Session) -> bool:
 
 ALLOWED_MIME_TYPES = settings.ALLOWED_MIME_TYPES
 
+def _deserialize_doc(doc: Document) -> DocumentResponse:
+    """Return a DocumentResponse with extracted_urls parsed from JSON string."""
+    import json as _json
+    response = DocumentResponse.model_validate(doc)
+    if doc.extracted_urls:
+        try:
+            response = response.model_copy(
+                update={"extracted_urls": _json.loads(doc.extracted_urls)}
+            )
+        except Exception:
+            response = response.model_copy(update={"extracted_urls": []})
+    return response
 
 async def validate_upload(file: UploadFile):
     """Validate an uploaded file and save it to a temporary file.
@@ -541,7 +553,7 @@ def list_documents(
             .scalars().all())
 
     return DocumentListResponse(
-        items=[DocumentResponse.model_validate(d) for d in docs],
+        items=[_deserialize_doc(d) for d in docs],
         total=totalDocuments,
         page=page,
         pages=pages
@@ -573,7 +585,7 @@ def rename_document(
     db.commit()
     db.refresh(doc)
 
-    return DocumentResponse.model_validate(doc)
+    return _deserialize_doc(doc)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -608,7 +620,7 @@ def get_document(
     if not doc or not check_document_access(doc, user.id, db):
         raise NotFoundException("Document")
 
-    return DocumentResponse.model_validate(doc)
+    return _deserialize_doc(doc)
 
 
 @router.get("/{document_id}/pdf")
@@ -780,7 +792,7 @@ def update_chunk_settings(
         task_id = f"local_{uuid.uuid4().hex}"
 
     # Return the updated document record with new chunk settings
-    return DocumentResponse.model_validate(doc).model_copy(update={"task_id": task_id})
+    return _deserialize_doc(doc).model_copy(update={"task_id": task_id})
 
 
 @router.post("/{document_id}/retry", response_model=DocumentResponse)
@@ -840,4 +852,4 @@ def retry_document_processing(
             )
         task_id = f"local_{uuid.uuid4().hex}"
 
-    return DocumentResponse.model_validate(doc).model_copy(update={"task_id": task_id})
+    return _deserialize_doc(doc).model_copy(update={"task_id": task_id})

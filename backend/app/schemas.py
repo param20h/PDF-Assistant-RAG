@@ -196,6 +196,7 @@ class DocumentResponse(BaseModel):
     summary: Optional[str] = None # New field for document summary
     task_id: Optional[str] = None
     workspace_id: Optional[str] = None
+    extracted_urls: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
