@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.rag.retriever import retrieve
 from app.rag.graph_retriever import get_entity_context
 from app.rag.prompts import AGENT_SYSTEM_PROMPT
+from app.exceptions import ExternalServiceException
 from app.rag.security import MALFORMED_OUTPUT_MESSAGE, OutputParserError, parse_agent_output
 from app.rag.tools import PDFSearchTool, MathTool, WebSearchTool
 from app.rag.tracing import trace_function
@@ -170,12 +171,12 @@ def generate_answer(
 
         return {"answer": answer, "sources": sources}
 
+    except (OutputParserError, ValueError) as e:
+        logger.warning(f"Agent output error: {e}")
+        return {"answer": MALFORMED_OUTPUT_MESSAGE, "sources": []}
     except Exception as e:
         logger.error(f"Agent execution error: {e}")
-        return {
-            "answer": f"I encountered an error while processing your request: {str(e)}",
-            "sources": []
-        }
+        raise ExternalServiceException("HuggingFace", str(e)) from e
 
 
 @trace_function(

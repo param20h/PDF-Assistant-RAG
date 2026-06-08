@@ -6,7 +6,8 @@ import uuid
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
+from app.exceptions import ValidationException
 from pypdf import PdfWriter
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -54,11 +55,11 @@ def test_validate_upload_accepts_valid_pdf() -> None:
 
 
 def test_validate_upload_rejects_invalid_file_type() -> None:
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(ValidationException) as exc:
         _run(documents.validate_upload(_upload_file("notes.exe", b"not a document")))
 
     assert exc.value.status_code == 400
-    assert "Only PDF" in exc.value.detail
+    assert "Only PDF" in exc.value.message
 
 
 def test_validate_upload_rejects_oversized_file_and_removes_temp_file(
@@ -77,21 +78,21 @@ def test_validate_upload_rejects_oversized_file_and_removes_temp_file(
     monkeypatch.setattr(documents.settings, "MAX_UPLOAD_SIZE_MB", 0)
     monkeypatch.setattr(documents.tempfile, "NamedTemporaryFile", tracking_tempfile)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(ValidationException) as exc:
         _run(documents.validate_upload(_upload_file("too-large.pdf", _pdf_bytes())))
 
     assert exc.value.status_code == 400
-    assert exc.value.detail == "File too large"
+    assert exc.value.message == "File too large"
     assert created_paths
     assert all(not path.exists() for path in created_paths)
 
 
 def test_validate_upload_rejects_corrupted_pdf() -> None:
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(ValidationException) as exc:
         _run(documents.validate_upload(_upload_file("broken.pdf", b"%PDF-1.4\nnot really a pdf")))
 
     assert exc.value.status_code == 400
-    assert exc.value.detail == "Corrupted or invalid file"
+    assert exc.value.message == "Corrupted or invalid file"
 
 
 @pytest.mark.parametrize(
