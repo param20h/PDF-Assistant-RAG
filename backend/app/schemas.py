@@ -222,6 +222,20 @@ class DocumentListResponse(BaseModel):
     pages: int
 
 
+class BatchUploadResult(BaseModel):
+    filename: str
+    success: bool
+    document: Optional[DocumentResponse] = None
+    error: Optional[str] = None
+
+
+class BatchUploadResponse(BaseModel):
+    results: List[BatchUploadResult]
+    total: int
+    succeeded: int
+    failed: int
+
+
 # Admin
 
 class DiskUsageResponse(BaseModel):

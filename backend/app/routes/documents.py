@@ -9,7 +9,7 @@ import logging
 import asyncio
 import concurrent.futures
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 from pathlib import Path
 import shutil
 import socket
@@ -36,6 +36,8 @@ from app.schemas import (
     DocumentRename,
     ChunkSettings,
     UploadUrl,
+    BatchUploadResponse,
+    BatchUploadResult,
 )
 from app.auth import get_current_user
 from app.config import get_settings
@@ -280,6 +282,116 @@ async def upload_document(
         task_id = f"local_{uuid.uuid4().hex}"
 
     return DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
+
+@router.post("/upload/batch", response_model=BatchUploadResponse, status_code=status.HTTP_202_ACCEPTED)
+async def upload_documents_batch(
+    files: List[UploadFile] = File(...),
+    background_tasks: BackgroundTasks = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload multiple documents simultaneously and enqueue parallel RAG processing.
+
+    Accepts up to 20 files in a single multipart/form-data request. Each file
+    is validated and saved independently; failures for individual files do not
+    abort the entire batch. A Celery task is enqueued for each successfully
+    saved file, allowing parallel ingestion without blocking the API response.
+
+    Args:
+        files: List of uploaded files, provided as multipart/form-data fields.
+        background_tasks: FastAPI BackgroundTasks instance for in-process fallback.
+        user: The currently authenticated user, injected by get_current_user.
+        db: Database session, injected by get_db.
+
+    Returns:
+        BatchUploadResponse: Per-file results with succeeded/failed counts.
+
+    Raises:
+        HTTPException 400: If no files are provided or batch exceeds 20 files.
+    """
+    if not files:
+        raise ValidationException("No files provided")
+
+    MAX_BATCH_SIZE = 20
+    if len(files) > MAX_BATCH_SIZE:
+        raise ValidationException(f"Batch upload limited to {MAX_BATCH_SIZE} files at once")
+
+    user_dir = os.path.join(settings.UPLOAD_DIR, user.id)
+    os.makedirs(user_dir, exist_ok=True)
+
+    results: List[BatchUploadResult] = []
+
+    for file in files:
+        filename = file.filename or "unknown"
+        try:
+            # Validate extension before paying the disk I/O cost
+            if not filename:
+                raise ValidationException("No filename provided")
+
+            ext = filename.rsplit(".", 1)[-1].lower()
+            if ext not in settings.ALLOWED_EXTENSIONS:
+                raise ValidationException(
+                    f"File type '.{ext}' not supported. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}"
+                )
+
+            temp_path = await validate_upload(file)
+
+            stored_filename = f"{uuid.uuid4().hex}.{ext}"
+            filepath = os.path.join(user_dir, stored_filename)
+            shutil.move(temp_path, filepath)
+
+            file_size = Path(filepath).stat().st_size
+
+            document = Document(
+                user_id=user.id,
+                filename=stored_filename,
+                original_name=filename,
+                file_size=file_size,
+                status="pending",
+            )
+            db.add(document)
+            db.commit()
+            db.refresh(document)
+
+            task_id = None
+            try:
+                task = process_document.delay(
+                    document_id=document.id,
+                    filepath=filepath,
+                    original_name=filename,
+                    user_id=user.id,
+                )
+                task_id = task.id
+            except Exception as e:
+                logger.warning(f"Celery queue failed for {filename}, falling back: {e}")
+                if background_tasks:
+                    background_tasks.add_task(
+                        ingest_document,
+                        document_id=document.id,
+                        filepath=filepath,
+                        original_name=filename,
+                        user_id=user.id,
+                    )
+                task_id = f"local_{uuid.uuid4().hex}"
+
+            doc_response = DocumentResponse.model_validate(document).model_copy(
+                update={"task_id": task_id}
+            )
+            results.append(BatchUploadResult(filename=filename, success=True, document=doc_response))
+
+        except Exception as exc:
+            logger.warning(f"Batch upload: file '{filename}' failed — {exc}")
+            results.append(BatchUploadResult(filename=filename, success=False, error=str(exc)))
+
+    succeeded = sum(1 for r in results if r.success)
+    return BatchUploadResponse(
+        results=results,
+        total=len(results),
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+    )
+
 
 @router.post("/urlupload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document_url(
