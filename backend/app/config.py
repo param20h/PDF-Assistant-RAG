@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     # ── Database ─────────────────────────────────────────
     DATABASE_URL: str = "sqlite:///./data/app.db"
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_PRE_PING: bool = True
 
     # ── Auth ─────────────────────────────────────────────
     JWT_ALGORITHM: str = "HS256"
@@ -50,6 +53,12 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     CELERY_TASK_TRACK_STARTED: bool = True
 
+    # ── Document Processing ──────────────────────────────
+    DOC_PROCESSING_TIMEOUT_MINUTES: int = 30
+    DOC_PROCESSING_MAX_RETRIES: int = 3
+    DOC_PROCESSING_RETRY_DELAY_SECONDS: int = 30
+    DOC_CLEANUP_MAX_AGE_DAYS: int = 90
+
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
@@ -68,8 +77,8 @@ class Settings(BaseSettings):
     # ── RAG Pipeline ─────────────────────────────────────
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
-    TOP_K_RETRIEVAL: int = 10
-    TOP_K_RERANK: int = 5
+    TOP_K_RETRIEVAL: int = 20 # Fetch more candidates for reranking
+    TOP_K_RERANK: int = 8 # Final number of chunks to return after reranking
 
     # ── Knowledge Graph (GraphRAG) ───────────────────────
     GRAPH_PERSIST_DIR: str = "./data/graphs"
@@ -108,7 +117,7 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = "pdf-assistant-rag"
 
     # ── Reranker ─────────────────────────────────────────
-    RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3" # Lightweight 384-dim model fine-tuned for relevance ranking
     # ── Vision / Image captioning ─────────────────────
     VISION_PROVIDER: str | None = None  # e.g. 'openai'
     VISION_MODEL: str | None = None

@@ -112,7 +112,7 @@ export default function DocumentSidebar({
             setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
             toast.success(`📤 '${file.name}' uploaded successfully! Ingestion started.`);
           }
-          onDocumentsChange();
+          await onDocumentsChange();
         } catch (err) {
           const message = err instanceof Error ? err.message : t("documents.uploadFailed");
           setUploadError(message);
@@ -143,7 +143,7 @@ export default function DocumentSidebar({
     setDeleting(docId);
     try {
       await api.delete(`/api/v1/documents/${docId}`);
-      onDocumentsChange();
+      await onDocumentsChange();
     } catch (err) {
       console.error("Delete failed:", err);
     } finally {

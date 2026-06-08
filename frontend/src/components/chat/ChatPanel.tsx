@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "sonner";
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
@@ -73,6 +74,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const fetchSessionHistory = useChatStore((state) => state.fetchSessionHistory);
   
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const MAX_CHARACTERS = 2000;
   const [isRecording, setIsRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   
@@ -184,78 +186,144 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     setIsTyping(true);
 
     try {
-      const stream = api.streamPost("/api/v1/chat/ask/stream", {
-        question,
-        document_id: activeDoc?.id || null,
-        session_id: activeSessionId,
+      // Try WebSocket first for real-time agentic thought streaming
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const base = API_BASE || window.location.origin;
+      const wsScheme = base.startsWith("https") ? "wss" : base.startsWith("http") ? "ws" : "wss";
+      const host = base.replace(/^https?:/, "");
+      const wsUrl = `${wsScheme}:${host}/api/v1/chat/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+
+      const ws = new WebSocket(wsUrl);
+
+      const wsDone = new Promise<void>((resolve, reject) => {
+        ws.onopen = () => {
+          // Send initial payload
+          ws.send(JSON.stringify({ question, document_id: activeDoc?.id || null, session_id: activeSessionId }));
+        };
+
+        // If WS doesn't open within 800ms, treat as failure and fallback
+        const connectTimeout = setTimeout(() => {
+          try {
+            ws.close();
+          } catch (e) {
+            // ignore
+          }
+          reject(new Error("WebSocket connection timeout"));
+        }, 800);
+
+        ws.onmessage = (ev) => {
+          clearTimeout(connectTimeout);
+          try {
+            const event = JSON.parse(ev.data);
+            if (event.type === "token") {
+              if (!assistantCreated) {
+                assistantCreated = true;
+                setIsTyping(false);
+
+                const assistantMsg: ChatMsg = {
+                  id: assistantId,
+                  role: "assistant",
+                  content: event.data as string,
+                  sources: [],
+                  isStreaming: true,
+                };
+
+                setMessages((prev) => [...prev, assistantMsg]);
+              } else {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
+                );
+              }
+            } else if (event.type === "sources") {
+              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, sources: event.data as SourceChunk[] } : m)));
+            } else if (event.type === "thought") {
+              // Append thoughts as a temporary assistant note (optional UI handling)
+              // For simplicity, add to assistant message content in brackets
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + `\n[thought] ${event.data}` } : m))
+              );
+            } else if (event.type === "error") {
+              setIsTyping(false);
+              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m)));
+              ws.close();
+              reject(new Error(String(event.data)));
+            } else if (event.type === "done") {
+              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)));
+              ws.close();
+              resolve();
+            }
+          } catch (err) {
+            // ignore malformed messages
+          }
+        };
+
+        ws.onerror = (ev) => {
+          clearTimeout(connectTimeout);
+          reject(new Error("WebSocket error"));
+        };
+
+        ws.onclose = () => {
+          resolve();
+        };
       });
 
-      for await (const event of stream) {
-        if (event.type === "token") {
-          // Create assistant message only when first token arrives
-          if (!assistantCreated) {
-            assistantCreated = true;
-            setIsTyping(false);
-
-            const assistantMsg: ChatMsg = {
-              id: assistantId,
-              role: "assistant",
-              content: event.data as string,
-              sources: [],
-              isStreaming: true,
-            };
-
-            setMessages((prev) => [...prev, assistantMsg]);
-          } else {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, content: m.content + (event.data as string) }
-                  : m
-              )
-            );
-          }
-        } else if (event.type === "sources") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, sources: event.data as SourceChunk[] }
-                : m
-            )
-          );
-        } else if (event.type === "error") {
-          setIsTyping(false);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: `Error: ${event.data}`, isStreaming: false }
-                : m
-            )
-          );
-        } else if (event.type === "done") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, isStreaming: false } : m
-            )
-          );
-        }
-      }
+      await wsDone;
     } catch (err) {
-      setIsTyping(false);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-            ? {
-                ...m,
-                content: t("chat.fallbackError", {
-                  message: err instanceof Error ? err.message : "Unknown error",
-                }),
-                isStreaming: false,
-              }
-            : m
-        )
-      );
+      // Fallback to existing SSE stream if WebSocket fails
+      try {
+        const stream = api.streamPost("/api/v1/chat/ask/stream", {
+          question,
+          document_id: activeDoc?.id || null,
+          session_id: activeSessionId,
+        });
+
+        for await (const event of stream) {
+          if (event.type === "token") {
+            if (!assistantCreated) {
+              assistantCreated = true;
+              setIsTyping(false);
+
+              const assistantMsg: ChatMsg = {
+                id: assistantId,
+                role: "assistant",
+                content: event.data as string,
+                sources: [],
+                isStreaming: true,
+              };
+
+              setMessages((prev) => [...prev, assistantMsg]);
+            } else {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
+              );
+            }
+          } else if (event.type === "sources") {
+            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, sources: event.data as SourceChunk[] } : m)));
+          } else if (event.type === "error") {
+            setIsTyping(false);
+            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m)));
+          } else if (event.type === "done") {
+            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)));
+          }
+        }
+      } catch (err2) {
+        setIsTyping(false);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: t("chat.fallbackError", {
+                    message: err2 instanceof Error ? err2.message : "Unknown error",
+                  }),
+                  isStreaming: false,
+                }
+              : m
+          )
+        );
+      }
     } finally {
+
       setStreaming(false);
       setIsTyping(false);
     }
@@ -266,8 +334,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     try {
       await api.delete(`/api/v1/chat/history/${activeDoc.id}`);
       setMessages([]);
+      toast.info("Chat history cleared");
     } catch {
-        //silent fail
+      // silent fail preserved; no additional toast for this scenario
     }
   };
 
@@ -550,6 +619,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               <Textarea
                 ref={textareaRef}
                 id="chat-input"
+                maxLength={MAX_CHARACTERS}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}

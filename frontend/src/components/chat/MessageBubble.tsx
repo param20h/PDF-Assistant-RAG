@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useSyncExternalStore } from "react";
 import { formatDistanceToNow } from "date-fns";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -10,6 +10,11 @@ import { api } from "@/lib/api";
 import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/store/chat-store";
+import { useSettingsStore } from "@/store/settings-store";
+
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 interface Props {
   message: ChatMsg;
@@ -72,6 +77,16 @@ export default function MessageBubble({ message }: Props) {
 
   const [feedbackState, setFeedbackState] = useState<"up" | "down" | null>(message.feedback ?? null);
   const setMessages = useChatStore((s) => s.setMessages);
+
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const fontSize = useSettingsStore((s) => s.fontSize);
+
+  const activeFontSize = mounted ? fontSize : "medium";
+  const fontSizeClass = {
+    small: "text-xs",
+    medium: "text-sm",
+    large: "text-base",
+  }[activeFontSize];
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -169,7 +184,7 @@ export default function MessageBubble({ message }: Props) {
         }`}
       >
         {isUser ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          <p className={`leading-relaxed whitespace-pre-wrap ${fontSizeClass}`}>{message.content}</p>
         ) : (
           <>
             {message.content && (
@@ -272,7 +287,7 @@ export default function MessageBubble({ message }: Props) {
               </>
             )}
 
-            <div className={`prose-chat text-sm ${message.content ? "pr-20" : ""}`}>
+            <div className={`prose-chat ${fontSizeClass} ${message.content ? "pr-20" : ""}`}>
               {message.content ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
