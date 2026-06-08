@@ -8,12 +8,25 @@ export default defineConfig({
   timeout: 30_000,
   expect: {
     timeout: 5_000,
+    toHaveScreenshot: {
+      // Allow up to 2% of pixels to differ before failing
+      maxDiffPixelRatio: 0.02,
+      // Per-pixel colour difference threshold (0–1)
+      threshold: 0.2,
+      // Animations must be disabled before snapshotting
+      animations: "disabled",
+    },
   },
   fullyParallel: true,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   use: {
     baseURL,
     trace: "on-first-retry",
+    // Consistent viewport for snapshot reproducibility
+    viewport: { width: 1280, height: 720 },
+    // Disable animations globally for stable screenshots
+    reducedMotion: "reduce",
+    colorScheme: "dark",
   },
   webServer: {
     command: `npm run dev -- --hostname 127.0.0.1 --port ${port}`,
@@ -27,4 +40,7 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
+  // Store snapshots next to the spec files
+  snapshotPathTemplate:
+    "{testDir}/{testFilePath}-snapshots/{arg}-{projectName}{ext}",
 });
