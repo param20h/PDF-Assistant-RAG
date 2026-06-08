@@ -27,6 +27,7 @@ from app.observability import setup_prometheus_metrics
 from app.rag.vectorstore import get_chroma_client
 from app.scheduler import start_scheduler, stop_scheduler
 from app.routes.profile import router as profile_router
+from app.routes.health import router as health_router
 
 # Configure logging
 logging.basicConfig(
@@ -250,6 +251,7 @@ app.include_router(chat_router, prefix="/api/v1")
 app.include_router(github_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(workspaces_router, prefix="/api/v1")
+app.include_router(health_router, prefix="/api/v1")
 
 setup_prometheus_metrics(app)
 
