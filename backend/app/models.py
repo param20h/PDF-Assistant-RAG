@@ -264,7 +264,7 @@ class Document(Base):
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
-    filename = Column(String(255), nullable=False)
+    filename = Column(String(255), nullable=False, index=True)
     original_name = Column(String(255), nullable=False)
     file_size = Column(Integer, default=0)
     page_count = Column(Integer, default=0)
@@ -286,6 +286,13 @@ class Document(Base):
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
     workspace_id = Column(String(36), ForeignKey("workspaces.id"), nullable=True, index=True)
+    processing_progress = Column(Integer, default=0)
+    processing_stage = Column(String(20), default="queued")
+    retry_count = Column(Integer, default=0)
+    last_error_traceback = Column(Text, nullable=True)
+    processing_started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    extracted_urls = Column(Text, nullable=True)
 
     # Relationships
     owner = relationship("User", back_populates="documents")
