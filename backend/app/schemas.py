@@ -220,6 +220,8 @@ class DocumentListResponse(BaseModel):
     total: int
     page: int
     pages: int
+    total_pages: int
+    limit: int
 
 
 # Admin
