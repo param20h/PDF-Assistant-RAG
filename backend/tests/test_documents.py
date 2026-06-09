@@ -182,3 +182,90 @@ def test_delete_document_soft_deletes_and_hides_document(client, auth_headers, r
 
     get_response = client.get(f"/api/v1/documents/{doc_id}", headers=auth_headers)
     assert get_response.status_code == 404
+
+
+def test_list_trash_documents(client, auth_headers, ready_document, db_session):
+    # Set document as soft-deleted
+    from datetime import datetime, timezone
+    ready_document.is_deleted = True
+    ready_document.deleted_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    # Get trash
+    response = client.get("/api/v1/documents/trash", headers=auth_headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == ready_document.id
+    assert payload[0]["original_name"] == "ready.txt"
+
+
+def test_restore_document(client, auth_headers, ready_document, db_session):
+    from datetime import datetime, timezone
+    ready_document.is_deleted = True
+    ready_document.deleted_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    # Verify not in active list
+    list_response = client.get("/api/v1/documents/", headers=auth_headers)
+    assert list_response.json()["total"] == 0
+
+    # Restore
+    response = client.post(f"/api/v1/documents/{ready_document.id}/restore", headers=auth_headers)
+    assert response.status_code == 200
+
+    db_session.refresh(ready_document)
+    assert ready_document.is_deleted is False
+    assert ready_document.deleted_at is None
+
+    # Verify back in active list
+    list_response = client.get("/api/v1/documents/", headers=auth_headers)
+    assert list_response.json()["total"] == 1
+
+
+def test_purge_document(client, auth_headers, ready_document, db_session, monkeypatch):
+    from app.rag import vectorstore
+    import app.routes.documents
+    import os
+
+    chunk_deleted = []
+    graph_deleted = []
+    file_deleted = []
+
+    monkeypatch.setattr(
+        vectorstore,
+        "delete_document_chunks",
+        lambda document_id, user_id: chunk_deleted.append(document_id)
+    )
+    monkeypatch.setattr(
+        app.routes.documents,
+        "delete_graph",
+        lambda user_id, document_id: graph_deleted.append(document_id)
+    )
+    monkeypatch.setattr(
+        os.path,
+        "exists",
+        lambda path: True
+    )
+    monkeypatch.setattr(
+        os,
+        "remove",
+        lambda path: file_deleted.append(path)
+    )
+
+    doc_id = ready_document.id
+
+    # Purge document
+    response = client.delete(f"/api/v1/documents/{doc_id}/purge", headers=auth_headers)
+    assert response.status_code == 200
+
+    # Verify mocks were called
+    assert doc_id in chunk_deleted
+    assert doc_id in graph_deleted
+    assert len(file_deleted) == 1
+
+    # Verify DB record is gone
+    refreshed = db_session.get(Document, doc_id)
+    assert refreshed is None
+
+

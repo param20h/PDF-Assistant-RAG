@@ -82,6 +82,13 @@ def cleanup_old_deleted_documents():
             except Exception as e:
                 logger.warning("Error deleting file for %s: %s", doc.id, e)
 
+            try:
+                from app.rag.graph_builder import delete_graph
+
+                delete_graph(user_id=doc.user_id, document_id=doc.id)
+            except Exception as e:
+                logger.warning("Error deleting graph for %s: %s", doc.id, e)
+
             db.delete(doc)
 
         if old:

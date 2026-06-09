@@ -9,7 +9,7 @@ import logging
 import asyncio
 import concurrent.futures
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 from pathlib import Path
 import shutil
 import socket
@@ -53,7 +53,8 @@ except ImportError as exc:
 else:
     CRAWL4AI_IMPORT_ERROR = None
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
+from app.rag.graph_builder import delete_graph
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
@@ -586,6 +587,113 @@ def rename_document(
     db.refresh(doc)
 
     return _deserialize_doc(doc)
+
+
+@router.get("/trash", response_model=List[DocumentResponse])
+def list_trash_documents(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    List all soft-deleted documents (is_deleted == True) belonging to the user or their active workspaces.
+    """
+    memberships = db.query(WorkspaceMembership).filter(
+        WorkspaceMembership.user_id == user.id
+    ).all()
+    workspace_ids = [m.workspace_id for m in memberships]
+
+    if workspace_ids:
+        filters = [
+            Document.is_deleted.is_(True),
+            or_(
+                Document.user_id == user.id,
+                Document.workspace_id.in_(workspace_ids)
+            )
+        ]
+    else:
+        filters = [
+            Document.is_deleted.is_(True),
+            Document.user_id == user.id
+        ]
+
+    docs = (
+        db.query(Document)
+        .filter(*filters)
+        .order_by(Document.deleted_at.desc())
+        .all()
+    )
+
+    return [_deserialize_doc(d) for d in docs]
+
+
+@router.post("/{document_id}/restore", response_model=DocumentResponse)
+def restore_document(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Restore a soft-deleted document.
+    """
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.is_deleted.is_(True),
+    ).first()
+
+    if not doc or not check_document_access(doc, user.id, db):
+        raise NotFoundException("Document")
+
+    doc.is_deleted = False
+    doc.deleted_at = None
+    db.commit()
+    db.refresh(doc)
+
+    return _deserialize_doc(doc)
+
+
+@router.delete("/{document_id}/purge")
+def purge_document(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Immediately and permanently hard-deletes the document, including its database record,
+    physical uploads, vector chunks, and knowledge graph files.
+    """
+    doc = db.query(Document).filter(
+        Document.id == document_id
+    ).first()
+
+    if not doc or not check_document_access(doc, user.id, db):
+        raise NotFoundException("Document")
+
+    # 1. Delete vector chunks
+    try:
+        from app.rag.vectorstore import delete_document_chunks
+        delete_document_chunks(document_id=doc.id, user_id=doc.user_id)
+    except Exception as e:
+        logger.warning(f"Error cleaning vectors for {doc.id}: {e}")
+
+    # 2. Delete knowledge graph
+    try:
+        delete_graph(user_id=doc.user_id, document_id=doc.id)
+    except Exception as e:
+        logger.warning(f"Error deleting graph for {doc.id}: {e}")
+
+    # 3. Delete physical upload file
+    try:
+        filepath = os.path.join(settings.UPLOAD_DIR, str(doc.user_id), doc.filename)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+    except Exception as e:
+        logger.warning(f"Error deleting file for {doc.id}: {e}")
+
+    # 4. Delete document record
+    db.delete(doc)
+    db.commit()
+
+    return {"message": f"Document '{doc.original_name}' permanently purged successfully"}
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)

@@ -16,6 +16,7 @@ import {
 import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
+import TrashModal from "./TrashModal";
 import { toast } from "sonner";
 import { useWorkspaceStore } from "@/store/workspace-store";
 
@@ -72,6 +73,7 @@ export default function DocumentSidebar({
   const [driveLoading, setDriveLoading] = useState(true);
   const [driveConnecting, setDriveConnecting] = useState(false);
   const [driveError, setDriveError] = useState("");
+  const [trashOpen, setTrashOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -337,10 +339,22 @@ export default function DocumentSidebar({
 
       {/* ── Documents List ──────────────────────────── */}
       <div className="px-3 pt-3 pb-1">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          {loading
-            ? t("documents.documentsTitle", { count: "..." })
-            : t("documents.documentsTitle", { count: documents.length })}
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center justify-between">
+          <span>
+            {loading
+              ? t("documents.documentsTitle", { count: "..." })
+              : t("documents.documentsTitle", { count: documents.length })}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 text-muted-foreground hover:text-destructive shrink-0 cursor-pointer"
+            onClick={() => setTrashOpen(true)}
+            aria-label="Open Recycle Bin"
+            title="Open Recycle Bin"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
         </h3>
       </div>
 
@@ -480,6 +494,13 @@ export default function DocumentSidebar({
             onDocumentsChange(); // Refresh the document list to reflect any changes
             setSettingsDoc(null); // Close the settings modal after saving
           }}
+        />
+      )}
+      {trashOpen && (
+        <TrashModal
+          open={trashOpen}
+          onOpenChange={setTrashOpen}
+          onDocumentsChange={onDocumentsChange}
         />
       )}
     </div>
