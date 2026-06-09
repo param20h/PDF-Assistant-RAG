@@ -2,7 +2,10 @@ name: Prettier Formatting Check
 
 on:
   pull_request:
-    branches: [ "dev" ] 
+    branches: [ "dev" ]
+
+permissions:
+  contents: read
 
 jobs:
   prettier-validation:
@@ -17,6 +20,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Install Dependencies
+        working-directory: ./frontend
+        run: npm ci
 
       - name: Run Prettier Check
         working-directory: ./frontend
