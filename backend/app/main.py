@@ -77,6 +77,13 @@ async def document_cleanup_job():
                     except Exception as e:
                         logger.warning(f"Auto-cleanup: Error deleting vectors for document {doc.id}: {e}")
                     
+                    # Delete knowledge graph
+                    try:
+                        from app.rag.graph_builder import delete_graph
+                        delete_graph(user_id=doc.user_id, document_id=doc.id)
+                    except Exception as e:
+                        logger.warning(f"Auto-cleanup: Error deleting graph for document {doc.id}: {e}")
+                    
                     # Delete database record
                     db.delete(doc)
                 

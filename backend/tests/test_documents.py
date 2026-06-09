@@ -1,3 +1,4 @@
+import pytest
 import types
 
 from app.models import Document
@@ -267,5 +268,149 @@ def test_purge_document(client, auth_headers, ready_document, db_session, monkey
     # Verify DB record is gone
     refreshed = db_session.get(Document, doc_id)
     assert refreshed is None
+
+
+def test_cleanup_old_deleted_documents_purges_graph(db_session, user, monkeypatch):
+    from app.models import Document
+    from app.services.cleanup import cleanup_old_deleted_documents
+    from datetime import datetime, timedelta, timezone
+    from app.rag import vectorstore, graph_builder
+    import os
+
+    # Create document soft-deleted more than 30 days ago
+    from app.config import get_settings
+    settings = get_settings()
+    max_age_days = settings.DOC_CLEANUP_MAX_AGE_DAYS
+    deleted_time = datetime.now(timezone.utc) - timedelta(days=max_age_days + 1)
+
+    doc = Document(
+        id="cleanup-test-doc-id",
+        user_id=user.id,
+        filename="cleanup_test.pdf",
+        original_name="cleanup_test.pdf",
+        is_deleted=True,
+        deleted_at=deleted_time,
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    chunk_deleted = []
+    graph_deleted = []
+    file_deleted = []
+
+    monkeypatch.setattr("app.database.SessionLocal", lambda: db_session)
+    # Mock database session factory in cleanup
+    class MockDbSessionContext:
+        def __init__(self, session):
+            self.session = session
+        def __enter__(self):
+            return self.session
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            if not exc_type:
+                self.session.commit()
+    monkeypatch.setattr("app.services.cleanup.get_db_session", lambda: MockDbSessionContext(db_session))
+
+    monkeypatch.setattr(
+        vectorstore,
+        "delete_document_chunks",
+        lambda document_id, user_id: chunk_deleted.append(document_id)
+    )
+    monkeypatch.setattr(
+        graph_builder,
+        "delete_graph",
+        lambda user_id, document_id: graph_deleted.append(document_id)
+    )
+    monkeypatch.setattr(
+        os.path,
+        "exists",
+        lambda path: True
+    )
+    monkeypatch.setattr(
+        os,
+        "remove",
+        lambda path: file_deleted.append(path)
+    )
+
+    cleanup_old_deleted_documents()
+
+    assert "cleanup-test-doc-id" in chunk_deleted
+    assert "cleanup-test-doc-id" in graph_deleted
+    assert len(file_deleted) == 1
+
+    # Verify db record is gone
+    refreshed = db_session.get(Document, "cleanup-test-doc-id")
+    assert refreshed is None
+
+
+@pytest.mark.anyio
+async def test_document_cleanup_job_purges_graph(db_session, user, monkeypatch):
+    from app.models import Document
+    from app.main import document_cleanup_job
+    from datetime import datetime, timedelta, timezone
+    from app.rag import vectorstore, graph_builder
+    import os
+
+    # Create document inactive for more than 30 days
+    cutoff_time = datetime.now(timezone.utc) - timedelta(days=31)
+
+    doc = Document(
+        id="inactive-test-doc-id",
+        user_id=user.id,
+        filename="inactive_test.pdf",
+        original_name="inactive_test.pdf",
+        is_deleted=False,
+        last_accessed_at=cutoff_time,
+        uploaded_at=cutoff_time,
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    chunk_deleted = []
+    graph_deleted = []
+    file_deleted = []
+
+    monkeypatch.setattr("app.database.SessionLocal", lambda: db_session)
+    
+    # Mock asyncio.sleep to raise exception to break infinite loop
+    import asyncio
+    async def fake_sleep(seconds):
+        raise asyncio.CancelledError()
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    monkeypatch.setattr(
+        vectorstore,
+        "delete_document_chunks",
+        lambda document_id, user_id: chunk_deleted.append(document_id)
+    )
+    monkeypatch.setattr(
+        graph_builder,
+        "delete_graph",
+        lambda user_id, document_id: graph_deleted.append(document_id)
+    )
+    monkeypatch.setattr(
+        os.path,
+        "exists",
+        lambda path: True
+    )
+    monkeypatch.setattr(
+        os,
+        "remove",
+        lambda path: file_deleted.append(path)
+    )
+
+    try:
+        await document_cleanup_job()
+    except asyncio.CancelledError:
+        pass
+
+    assert "inactive-test-doc-id" in chunk_deleted
+    assert "inactive-test-doc-id" in graph_deleted
+    assert len(file_deleted) == 1
+
+    # Verify db record is gone
+    refreshed = db_session.get(Document, "inactive-test-doc-id")
+    assert refreshed is None
+
+
 
 
