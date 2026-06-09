@@ -137,3 +137,48 @@ def test_retrieve_excludes_soft_deleted_documents(db_session, user, monkeypatch)
     # Should only query for the active document ID
     assert captured_doc_ids == ["active-doc-id"]
 
+
+def test_retrieve_with_document_ids_list_and_rbac_checks(db_session, user, monkeypatch):
+    from app.models import Document
+    from app.rag import retriever
+
+    # Create two documents: one owned by user (should be allowed), one owned by someone else (should be excluded)
+    owned_doc = Document(
+        id="owned-doc-id",
+        user_id=user.id,
+        filename="owned.pdf",
+        original_name="owned.pdf",
+        is_deleted=False,
+    )
+    other_doc = Document(
+        id="other-doc-id",
+        user_id="another-user-id",
+        filename="other.pdf",
+        original_name="other.pdf",
+        is_deleted=False,
+    )
+    db_session.add(owned_doc)
+    db_session.add(other_doc)
+    db_session.commit()
+
+    monkeypatch.setattr("app.database.SessionLocal", lambda: db_session)
+    monkeypatch.setattr(retriever, "transform_query", lambda _query: ["query"])
+    monkeypatch.setattr(retriever, "embed_query", lambda query: "embedding")
+    monkeypatch.setattr(retriever, "get_reranker", lambda: None)
+
+    captured_doc_ids = []
+    def fake_query_chunks(query_embedding, user_id, document_id=None, document_ids=None, top_k=10):
+        nonlocal captured_doc_ids
+        captured_doc_ids = document_ids
+        return []
+
+    monkeypatch.setattr(retriever, "query_chunks", fake_query_chunks)
+    monkeypatch.setattr(retriever.CustomBM25Retriever, "_get_relevant_documents", lambda *args, **kwargs: [])
+
+    # Retrieve with both document IDs
+    retriever.retrieve("test query", user_id=user.id, document_ids=["owned-doc-id", "other-doc-id"])
+
+    # Should only query for the owned document ID (excluding other_doc because of RBAC check)
+    assert captured_doc_ids == ["owned-doc-id"]
+
+

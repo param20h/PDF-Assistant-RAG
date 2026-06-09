@@ -211,9 +211,11 @@ def _merge_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 @trace_function(
     "retrieve",
-    metadata_factory=lambda query, user_id, document_id=None, top_k=None: {
+    metadata_factory=lambda query, user_id, document_id=None, top_k=None, **kwargs: {
         "user_id": user_id,
         "document_id": document_id,
+        "document_ids": kwargs.get("document_ids"),
+        "workspace": kwargs.get("workspace"),
         "embedding_model": settings.EMBEDDING_MODEL,
         "reranker_model": settings.RERANKER_MODEL,
         "top_k_retrieval": settings.TOP_K_RETRIEVAL,
@@ -224,6 +226,7 @@ def retrieve(
     query: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     workspace: Optional[str] = None,
     top_k: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
@@ -264,6 +267,32 @@ def retrieve(
             if not has_access:
                 return []
             active_doc_ids = [str(doc.id)]
+        elif document_ids:
+            # Filter by a list of document IDs and verify access for each
+            filters = [
+                Document.id.in_(document_ids),
+                Document.is_deleted.is_(False),
+            ]
+            docs = db.query(Document).filter(*filters).all()
+            
+            accessible_docs = []
+            for doc in docs:
+                has_access = False
+                if str(doc.user_id) == str(user_id):
+                    has_access = True
+                elif doc.workspace_id:
+                    membership = db.query(WorkspaceMembership).filter(
+                        WorkspaceMembership.workspace_id == doc.workspace_id,
+                        WorkspaceMembership.user_id == user_id,
+                    ).first()
+                    if membership:
+                        has_access = True
+                if has_access:
+                    accessible_docs.append(doc)
+            
+            if not accessible_docs:
+                return []
+            active_doc_ids = [str(doc.id) for doc in accessible_docs]
         else:
             # Filter documents by workspace
             filters = [Document.is_deleted.is_(False)]

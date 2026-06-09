@@ -56,10 +56,11 @@ interface CitationTarget {
 
 interface Props {
   activeDoc: DocInfo | null;
+  selectedDocIds?: string[];
   onCitationClick: (target: CitationTarget) => void;
 }
 
-export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
+export default function ChatPanel({ activeDoc, selectedDocIds = [], onCitationClick }: Props) {
   const { t, i18n } = useTranslation();
   const workspace = useWorkspaceStore((s) => s.workspace);
   const messages = useChatStore((state) => state.messages);
@@ -200,7 +201,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       const wsDone = new Promise<void>((resolve, reject) => {
         ws.onopen = () => {
           // Send initial payload
-          ws.send(JSON.stringify({ question, document_id: activeDoc?.id || null, session_id: activeSessionId, workspace }));
+          ws.send(JSON.stringify({
+            question,
+            document_id: selectedDocIds.length > 0 ? null : (activeDoc?.id || null),
+            document_ids: selectedDocIds.length > 0 ? selectedDocIds : null,
+            session_id: activeSessionId,
+            workspace
+          }));
         };
 
         // If WS doesn't open within 800ms, treat as failure and fallback
@@ -275,7 +282,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       try {
         const stream = api.streamPost("/api/v1/chat/ask/stream", {
           question,
-          document_id: activeDoc?.id || null,
+          document_id: selectedDocIds.length > 0 ? null : (activeDoc?.id || null),
+          document_ids: selectedDocIds.length > 0 ? selectedDocIds : null,
           session_id: activeSessionId,
           workspace,
         });
@@ -547,10 +555,16 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               <MessageSquare className="w-8 h-8 text-primary/60" />
             </div>
             <h3 className="text-lg font-semibold mb-1">
-              {activeDoc ? t("chat.askAboutDocument") : t("chat.selectDocument")}
+              {selectedDocIds.length > 0
+                ? `Chatting with ${selectedDocIds.length} selected ${selectedDocIds.length === 1 ? "file" : "files"}`
+                : activeDoc
+                ? t("chat.askAboutDocument")
+                : t("chat.selectDocument")}
             </h3>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
-              {activeDoc
+              {selectedDocIds.length > 0
+                ? `Ask a question to query and synthesize across the selected ${selectedDocIds.length === 1 ? "file" : "files"}.`
+                : activeDoc
                 ? t("chat.readyPrompt", { name: activeDoc.original_name })
                 : t("chat.uploadPrompt")}
             </p>
@@ -627,7 +641,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  activeDoc
+                  selectedDocIds.length > 0
+                    ? `Ask about the ${selectedDocIds.length} selected ${selectedDocIds.length === 1 ? "file" : "files"}...`
+                    : activeDoc
                     ? t("chat.askPlaceholder", { name: activeDoc.original_name })
                     : t("chat.selectPlaceholder")
                 }
@@ -697,7 +713,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                   <Send className="w-4 h-4" />
                 )}
               </Button>
-              {messages.length > 0 && (
+              {messages.length > 0 && activeDoc && selectedDocIds.length === 0 && (
                 <>
                   {/* Export dropdown */}
                   <div className="relative" ref={exportMenuRef}>

@@ -27,6 +27,8 @@ interface Props {
   onSelectDoc: (doc: DocInfo) => void;
   onDocumentsChange: () => void;
   onDocumentRenamed: (doc: DocInfo) => void;
+  selectedDocIds?: string[];
+  onSelectDocsChange?: (ids: string[]) => void;
 }
 
 function DocumentListSkeleton() {
@@ -58,6 +60,8 @@ export default function DocumentSidebar({
   onSelectDoc,
   onDocumentsChange,
   onDocumentRenamed,
+  selectedDocIds = [],
+  onSelectDocsChange,
 }: Props) {
   const { t } = useTranslation();
   const workspace = useWorkspaceStore((s) => s.workspace);
@@ -340,11 +344,18 @@ export default function DocumentSidebar({
       {/* ── Documents List ──────────────────────────── */}
       <div className="px-3 pt-3 pb-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center justify-between">
-          <span>
-            {loading
-              ? t("documents.documentsTitle", { count: "..." })
-              : t("documents.documentsTitle", { count: documents.length })}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="truncate">
+              {loading
+                ? t("documents.documentsTitle", { count: "..." })
+                : t("documents.documentsTitle", { count: documents.length })}
+            </span>
+            {selectedDocIds && selectedDocIds.length > 0 && (
+              <Badge variant="secondary" className="px-1.5 py-0 bg-primary/20 text-primary font-bold text-[9px] h-4 shrink-0 border-none">
+                {selectedDocIds.length} selected
+              </Badge>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="icon"
@@ -386,10 +397,28 @@ export default function DocumentSidebar({
                   className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
                     ${activeDoc?.id === doc.id
                       ? "bg-primary/15 border border-primary/30"
+                      : selectedDocIds.includes(doc.id)
+                      ? "bg-sidebar-accent/70 border border-sidebar-border/50"
                       : "hover:bg-sidebar-accent border border-transparent"}
                     ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}`}
                 >
                   <div className="flex items-start gap-2.5">
+                    {doc.status === "ready" && (
+                      <input
+                        type="checkbox"
+                        checked={selectedDocIds.includes(doc.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          if (e.target.checked) {
+                            onSelectDocsChange?.([...selectedDocIds, doc.id]);
+                          } else {
+                            onSelectDocsChange?.(selectedDocIds.filter((id) => id !== doc.id));
+                          }
+                        }}
+                        className="mt-1 h-3.5 w-3.5 rounded border-sidebar-border bg-transparent text-primary focus:ring-primary focus:ring-offset-sidebar cursor-pointer shrink-0"
+                      />
+                    )}
                     {statusIcon(doc.status)}
                     <div className="flex-1 min-w-0">
                       {isEditing ? (

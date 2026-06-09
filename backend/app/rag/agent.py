@@ -53,6 +53,7 @@ def _format_chat_history(messages: List[Dict[str, str]]) -> str:
 def get_agent_executor(
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[List[Dict[str, str]]] = None,
@@ -61,7 +62,13 @@ def get_agent_executor(
     """Initialize the LangChain ReAct agent executor."""
 
     # Initialize tools
-    pdf_tool = PDFSearchTool(user_id=user_id, document_id=document_id, workspace=workspace, top_k=top_k)
+    pdf_tool = PDFSearchTool(
+        user_id=user_id,
+        document_id=document_id,
+        document_ids=document_ids,
+        workspace=workspace,
+        top_k=top_k,
+    )
     tools = [pdf_tool, MathTool(), WebSearchTool()]
 
     # Initialize LLM
@@ -120,6 +127,7 @@ def generate_answer(
     question: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[List[Dict[str, str]]] = None,
@@ -148,7 +156,15 @@ def generate_answer(
 
     # ── Run Agent ────────────────────────────────────
     try:
-        executor, pdf_tool, formatted_history = get_agent_executor(user_id, document_id, hf_token, top_k, chat_history, workspace)
+        executor, pdf_tool, formatted_history = get_agent_executor(
+            user_id=user_id,
+            document_id=document_id,
+            document_ids=document_ids,
+            hf_token=hf_token,
+            top_k=top_k,
+            chat_history=chat_history,
+            workspace=workspace,
+        )
         result = executor.invoke({"input": question, "chat_history": formatted_history})
 
         raw_answer = result.get("output", "")
@@ -193,6 +209,7 @@ def generate_answer_stream(
     question: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[List[Dict[str, str]]] = None,
@@ -222,7 +239,15 @@ def generate_answer_stream(
 
     # ── Run Agent ────────────────────────────────────
     try:
-        executor, pdf_tool, formatted_history = get_agent_executor(user_id, document_id, hf_token, top_k, chat_history, workspace)
+        executor, pdf_tool, formatted_history = get_agent_executor(
+            user_id=user_id,
+            document_id=document_id,
+            document_ids=document_ids,
+            hf_token=hf_token,
+            top_k=top_k,
+            chat_history=chat_history,
+            workspace=workspace,
+        )
 
         sources_sent = False
 

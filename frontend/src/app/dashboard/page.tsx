@@ -64,7 +64,12 @@ export default function DashboardPage() {
   const [documents, setDocuments] = useState<DocInfo[]>([]);
   const prevDocsRef = useRef<Record<string, string>>({});
   const [activeDoc, setActiveDoc] = useState<DocInfo | null>(null);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [pdfPage, setPdfPage] = useState(1);
+
+  useEffect(() => {
+    setSelectedDocIds([]);
+  }, [workspace]);
   const [pdfHighlightTarget, setPdfHighlightTarget] = useState<{
     page: number;
     rects?: {
@@ -197,9 +202,12 @@ export default function DashboardPage() {
       onSelectDoc={(doc) => {
         setActiveDoc(doc);
         setPdfPage(1);
+        setSelectedDocIds([]);
       }}
       onDocumentsChange={loadDocuments}
       onDocumentRenamed={handleDocumentRenamed}
+      selectedDocIds={selectedDocIds}
+      onSelectDocsChange={setSelectedDocIds}
     />
   );
 
@@ -237,6 +245,7 @@ export default function DashboardPage() {
         <div className="flex-1 min-w-0 flex flex-col">
           <ChatPanel
             activeDoc={activeDoc}
+            selectedDocIds={selectedDocIds}
             onCitationClick={(target) => {
               setPdfPage(target.page);
               setPdfHighlightTarget({ page: target.page, rects: target.highlightRects });

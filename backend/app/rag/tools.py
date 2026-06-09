@@ -156,6 +156,7 @@ class PDFSearchTool(BaseTool):
 
     user_id: str
     document_id: Optional[str] = None
+    document_ids: Optional[List[str]] = None
     workspace: Optional[str] = None
     top_k: Optional[int] = None
     # We'll store sources here to retrieve them after agent execution
@@ -168,6 +169,7 @@ class PDFSearchTool(BaseTool):
                 query=query,
                 user_id=self.user_id,
                 document_id=self.document_id,
+                document_ids=self.document_ids,
                 workspace=self.workspace,
                 top_k=self.top_k,
             )
@@ -193,6 +195,7 @@ class PDFSearchTool(BaseTool):
                 query=query,
                 user_id=self.user_id,
                 document_id=self.document_id,
+                document_ids=self.document_ids,
             )
 
             main_context = "\n\n".join(context_parts)

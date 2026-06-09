@@ -108,6 +108,7 @@ async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
 
         question = payload.get("question")
         document_id = payload.get("document_id")
+        document_ids = payload.get("document_ids")
         session_id = payload.get("session_id")
 
         from app.rag.security import validate_user_input, UnsafePromptError
@@ -141,6 +142,21 @@ async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
                 await websocket.send_json({"type": "error", "data": detail})
                 await websocket.close()
                 return
+        elif document_ids:
+            for doc_id in document_ids:
+                doc = db.query(Document).filter(
+                    Document.id == doc_id,
+                    Document.user_id == user.id,
+                    Document.is_deleted.is_(False),
+                ).first()
+                if not doc:
+                    await websocket.send_json({"type": "error", "data": f"Document {doc_id} not found"})
+                    await websocket.close()
+                    return
+                if doc.status != "ready":
+                    await websocket.send_json({"type": "error", "data": f"Document '{doc.original_name}' is still {doc.status}."})
+                    await websocket.close()
+                    return
 
         # Resolve or create session
         if not session_id:
@@ -167,7 +183,14 @@ async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
         chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
 
         # Save user message
-        _save_message(db, user.id, document_id, "user", question, session_id=session_id)
+        _save_message(
+            db,
+            user.id,
+            document_id if not document_ids else None,
+            "user",
+            question,
+            session_id=session_id,
+        )
 
         # Stream answer using existing generator and forward structured events
         try:
@@ -175,6 +198,7 @@ async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
                 question=question,
                 user_id=user.id,
                 document_id=document_id,
+                document_ids=document_ids,
                 hf_token=user.hf_token,
                 chat_history=chat_history,
             ):
@@ -441,6 +465,7 @@ def generate_answer(
     question: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[list] = None,
@@ -452,6 +477,7 @@ def generate_answer(
         question=question,
         user_id=user_id,
         document_id=document_id,
+        document_ids=document_ids,
         hf_token=hf_token,
         top_k=top_k,
         chat_history=chat_history,
@@ -463,6 +489,7 @@ def generate_answer_stream(
     question: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[list] = None,
@@ -474,6 +501,7 @@ def generate_answer_stream(
         question=question,
         user_id=user_id,
         document_id=document_id,
+        document_ids=document_ids,
         hf_token=hf_token,
         top_k=top_k,
         chat_history=chat_history,
@@ -533,6 +561,23 @@ def ask_question(
             # Update last_accessed_at timestamp
             doc.last_accessed_at = datetime.now(timezone.utc)
             db.commit()
+        elif payload.document_ids:
+            for doc_id in payload.document_ids:
+                doc = (
+                    db.query(Document)
+                    .filter(
+                        Document.id == doc_id,
+                        Document.user_id == user.id,
+                        Document.is_deleted.is_(False),
+                    )
+                    .first()
+                )
+
+                if not doc:
+                    raise NotFoundException(f"Document {doc_id}")
+
+                if doc.status != "ready":
+                    raise ValidationException(f"Document '{doc.original_name}' is still {doc.status}. Please wait for processing to complete.")
 
         # Resolve or create session
         session_id = payload.session_id
@@ -560,8 +605,9 @@ def ask_question(
         chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
 
         # Cache check — return instantly if this (question, document) was answered before
+        doc_ids_str = ",".join(sorted(payload.document_ids)) if payload.document_ids else ""
         cached_answer = get_cached_response(
-            document_id=str(payload.document_id or ""),
+            document_id=str(payload.document_id or doc_ids_str),
             question=payload.question,
         )
         if cached_answer is not None:
@@ -576,6 +622,7 @@ def ask_question(
             question=payload.question,
             user_id=user.id,
             document_id=payload.document_id,
+            document_ids=payload.document_ids,
             hf_token=user.hf_token,
             top_k=payload.top_k,
             chat_history=chat_history,
@@ -584,15 +631,15 @@ def ask_question(
 
         # Store result in cache for future identical questions
         set_cached_response(
-            document_id=str(payload.document_id or ""),
+            document_id=str(payload.document_id or doc_ids_str),
             question=payload.question,
             answer=result["answer"],
         )
 
         # Save to chat history
-        _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
+        _save_message(db, user.id, payload.document_id if not payload.document_ids else None, "user", payload.question, session_id=session_id)
         _save_message(
-            db, user.id, payload.document_id, "assistant", result["answer"], result["sources"], session_id=session_id
+            db, user.id, payload.document_id if not payload.document_ids else None, "assistant", result["answer"], result["sources"], session_id=session_id
         )
 
         return ChatResponse(
@@ -653,6 +700,23 @@ def ask_question_stream(
         # Update last_accessed_at timestamp
         doc.last_accessed_at = datetime.now(timezone.utc)
         db.commit()
+    elif payload.document_ids:
+        for doc_id in payload.document_ids:
+            doc = (
+                db.query(Document)
+                .filter(
+                    Document.id == doc_id,
+                    Document.user_id == user.id,
+                    Document.is_deleted.is_(False),
+                )
+                .first()
+            )
+
+            if not doc:
+                raise NotFoundException(f"Document {doc_id}")
+
+            if doc.status != "ready":
+                raise ValidationException(f"Document '{doc.original_name}' is still {doc.status}. Please wait for processing to complete.")
 
     started_at = time.perf_counter()
 
@@ -682,11 +746,12 @@ def ask_question_stream(
     chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
 
     # Save user message immediately
-    _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
+    _save_message(db, user.id, payload.document_id if not payload.document_ids else None, "user", payload.question, session_id=session_id)
 
     # Cache check before starting the stream
+    doc_ids_str = ",".join(sorted(payload.document_ids)) if payload.document_ids else ""
     cached_answer = get_cached_response(
-        document_id=str(payload.document_id or ""),
+        document_id=str(payload.document_id or doc_ids_str),
         question=payload.question,
     )
     if cached_answer is not None:
@@ -718,6 +783,7 @@ def ask_question_stream(
                 question=payload.question,
                 user_id=user.id,
                 document_id=payload.document_id,
+                document_ids=payload.document_ids,
                 hf_token=user.hf_token,
                 top_k=payload.top_k,
                 chat_history=chat_history,
@@ -739,7 +805,7 @@ def ask_question_stream(
             # Cache the full answer for future identical questions
             if full_answer:
                 set_cached_response(
-                    document_id=str(payload.document_id or ""),
+                    document_id=str(payload.document_id or doc_ids_str),
                     question=payload.question,
                     answer=full_answer,
                 )
@@ -749,7 +815,7 @@ def ask_question_stream(
 
             with get_db_session() as save_db:
                 _save_message(
-                    save_db, user.id, payload.document_id, "assistant", full_answer, sources, session_id=session_id
+                    save_db, user.id, payload.document_id if not payload.document_ids else None, "assistant", full_answer, sources, session_id=session_id
                 )
         finally:
             record_query_response_time(time.perf_counter() - started_at)

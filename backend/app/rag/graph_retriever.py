@@ -18,10 +18,21 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-def _candidate_graphs(user_id: str, document_id: Optional[str]) -> Iterable[nx.Graph]:
+def _candidate_graphs(
+    user_id: str,
+    document_id: Optional[str],
+    document_ids: Optional[List[str]] = None,
+) -> Iterable[nx.Graph]:
     if document_id:
         graph = load_graph(user_id, document_id)
         return [graph] if graph is not None else []
+    elif document_ids:
+        graphs = []
+        for doc_id in document_ids:
+            graph = load_graph(user_id, doc_id)
+            if graph is not None:
+                graphs.append(graph)
+        return graphs
 
     graphs = []
     for path in iter_graph_paths(user_id):
@@ -67,12 +78,17 @@ def get_entity_context(
     query: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
 ) -> str:
     """Return compact graph relationship context relevant to the query."""
     relationships: Dict[Tuple[str, str], Dict[str, object]] = {}
 
     try:
-        graphs = _candidate_graphs(user_id=user_id, document_id=document_id)
+        graphs = _candidate_graphs(
+            user_id=user_id,
+            document_id=document_id,
+            document_ids=document_ids,
+        )
         for graph in graphs:
             matched_nodes = _match_query_nodes(graph, query)
 

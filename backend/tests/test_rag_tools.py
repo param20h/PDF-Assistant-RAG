@@ -158,7 +158,7 @@ def test_pdf_search_tool_formats_chunks_and_graph_context(monkeypatch):
         retrieve_calls.append((query, user_id, document_id))
         return chunks
 
-    def fake_get_entity_context(query, user_id, document_id=None):
+    def fake_get_entity_context(query, user_id, document_id=None, **kwargs):
         graph_calls.append((query, user_id, document_id))
         return "Alpha -> acquired -> Beta"
 

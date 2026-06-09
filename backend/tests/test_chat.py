@@ -127,3 +127,34 @@ def test_agent_dynamic_token(monkeypatch):
     generate_answer(question="hello?", user_id="some-user", hf_token=None)
     from app.config import get_settings
     assert called_with_token == get_settings().HF_TOKEN
+
+
+def test_chat_ask_success_with_document_ids(client, auth_headers, ready_document, monkeypatch):
+    monkeypatch.setattr(
+        "app.routes.chat.generate_answer",
+        lambda question, user_id, document_id=None, document_ids=None, **kwargs: {
+            "answer": "Mocked answer for multiple docs",
+            "sources": [
+                {
+                    "text": "Mock source",
+                    "filename": "ready.txt",
+                    "page": 1,
+                    "score": 0.99,
+                    "confidence": 99.0,
+                }
+            ],
+        },
+    )
+
+    response = client.post(
+        "/api/v1/chat/ask",
+        headers=auth_headers,
+        json={"question": "What is in the doc?", "document_ids": [ready_document.id]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "Mocked answer for multiple docs"
+    assert payload["document_id"] is None
+    assert payload["sources"][0]["filename"] == "ready.txt"
+
