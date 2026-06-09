@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     # ── Database ─────────────────────────────────────────
     DATABASE_URL: str = "sqlite:///./data/app.db"
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_PRE_PING: bool = True
 
     # ── Auth ─────────────────────────────────────────────
     JWT_ALGORITHM: str = "HS256"
@@ -49,6 +52,12 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     CELERY_TASK_TRACK_STARTED: bool = True
+
+    # ── Document Processing ──────────────────────────────
+    DOC_PROCESSING_TIMEOUT_MINUTES: int = 30
+    DOC_PROCESSING_MAX_RETRIES: int = 3
+    DOC_PROCESSING_RETRY_DELAY_SECONDS: int = 30
+    DOC_CLEANUP_MAX_AGE_DAYS: int = 90
 
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"

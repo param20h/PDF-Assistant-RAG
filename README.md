@@ -60,27 +60,9 @@ short_description: Enterprise Agentic RAG — upload PDFs and chat with AI
 Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 🎉
 
 
-### 📋 Contributions
-
 <div align="center">
-
-| Avatar | Contributor | Role | Key Contributions |
-|:------:|:-----------:|:----:|:-----------------|
-| <img src="https://github.com/param20h.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@param20h**](https://github.com/param20h) — Paramjit Singh | 🧭 **Project Lead** | Founded the project; core RAG architecture (FastAPI + ChromaDB + Next.js); Docker multi-stage & HuggingFace Spaces deployment; GitHub Actions CI/CD; JWT auth & Google OAuth; documentation with pipeline diagrams; project governance |
-| <img src="https://github.com/Yuvraj-Sarathe.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@Yuvraj-Sarathe**](https://github.com/Yuvraj-Sarathe) — Yuvraj Sarathe | 📐 **Docs & Build** | Added Mermaid architecture diagram; inline RAG pipeline comments; `.env.example` docs; created `Makefile` with concurrent dev commands & `CHANGELOG.md` |
-| <img src="https://github.com/SatyamPrakash09.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@SatyamPrakash09**](https://github.com/SatyamPrakash09) — Satyam Prakash | ⚙️ **Backend Engineer** | Chat history export & auto-refresh auth; user profile endpoints; `/health` endpoint (Vector DB + SQL DB monitoring); document pagination; MIME file validation; JWT access + refresh token system |
-| <img src="https://github.com/akmhatey-ai.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@akmhatey-ai**](https://github.com/akmhatey-ai) | 🎨 **UI/UX** | Chat textarea auto-resize; clear messages on document switch |
-| <img src="https://github.com/drishtisharma14052007-eng.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@drishtisharma14052007-eng**](https://github.com/drishtisharma14052007-eng) — Drishti Sharma | 📝 **Documentation** | GSSOC contributor FAQ content |
-| <img src="https://github.com/Pika-pika06.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@Pika-pika06**](https://github.com/Pika-pika06) — Pika | 📝 **Documentation** | Changelog tracking historical commits through v0.4.0 |
-| <img src="https://github.com/blinkerbit.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@blinkerbit**](https://github.com/blinkerbit) / [@algojogacor](https://github.com/algojogacor) — Arya Rizky | 🐛 **Bug Buster** | Fixed 0-indexed page number display in source cards |
-| <img src="https://github.com/HirenGajjar.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@HirenGajjar**](https://github.com/HirenGajjar) | 🔒 **DevOps** | Restricted CORS origins via `ALLOWED_ORIGINS` environment variable |
-| <img src="https://github.com/Kaustub26Pvgda.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@Kaustub26Pvgda**](https://github.com/Kaustub26Pvgda) — Kaustub Pavagada | ⚡ **Frontend Engineer** | Copy LLM response capability; increased max file upload size to 20 MB |
-| <img src="https://github.com/akshy-yy.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@akshy-yy**](https://github.com/akshy-yy) — Akshaya | 🎨 **Frontend Engineer** | Typing indicator animation while AI responds |
-| <img src="https://github.com/GHX5T-SOL.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@GHX5T-SOL**](https://github.com/GHX5T-SOL) — Bruce Wayne | 🐛 **Bug Buster** | Backend offline error message display |
-| <img src="https://github.com/viswanatha.png?size=40" width="40" height="40" style="border-radius:50%"/> | [**@viswanatha**](https://github.com/viswanatha) | 📊 **Observability** | Health check endpoint |
-
+  <img src="https://contrib.nn.ci/api?repo=param20h/PDF-Assistant-RAG&cols=6" />
 </div>
-
 <br/>
 
 > 🌟 **Want to join them?** Check out [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and look for [good first issues](https://github.com/Yuvraj-Sarathe/PDF-Assistant-RAG/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) to get started!
@@ -539,8 +521,13 @@ Pass `--document-id <document-id>` to evaluate one indexed document.
 
 | Command | Description |
 |---------|-------------|
-| `docker compose up --build` | Build and start the full stack |
+| `docker compose --profile cpu up --build` | Build and start the full stack (CPU-only, no GPU required) |
+| `docker compose --profile gpu up --build` | Build and start the full stack with NVIDIA GPU acceleration |
+| `docker compose --profile debug up` | Also start pgAdmin at http://localhost:5050 |
 | `docker compose down` | Stop all containers |
+
+> **CPU profile** — works on any machine. Embeddings run on CPU via `all-MiniLM-L6-v2`.  
+> **GPU profile** — requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html). Sets `DEVICE=cuda` for accelerated embedding inference.
 
 <br/>
 

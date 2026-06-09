@@ -44,6 +44,36 @@ def start_scheduler():
     else:
         logger.info("Drive PDF sync disabled")
 
+    # Document processing recovery — every 5 minutes
+    try:
+        from app.services.cleanup import cleanup_stale_documents, cleanup_old_deleted_documents
+
+        _scheduler.add_job(
+            cleanup_stale_documents,
+            trigger=IntervalTrigger(minutes=5),
+            id="recover_stale_processing",
+            name="Recover documents stuck in processing",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=60,
+        )
+        logger.info("Stale document recovery scheduled every 5 minutes")
+
+        _scheduler.add_job(
+            cleanup_old_deleted_documents,
+            trigger=IntervalTrigger(days=1),
+            id="cleanup_old_deleted",
+            name="Purge old soft-deleted documents",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=300,
+        )
+        logger.info("Old deleted document cleanup scheduled daily")
+    except Exception as e:
+        logger.warning("Could not schedule cleanup jobs: %s", e)
+
     _scheduler.start()
     return _scheduler
 
