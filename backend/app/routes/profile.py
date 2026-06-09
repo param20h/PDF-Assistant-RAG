@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.orm import Session
 from pathlib import Path
 import shutil
 import uuid
 
 from app.database import get_db
+from app.exceptions import ValidationException, NotFoundException
 from app.models import User
 from app.schemas import UserProfileUpdate, UserResponse
 from app.auth import get_current_user
@@ -49,7 +50,7 @@ def upload_avatar(
     extension = Path(file.filename).suffix.lower()
 
     if extension not in allowed_extensions:
-        raise HTTPException(status_code=400, detail="Invalid image format")
+        raise ValidationException("Invalid image format")
 
     filename = f"{uuid.uuid4()}{extension}"
     filepath = UPLOAD_DIR / filename

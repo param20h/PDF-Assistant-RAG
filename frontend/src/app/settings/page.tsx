@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useAuthStore } from "@/store/auth-store";
 import HuggingFaceTokenModal from "@/components/auth/HuggingFaceTokenModal";
-import { CheckCircle2, XCircle, Settings, Key } from "lucide-react";
+import { CheckCircle2, XCircle, Settings, Key, Type } from "lucide-react";
+import { useSettingsStore, type FontSize } from "@/store/settings-store";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 export default function SettingsPage() {
   const { user, initialized } = useAuth();
@@ -15,6 +20,10 @@ export default function SettingsPage() {
 
   const hfToken = useAuthStore((s) => s.user?.hf_token ?? "");
   const isConnected = hfToken.trim().length > 0;
+
+  const fontSize = useSettingsStore((s) => s.fontSize);
+  const setFontSize = useSettingsStore((s) => s.setFontSize);
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   useEffect(() => {
     if (initialized && !user) router.replace("/login");
@@ -80,6 +89,61 @@ export default function SettingsPage() {
               {isConnected ? "Update Token" : "Connect Token"}
             </Button>
           </HuggingFaceTokenModal>
+        </section>
+
+        <section className="rounded-xl border border-border/50 bg-card/50 p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Type className="w-4 h-4 text-primary" />
+            <h2 className="font-semibold text-base">Chat Typography</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Adjust the font size of messages in the chat panel to your preference.
+          </p>
+
+          <div className="grid grid-cols-3 gap-3">
+            {(["small", "medium", "large"] as FontSize[]).map((size) => {
+              const isActive = mounted && fontSize === size;
+              const sizeLabel = {
+                small: "Small",
+                medium: "Medium",
+                large: "Large",
+              }[size];
+              const sizeDesc = {
+                small: "12px",
+                medium: "14px (Default)",
+                large: "16px",
+              }[size];
+              const previewTextSize = {
+                small: "text-xs",
+                medium: "text-sm",
+                large: "text-base",
+              }[size];
+
+              return (
+                <button
+                  key={size}
+                  onClick={() => setFontSize(size)}
+                  type="button"
+                  className={`flex flex-col items-start p-4 rounded-xl border transition-all text-left relative overflow-hidden cursor-pointer ${
+                    isActive
+                      ? "border-primary bg-primary/10 shadow-[0_0_12px_rgba(var(--primary-rgb),0.15)]"
+                      : "border-border/50 bg-card/30 hover:bg-card/75 hover:border-border"
+                  }`}
+                >
+                  <span className="text-sm font-semibold">{sizeLabel}</span>
+                  <span className="text-xs text-muted-foreground mt-0.5">{sizeDesc}</span>
+                  <div className="mt-3 w-full p-2 rounded-lg bg-background/50 border border-border/20 flex items-center justify-center min-h-[40px]">
+                    <span className={`${previewTextSize} font-medium line-clamp-1`}>
+                      Aa
+                    </span>
+                  </div>
+                  {isActive && (
+                    <div className="absolute top-0 right-0 w-2 h-2 rounded-bl-lg bg-primary" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </section>
 
         <section className="rounded-xl border border-border/50 bg-card/50 p-6 space-y-4">
