@@ -48,6 +48,11 @@ short_description: Enterprise Agentic RAG — upload PDFs and chat with AI
 > **Upload · Embed · Retrieve · Chat** — A production-grade AI document assistant built end-to-end with an agentic RAG pipeline, streaming responses, and per-user data isolation.
 
 <br/>
+## 🌟 GirlScript Summer of Code 2026
+
+This project is an official participant in **GirlScript Summer of Code 2026 (GSSoC'26)** and welcomes contributions from the community.
+
+<br/>
 
 [Features](#-key-features) · [Tech Stack](#-tech-stack) · [Getting Started](#-getting-started) · [Architecture](#-architecture) · [RAG Pipeline](#-rag-pipeline) · [API Reference](#-api-reference) · [Deployment](#-deployment) · [Contributing](#-contributing)
 
@@ -61,11 +66,13 @@ Thanks to all the amazing people who have contributed to **PDF-Assistant-RAG**! 
 
 
 <div align="center">
-  <img src="https://contrib.nn.ci/api?repo=param20h/PDF-Assistant-RAG&cols=6" />
+  <a href="https://github.com/param20h/PDF-Assistant-RAG/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=param20h/PDF-Assistant-RAG" />
+  </a>
 </div>
 <br/>
 
-> 🌟 **Want to join them?** Check out [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and look for [good first issues](https://github.com/Yuvraj-Sarathe/PDF-Assistant-RAG/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) to get started!
+> 🌟 **Want to join them?** Check out [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and look for [good first issues](https://github.com/param20h/PDF-Assistant-RAG/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) to get started!
 
 ---
 
@@ -200,6 +207,15 @@ graph TD
 <br/>
 
 ## ✨ Key Features
+
+### 🆕 Recent Updates
+
+- 🤖 Discord Bot Integration
+- ⚡ Celery + Redis Background PDF Processing
+- 📧 Email Verification Workflow
+- 🧠 RAGAS Evaluation Pipeline
+- 🚀 Response Caching with Redis
+- 🐳 Optimized Docker Deployment
 
 <table>
 <tr>
