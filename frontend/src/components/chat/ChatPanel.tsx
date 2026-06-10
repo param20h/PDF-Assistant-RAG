@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff, HelpCircle } from "lucide-react";
+import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff, HelpCircle, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ISpeechRecognitionEvent {
@@ -80,11 +80,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   
   // New State for Keyboard Shortcuts Help Modal
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const initialInputRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -109,8 +111,27 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
   // Auto-scroll to bottom whenever messages change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (containerRef.current) {
+      const { scrollHeight, scrollTop, clientHeight } = containerRef.current;
+      if (scrollHeight - scrollTop - clientHeight < 150) {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
+
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    setShowScrollButton(scrollTop < scrollHeight - clientHeight - 100);
+  };
+
+  const scrollToBottom = () => {
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -521,7 +542,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   return (
     <div className="h-full flex flex-col relative">
       {/* ── Chat Messages ──────────────────────────── */}
-      <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" aria-busy={historyLoading}>
+      <div 
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="flex-1 px-4 overflow-y-auto custom-scrollbar" 
+        aria-busy={historyLoading}
+      >
         {historyLoading ? (
           <div className="py-6 space-y-5 max-w-3xl mx-auto" aria-label="Loading chat history">
             {Array.from({ length: 4 }).map((_, index) => (
@@ -575,6 +601,19 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         )}
         <div ref={bottomRef} className="h-4" />
       </div>
+
+      {/* Scroll to bottom button */}
+      <button
+        type="button"
+        onClick={scrollToBottom}
+        aria-label="Scroll to bottom"
+        className={cn(
+          "absolute right-4 bottom-20 z-50 rounded-full p-2 bg-primary text-primary-foreground shadow-lg transition-all duration-200",
+          showScrollButton ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+        )}
+      >
+        <ChevronDown className="h-5 w-5" />
+      </button>
 
       {/* ── Input Area ─────────────────────────────── */}
       <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm relative">
