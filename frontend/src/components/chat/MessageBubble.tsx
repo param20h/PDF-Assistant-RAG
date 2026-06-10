@@ -62,14 +62,15 @@ export default function MessageBubble({ message }: Props) {
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Component unmount ആകുമ്പോൾ speech cancel ചെയ്യും
-  useEffect(() => {
-    const currentUtterance = utteranceRef.current;
-    return () => {
-  if (currentUtterance) {
-    speechSynthesis.cancel();
-  }
-};
-  }, []);
+ useEffect(() => {
+  const currentUtterance = utteranceRef.current;
+
+  return () => {
+    if (currentUtterance) {
+      window.speechSynthesis.cancel();
+    }
+  };
+}, []);
 
  
 
@@ -217,24 +218,7 @@ const handleBranch = () => {
                 )}
 
                 {/* Copy button */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className={`absolute top-2 right-9 text-muted-foreground hover:text-foreground transition-opacity ${
-                    copied
-                      ? "opacity-100"
-                      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                  }`}
-                  onClick={handleCopy}
-                  aria-label={copied ? "Copied" : "Copy response"}
-                >
-                  {copied ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </Button>
+                
                 {copied && (
                   <div 
                     className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded-md whitespace-nowrap opacity-100 transition-opacity pointer-events-none"
@@ -244,6 +228,37 @@ const handleBranch = () => {
                     Copied!
                   </div>
                 )}
+
+
+{/* Copy button */}
+<Button
+  type="button"
+  variant="ghost"
+  size="icon-xs"
+  className={`absolute top-2 right-9 text-muted-foreground hover:text-foreground transition-opacity ${
+    copied
+      ? "opacity-100"
+      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+  }`}
+  onClick={handleCopy}
+  aria-label={copied ? "Copied" : "Copy response"}
+>
+  {copied ? (
+    <Check className="w-3.5 h-3.5 text-emerald-400" />
+  ) : (
+    <Copy className="w-3.5 h-3.5" />
+  )}
+</Button>
+
+{copied && (
+  <div
+    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded-md whitespace-nowrap opacity-100 transition-opacity pointer-events-none"
+    role="status"
+    aria-live="polite"
+  >
+    Copied!
+  </div>
+)}
 
 
              {/* Branch button */}
@@ -258,26 +273,7 @@ const handleBranch = () => {
   <GitBranch className="w-3.5 h-3.5" />
 </Button>
                 
-                {/* Play / Pause button */}
-<Button
-  type="button"
-  variant="ghost"
-  size="icon-xs"
-  className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
-    isSpeaking
-      ? "opacity-100"
-      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-  }`}
-  onClick={handleSpeech}
-  disabled={message.isStreaming}
-  aria-label={isSpeaking ? "Stop speech" : "Play speech"}
->
-  {isSpeaking ? (
-    <Pause className="w-3.5 h-3.5 text-primary" />
-  ) : (
-    <Play className="w-3.5 h-3.5" />
-  )}
-</Button>
+    
               </>
             )}
 
