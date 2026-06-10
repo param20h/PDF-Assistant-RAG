@@ -2,9 +2,30 @@
 Pydantic schemas for API request/response validation.
 """
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from app.models import UserRole
+from app.password_validation import validate_password
+
+
+class ErrorDetail(BaseModel):
+    field: str
+    message: str
+
+
+class ErrorEnvelope(BaseModel):
+    code: str
+    message: str
+    details: dict[str, Any] = {}
+    request_id: str | None = None
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorEnvelope
+
+
+class ValidationErrorResponse(BaseModel):
+    error: ErrorEnvelope
 
 
 # ── Auth ─────────────────────────────────────────────
@@ -12,12 +33,31 @@ from app.models import UserRole
 class UserRegister(BaseModel):
     username: str = Field(..., min_length=3, max_length=80)
     email: EmailStr
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        validate_password(value)
+        return value
 
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
+class RegistrationResponse(MessageResponse):
+    email: EmailStr
+    verification_url: Optional[str] = None
 
 
 class GoogleLoginRequest(BaseModel):
@@ -28,6 +68,9 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username:Optional[str] = None
 
+class UserProfileUpdate(BaseModel):
+    username: Optional[str] = None
+    display_name: Optional[str] = None
 class UserUpdateResponse(BaseModel):
     id: str
     username: str
@@ -36,6 +79,12 @@ class UserUpdateResponse(BaseModel):
 class UpdatePassword(BaseModel):
     password: str
     confirm_password: str
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        validate_password(value)
+        return value
 
 class UpdatePasswordResponse(BaseModel):
     id: str
@@ -73,6 +122,14 @@ class HFTokenUpdate(BaseModel):
     hf_token: str
 
 
+class GoogleDriveAuthUrlResponse(BaseModel):
+    auth_url: str
+
+
+class GoogleDriveStatusResponse(BaseModel):
+    connected: bool
+
+
 class ApiKeyResponse(BaseModel):
     id: str
     name: str
@@ -100,7 +157,10 @@ class UserResponse(BaseModel):
     email: str
     role: UserRole
     is_admin: bool
+    is_verified: bool
     hf_token: Optional[str] = None
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -120,6 +180,7 @@ class DocumentResponse(BaseModel):
     uploaded_at: datetime
     summary: Optional[str] = None # New field for document summary
     task_id: Optional[str] = None
+    extracted_urls: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -143,6 +204,12 @@ class DocumentStatusResponse(BaseModel):
     page_count: int
     chunk_count: int
     error_message: Optional[str] = None
+    processing_progress: Optional[int] = None
+    processing_stage: Optional[str] = None
+    retry_count: Optional[int] = None
+    last_error_traceback: Optional[str] = None
+    processing_started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -183,6 +250,7 @@ class ChatRequest(BaseModel):
     document_id: Optional[str] = None
     document_ids: Optional[List[str]] = None
     session_id: Optional[str] = None
+    top_k: int = Field(default=5, ge=1, le=20)
 
 
 class SourceChunk(BaseModel):
@@ -191,6 +259,7 @@ class SourceChunk(BaseModel):
     page: int
     score: float
     confidence: float
+    bbox: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -237,6 +306,10 @@ class ShareAnswerResponse(BaseModel):
 class ShareLinkResponse(BaseModel):
     message_id: str
     share_url: str
+
+
+class FeedbackRequest(BaseModel):
+    feedback: Optional[str] = None
 
 
 # ── Chat Session ──────────────────────────────────────

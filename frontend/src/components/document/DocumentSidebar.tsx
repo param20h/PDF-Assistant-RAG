@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api } from "@/lib/api";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  FileText, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen,
+  FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen, Cloud,
 } from "lucide-react";
 import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
@@ -62,6 +62,75 @@ export default function DocumentSidebar({
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveLoading, setDriveLoading] = useState(true);
+  const [driveConnecting, setDriveConnecting] = useState(false);
+  const [driveError, setDriveError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDriveStatus() {
+      try {
+        const data = await api.get<{ connected: boolean }>("/api/v1/auth/google-drive/status");
+        if (!cancelled) setDriveConnected(data.connected);
+      } catch {
+        if (!cancelled) setDriveError("Unable to load Google Drive status");
+      } finally {
+        if (!cancelled) setDriveLoading(false);
+      }
+    }
+
+    void loadDriveStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      if (acceptedFiles.length === 0) return;
+
+      void (async () => {
+        setUploadError("");
+        setUploading(true);
+        setUploadProgress(0);
+
+        try {
+          for (let i = 0; i < acceptedFiles.length; i++) {
+            const file = acceptedFiles[i];
+            const formData = new FormData();
+            formData.append("file", file);
+            
+            toast.info(`⏳ Uploading '${file.name}'...`);
+            await api.postForm("/api/v1/documents/upload", formData);
+            setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
+            toast.success(`📤 '${file.name}' uploaded successfully! Ingestion started.`);
+          }
+          await onDocumentsChange();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : t("documents.uploadFailed");
+          setUploadError(message);
+          toast.error(`❌ Upload failed: ${message}`);
+        } finally {
+          setUploading(false);
+          setUploadProgress(0);
+        }
+      })();
+    },
+    [onDocumentsChange, t]
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      "application/pdf": [".pdf"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+      "text/plain": [".txt"],
+      "text/markdown": [".md"],
+    },
+    disabled: uploading,
+  });
 
   const handleDelete = async (docId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -69,7 +138,7 @@ export default function DocumentSidebar({
     setDeleting(docId);
     try {
       await api.delete(`/api/v1/documents/${docId}`);
-      onDocumentsChange();
+      await onDocumentsChange();
     } catch (err) {
       console.error("Delete failed:", err);
     } finally {
@@ -142,6 +211,33 @@ export default function DocumentSidebar({
     }
   };
 
+  const handleConnectDrive = async () => {
+    setDriveConnecting(true);
+    setDriveError("");
+
+    try {
+      const data = await api.get<{ auth_url: string }>("/api/v1/auth/google-drive/connect");
+      window.location.assign(data.auth_url);
+    } catch (err) {
+      setDriveError(err instanceof Error ? err.message : "Failed to connect Google Drive");
+      setDriveConnecting(false);
+    }
+  };
+
+  const handleDisconnectDrive = async () => {
+    setDriveConnecting(true);
+    setDriveError("");
+
+    try {
+      const data = await api.delete<{ connected: boolean }>("/api/v1/auth/google-drive/disconnect");
+      setDriveConnected(data.connected);
+    } catch (err) {
+      setDriveError(err instanceof Error ? err.message : "Failed to disconnect Google Drive");
+    } finally {
+      setDriveConnecting(false);
+    }
+  };
+
 
   const statusIcon = (status: string) => {
     switch (status) {
@@ -166,7 +262,71 @@ export default function DocumentSidebar({
 
   return (
     <div className="h-full flex flex-col bg-sidebar">
-      <DocumentUpload onDocumentsChange={onDocumentsChange} />
+      {/* ── Upload Zone ─────────────────────────────── */}
+      <div className="p-3 border-b border-sidebar-border space-y-2">
+        {uploadError && (
+          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
+            {uploadError}
+          </div>
+        )}
+        <div
+          {...getRootProps()}
+          className={`relative rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-all duration-200
+            ${isDragActive ? "border-primary bg-primary/10 scale-[1.02]" : "border-sidebar-border hover:border-primary/40 hover:bg-sidebar-accent/50"}
+            ${uploading ? "pointer-events-none opacity-60" : ""}`}
+          aria-label="Upload documents"
+        >
+          <input {...getInputProps()} />
+          {uploading ? (
+            <div className="space-y-2">
+              <Loader2 className="w-5 h-5 mx-auto animate-spin text-primary" />
+              <p className="text-xs text-muted-foreground">{t("documents.uploading")}</p>
+              <Progress value={uploadProgress} className="h-1" />
+            </div>
+          ) : (
+            <>
+              <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
+              <p className="text-xs text-muted-foreground">
+                {isDragActive ? t("documents.dropHere") : t("documents.dropOrClick")}
+              </p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">
+                {t("documents.uploadFormats")}
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Cloud className="w-4 h-4 text-muted-foreground" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium leading-tight">Google Drive</p>
+              <p className="text-xs text-muted-foreground">
+                {driveConnected ? "Connected for PDF sync" : "Connect to import PDFs"}
+              </p>
+            </div>
+          </div>
+          {driveError && (
+            <p className="text-xs text-destructive" role="alert">
+              {driveError}
+            </p>
+          )}
+          <Button
+            variant={driveConnected ? "outline" : "secondary"}
+            size="sm"
+            className="w-full"
+            onClick={driveConnected ? handleDisconnectDrive : handleConnectDrive}
+            disabled={driveLoading || driveConnecting}
+          >
+            {driveConnecting || driveLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Cloud className="w-3.5 h-3.5" />
+            )}
+            {driveConnected ? "Disconnect Google Drive" : "Connect Google Drive"}
+          </Button>
+        </div>
+      </div>
 
       {/* ── Documents List ──────────────────────────── */}
       <div className="px-3 pt-3 pb-1">

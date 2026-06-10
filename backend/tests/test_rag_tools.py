@@ -154,7 +154,7 @@ def test_pdf_search_tool_formats_chunks_and_graph_context(monkeypatch):
     retrieve_calls = []
     graph_calls = []
 
-    def fake_retrieve(query, user_id, document_id=None):
+    def fake_retrieve(query, user_id, document_id=None, top_k=None):
         retrieve_calls.append((query, user_id, document_id))
         return chunks
 

@@ -1,0 +1,33 @@
+# Dependencies — reinstalled inside Docker
+node_modules
+.pnp
+.pnp.js
+
+# Next.js build output (rebuilt inside Docker)
+.next
+out
+
+# Dev / test artifacts
+coverage
+.nyc_output
+*.test.*
+*.spec.*
+__tests__
+playwright-report
+test-results
+
+# Environment files — never bake into image
+.env
+.env.*
+!.env.example
+
+# Editor / OS artifacts
+.DS_Store
+.vscode
+.idea
+*.log
+Thumbs.db
+
+# Git
+.git
+.gitignore

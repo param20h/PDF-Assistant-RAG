@@ -15,8 +15,10 @@ pyjwt
 passlib[bcrypt]
 python-dotenv
 google-auth
+google-auth-oauthlib
 google-api-python-client
 APScheduler
+fastapi-mail
 
 # Config
 pydantic-settings
@@ -29,6 +31,7 @@ httpx
 PyMuPDF
 pdfplumber
 python-docx
+unstructured[pdf]
 
 # LangChain & RAG
 langchain
@@ -69,3 +72,4 @@ pypdf
 reportlab
 # crawl4ai
 ddgs
+redis>=4.6.0

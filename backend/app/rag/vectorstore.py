@@ -55,6 +55,10 @@ def store_chunks(
     if not chunks:
         return 0
 
+    # Delete existing chunks for this document and user before inserting new ones
+    # to avoid stale/orphaned chunks in ChromaDB and BM25.
+    delete_document_chunks(document_id, user_id)
+
     # Build and store BM25 index
     from app.rag.bm25 import store_bm25_index
     try:

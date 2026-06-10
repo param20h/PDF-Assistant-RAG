@@ -6,11 +6,13 @@ import json
 import re
 import fitz  # PyMuPDF
 import docx
+import logging
 from typing import List, Dict, Any
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 def _is_word_inside_bbox(word: Dict[str, Any], bbox: tuple) -> bool:
@@ -77,11 +79,22 @@ def _table_to_markdown(rows: List[List[Any]]) -> str:
 
 
 def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
-    """Extract PDF text while preserving tables as separate bbox-aware chunks."""
+    """Extract PDF text while preserving tables as separate chunks.
+
+    Prefer Unstructured for robust table extraction. Fall back to pdfplumber
+    if Unstructured is not available, then to PyMuPDF as a last resort.
+    """
     try:
-        return extract_pdf_with_tables(filepath)
-    except ImportError:
-        return extract_pdf_with_pymupdf(filepath)
+        return extract_pdf_with_unstructured(filepath)
+    except Exception as e:
+        # Unstructured may be installed but require native deps (poppler/pdfinfo).
+        # If anything goes wrong, fall back to pdfplumber then PyMuPDF.
+        logger.warning(f"Unstructured extraction failed, falling back: {e}")
+        try:
+            return extract_pdf_with_tables(filepath)
+        except Exception as e2:
+            logger.warning(f"pdfplumber extraction failed, falling back: {e2}")
+            return extract_pdf_with_pymupdf(filepath)
 
 
 def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
@@ -99,6 +112,66 @@ def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
             })
 
     doc.close()
+    return pages
+
+
+def extract_pdf_with_unstructured(filepath: str) -> List[Dict[str, Any]]:
+    """Use Unstructured to partition PDF into elements and extract tables.
+
+    This function will raise ImportError when Unstructured isn't installed so
+    callers can fall back to other extractors.
+    """
+    try:
+        from unstructured.partition.pdf import partition_pdf
+        from unstructured.documents.elements import Table
+    except Exception as e:
+        raise ImportError("unstructured not available") from e
+
+    elements = partition_pdf(filename=filepath)
+    pages: List[Dict[str, Any]] = []
+    table_idx = 0
+
+    for elem in elements:
+        # Determine element type and page number
+        elem_type = getattr(elem, "element_type", None) or elem.__class__.__name__
+        page_num = None
+        if hasattr(elem, "page_number"):
+            page_num = getattr(elem, "page_number")
+        elif getattr(elem, "metadata", None):
+            page_num = elem.metadata.get("page_number") or elem.metadata.get("page")
+        page_num = int(page_num) if page_num else 1
+
+        if isinstance(elem, Table) or (isinstance(elem_type, str) and elem_type.lower() == "table"):
+            rows = []
+            for raw_row in getattr(elem, "rows", []) or []:
+                row = []
+                for cell in raw_row:
+                    # Cells may be elements or lists of elements
+                    if isinstance(cell, (list, tuple)):
+                        cell_text = " ".join(getattr(c, "text", str(c)) for c in cell)
+                    else:
+                        cell_text = getattr(cell, "text", str(cell))
+                    row.append(cell_text)
+                rows.append(row)
+
+            table_text = _table_to_markdown(rows)
+            if table_text.strip():
+                pages.append({
+                    "text": table_text,
+                    "page": page_num,
+                    "chunk_type": "table",
+                    "table_index": table_idx,
+                })
+                table_idx += 1
+        else:
+            text = getattr(elem, "text", str(elem) if elem else "")
+            if text and text.strip():
+                pages.append({
+                    "text": text,
+                    "page": page_num,
+                    "chunk_type": "text",
+                })
+
     return pages
 
 
@@ -149,32 +222,67 @@ def extract_pdf_with_tables(filepath: str) -> List[Dict[str, Any]]:
     return pages
 
 
-def extract_pdf_images(filepath: str) -> List[Dict[str, Any]]:
-    """Extract images from a PDF and return list of dicts with image bytes and page number.
+def extract_pdf_images(
+    doc_or_path: Any,
+    min_width: int = 50,
+    min_height: int = 50,
+    min_size: int = 10240,
+) -> Any:
+    """Generator to yield extracted images from a PDF page-by-page.
 
-    Each entry: {"image_bytes": b"...", "page": int}
+    Accepts either a file path (str) or an open fitz.Document object.
+    Yields dict: {"image_bytes": b"...", "page": int, "width": int, "height": int}
     """
-    images = []
-    doc = fitz.open(filepath)
+    if not doc_or_path:
+        return
 
-    for page_num, page in enumerate(doc):
-        # get_images returns a list of tuples where first item is xref
-        for img in page.get_images(full=True):
-            xref = img[0]
-            try:
-                pix = fitz.Pixmap(doc, xref)
-                # Convert to RGB if it's CMYK or has alpha
-                if pix.n >= 4:
-                    pix = fitz.Pixmap(fitz.csRGB, pix)
+    is_path = isinstance(doc_or_path, str)
+    doc = None
+    if is_path:
+        try:
+            doc = fitz.open(doc_or_path)
+        except Exception as e:
+            logger.warning(f"Could not open PDF with fitz for image extraction: {e}")
+            return
+    else:
+        doc = doc_or_path
 
-                img_bytes = pix.tobytes("png")
-                images.append({"image_bytes": img_bytes, "page": page_num + 1})
-            except Exception:
-                # ignore extracting this image
-                continue
+    try:
+        for page_num, page in enumerate(doc):
+            processed_xrefs = set()
+            for img in page.get_images(full=True):
+                xref = img[0]
+                if xref in processed_xrefs:
+                    continue
+                processed_xrefs.add(xref)
 
-    doc.close()
-    return images
+                try:
+                    pix = fitz.Pixmap(doc, xref)
+                    width, height = pix.width, pix.height
+                    
+                    # Convert to RGB if it's CMYK or has alpha
+                    if pix.n >= 4:
+                        pix = fitz.Pixmap(fitz.csRGB, pix)
+
+                    img_bytes = pix.tobytes("png")
+                    
+                    # Skip tiny/decorative images (bullet points, spacers, logos)
+                    if width < min_width or height < min_height or len(img_bytes) < min_size:
+                        del img_bytes
+                        del pix
+                        continue
+
+                    yield {
+                        "image_bytes": img_bytes,
+                        "page": page_num + 1,
+                        "width": width,
+                        "height": height,
+                    }
+                except Exception:
+                    continue
+    finally:
+        if is_path and doc:
+            doc.close()
 
 
 def extract_docx(filepath: str) -> List[Dict[str, Any]]:
@@ -186,11 +294,50 @@ def extract_docx(filepath: str) -> List[Dict[str, Any]]:
 
 
 def extract_txt(filepath: str) -> List[Dict[str, Any]]:
-    """Extract text from TXT/Markdown files."""
+    """Extract text from TXT/Markdown files, preserving tables as separate chunks."""
     with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
         text = f.read()
 
-    return [{"text": text, "page": 1}] if text.strip() else []
+    if not text.strip():
+        return []
+
+    chunks = []
+    current_text_lines = []
+    table_lines = []
+    in_table = False
+
+    for line in text.splitlines():
+        is_table_line = line.strip().startswith("|")
+
+        if is_table_line:
+            if not in_table:
+                # flush any accumulated text first
+                if current_text_lines:
+                    chunk_text = "\n".join(current_text_lines).strip()
+                    if chunk_text:
+                        chunks.append({"text": chunk_text, "page": 1, "chunk_type": "text"})
+                    current_text_lines = []
+                in_table = True
+            table_lines.append(line)
+        else:
+            if in_table:
+                # flush the table
+                table_text = "\n".join(table_lines).strip()
+                if table_text:
+                    chunks.append({"text": table_text, "page": 1, "chunk_type": "table"})
+                table_lines = []
+                in_table = False
+            current_text_lines.append(line)
+
+    # flush whatever's left
+    if in_table and table_lines:
+        chunks.append({"text": "\n".join(table_lines).strip(), "page": 1, "chunk_type": "table"})
+    elif current_text_lines:
+        chunk_text = "\n".join(current_text_lines).strip()
+        if chunk_text:
+            chunks.append({"text": chunk_text, "page": 1, "chunk_type": "text"})
+
+    return chunks
 
 # Change the chunk_document function input to take a file path and optional chunk size and overlap parameters. 
 def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = None) -> List[Dict[str, Any]]:
@@ -201,13 +348,10 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
     Returns list of dicts with 'text', 'page', and 'chunk_index'.
     """
     ext = filepath.rsplit(".", 1)[-1].lower()
-    images = []
 
     # ── Extract text by file type ────────────────────
     if ext == "pdf":
         pages = extract_pdf(filepath)
-        # also extract images for later captioning/embedding
-        images = extract_pdf_images(filepath)
     elif ext == "docx":
         pages = extract_docx(filepath)
     elif ext in ("txt", "md"):
@@ -215,8 +359,18 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
     else:
         raise ValueError(f"Unsupported file type: {ext}")
 
+    pdf_doc = None
+    if ext == "pdf":
+        try:
+            pdf_doc = fitz.open(filepath)
+        except Exception as e:
+            logger.warning(f"Could not open PDF with fitz: {e}")
+
     if not pages:
-        return []
+        if not pdf_doc or len(pdf_doc) == 0:
+            if pdf_doc:
+                pdf_doc.close()
+            return []
     
     # Set chunk size and chunk overlap with defaults if not provided
     if not chunk_size:
@@ -234,82 +388,134 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
 
     all_chunks = []
     chunk_index = 0
-    pdf_doc = None
-
-    if ext == "pdf":
-        try:
-            pdf_doc = fitz.open(filepath)
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Could not open PDF with fitz for bbox extraction: {e}")
 
     try:
-        for page_data in pages:
-            text = page_data["text"]
-            page_num = page_data["page"]
-            chunk_type = page_data.get("chunk_type", "text")
+        # Determine total pages to process
+        max_page_in_data = max(page_data["page"] for page_data in pages) if pages else 0
+        total_pages = max(max_page_in_data, len(pdf_doc) if pdf_doc else 0)
 
-            if chunk_type == "table":
-                all_chunks.append({
-                    "text": text.strip(),
-                    "page": page_num,
-                    "chunk_index": chunk_index,
-                    "chunk_type": "table",
-                    "bbox": page_data.get("bbox", ""),
-                    "table_index": page_data.get("table_index", 0),
-                })
-                chunk_index += 1
-                continue
+        # Set up image generator iterator
+        image_iter = None
+        next_image = None
+        if pdf_doc:
+            try:
+                # pass pdf_doc to avoid opening it twice
+                image_iter = iter(extract_pdf_images(pdf_doc))
+                next_image = next(image_iter)
+            except StopIteration:
+                next_image = None
+            except Exception as e:
+                logger.warning(f"Could not initialize image iterator: {e}")
 
-            # Split this page's text
-            splits = splitter.split_text(text)
+        # Group pages by page number for sequential access
+        pages_by_num = {}
+        for p_data in pages:
+            pages_by_num.setdefault(p_data["page"], []).append(p_data)
 
-            for split_text in splits:
-                if split_text.strip():
-                    chunk = {
-                        "text": split_text.strip(),
+        for page_num in range(1, total_pages + 1):
+            # 1. Process text/table chunks for this page
+            page_data_list = pages_by_num.get(page_num, [])
+            for page_data in page_data_list:
+                text = page_data["text"]
+                chunk_type = page_data.get("chunk_type", "text")
+
+                if chunk_type == "table":
+                    all_chunks.append({
+                        "text": text.strip(),
                         "page": page_num,
                         "chunk_index": chunk_index,
-                        "chunk_type": chunk_type,
-                    }
-
-                    # Extract bbox for PDF text chunks
-                    if pdf_doc and page_num <= len(pdf_doc):
-                        try:
-                            page_obj = pdf_doc[page_num - 1]
-                            # Use search_for to find the text on the page
-                            rects = page_obj.search_for(split_text.strip())
-                            if rects:
-                                W, H = float(page_obj.rect.width), float(page_obj.rect.height)
-                                # Rects can span multiple lines, we store them as a list of normalized bboxes
-                                norm_rects = [
-                                    [
-                                        round(r.x0 / W, 4),
-                                        round(r.y0 / H, 4),
-                                        round(r.x1 / W, 4),
-                                        round(r.y1 / H, 4)
-                                    ]
-                                    for r in rects
-                                ]
-                                chunk["bbox"] = json.dumps(norm_rects)
-                        except Exception as e:
-                            import logging
-                            logger = logging.getLogger(__name__)
-                            logger.warning(f"Bbox extraction error on page {page_num}: {e}")
-
-                    all_chunks.append(chunk)
+                        "chunk_type": "table",
+                        "bbox": page_data.get("bbox", ""),
+                        "table_index": page_data.get("table_index", 0),
+                    })
                     chunk_index += 1
+                    continue
 
-            # Attach any images that belong to this page after text chunks for the page
-            for img in [i for i in images if i["page"] == page_num]:
-                all_chunks.append({
-                    "text": "",
-                    "page": page_num,
-                    "chunk_index": chunk_index,
-                    "image_bytes": img["image_bytes"],
-                })
-                chunk_index += 1
+                # Split this page's text
+                splits = splitter.split_text(text)
+
+                for split_text in splits:
+                    if split_text.strip():
+                        chunk = {
+                            "text": split_text.strip(),
+                            "page": page_num,
+                            "chunk_index": chunk_index,
+                            "chunk_type": chunk_type,
+                        }
+
+                        # Extract bbox for PDF text chunks
+                        if pdf_doc and page_num <= len(pdf_doc):
+                            try:
+                                page_obj = pdf_doc[page_num - 1]
+                                rects = page_obj.search_for(split_text.strip())
+                                if rects:
+                                    W, H = float(page_obj.rect.width), float(page_obj.rect.height)
+                                    norm_rects = [
+                                        [
+                                            round(r.x0 / W, 4),
+                                            round(r.y0 / H, 4),
+                                            round(r.x1 / W, 4),
+                                            round(r.y1 / H, 4)
+                                        ]
+                                        for r in rects
+                                    ]
+                                    chunk["bbox"] = json.dumps(norm_rects)
+                            except Exception as e:
+                                logger.warning(f"Bbox extraction error on page {page_num}: {e}")
+
+                        all_chunks.append(chunk)
+                        chunk_index += 1
+
+            # 2. Attach any images that belong to this page (generating captions on-the-fly and discarding bytes)
+            while next_image and next_image["page"] == page_num:
+                img_bytes = next_image["image_bytes"]
+                try:
+                    # Generate caption immediately
+                    from app.rag.vision import caption_image
+                    caption = caption_image(img_bytes, page=page_num)
+
+                    if caption:
+                        all_chunks.append({
+                            "text": caption,
+                            "page": page_num,
+                            "chunk_index": chunk_index,
+                            "chunk_type": "text",
+                            "is_image": True,
+                            "image_caption": caption,
+                        })
+                        chunk_index += 1
+                except Exception as e:
+                    logger.warning(f"Failed to generate caption for image on page {page_num}: {e}")
+                    fallback_text = f"Image on page {page_num}."
+                    all_chunks.append({
+                        "text": fallback_text,
+                        "page": page_num,
+                        "chunk_index": chunk_index,
+                        "chunk_type": "text",
+                        "is_image": True,
+                        "image_caption": fallback_text,
+                    })
+                    chunk_index += 1
+                finally:
+                    # Explicitly remove reference to raw image bytes to free memory
+                    if next_image:
+                        next_image["image_bytes"] = None
+                    if "img_bytes" in locals():
+                        del img_bytes
+
+                    # Fetch next image
+                    try:
+                        next_image = next(image_iter)
+                    except StopIteration:
+                        next_image = None
+                    except Exception as e:
+                        logger.warning(f"Error getting next image from iterator: {e}")
+                        next_image = None
+
+            # Collect garbage at the end of each page to prevent memory buildup
+            import gc
+            gc.collect()
+
     finally:
         if pdf_doc:
             pdf_doc.close()

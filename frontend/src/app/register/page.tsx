@@ -7,9 +7,11 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Brain, Eye, EyeOff } from "lucide-react";
+import { Brain } from "lucide-react";
 import Link from "next/link";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
+import { PasswordField } from "@/components/auth/PasswordField";
+import { isPasswordValid } from "@/lib/password-validation";
 import HuggingFaceSignInButton from "@/components/auth/HuggingFaceSignInButton";
 
 export default function RegisterPage() {
@@ -19,10 +21,14 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [registeredEmail, setRegisteredEmail] = useState("");
+  const [verificationUrl, setVerificationUrl] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const passwordValid = isPasswordValid(password);
+  const canSubmit = username.trim().length >= 3 && email.trim().length > 0 && passwordValid && !loading;
   // Redirect if already logged in
   useEffect(() => {
     if (initialized && user) {
@@ -37,11 +43,15 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
+    setVerificationUrl("");
     setLoading(true);
 
     try {
-      await register(username, email, password);
-      router.replace("/dashboard");
+      const result = await register(username, email, password);
+      setRegisteredEmail(result.email);
+      setSuccess(result.message);
+      setVerificationUrl(result.verification_url ?? "");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t("register.fallbackError");
       setError(message);
@@ -74,15 +84,33 @@ export default function RegisterPage() {
             />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             {error && (
-              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
+              <div
+                role="alert"
+                className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive"
+              >
                 {error}
+              </div>
+            )}
+            {success && (
+              <div className="p-3 rounded-lg bg-primary/10 border border-primary/30 text-sm text-primary">
+                <p className="font-medium">{t("register.verifyTitle")}</p>
+                <p className="mt-1">
+                  {t("register.verifyMessage", { email: registeredEmail })}
+                </p>
+                {verificationUrl && (
+                  <Link href={verificationUrl} className="inline-flex mt-3 font-medium underline">
+                    {t("register.openVerification")}
+                  </Link>
+                )}
               </div>
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("common.username")}</label>
+              <label htmlFor="reg-username" className="text-sm font-medium">
+                {t("common.username")}
+              </label>
               <Input
                 id="reg-username"
                 type="text"
@@ -91,12 +119,15 @@ export default function RegisterPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 minLength={3}
+                disabled={Boolean(success)}
                 className="h-11"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("common.email")}</label>
+              <label htmlFor="reg-email" className="text-sm font-medium">
+                {t("common.email")}
+              </label>
               <Input
                 id="reg-email"
                 type="email"
@@ -104,34 +135,20 @@ export default function RegisterPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={Boolean(success)}
                 className="h-11"
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("common.password")}</label>
-              <div className="relative">
-                <Input
-                  id="reg-password"
-                  type={showPw ? "text" : "password"}
-                  placeholder={t("register.passwordPlaceholder")}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  className="h-11 pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+            <PasswordField
+              id="reg-password"
+              value={password}
+              onChange={setPassword}
+              placeholder={t("register.passwordPlaceholder")}
+              disabled={Boolean(success)}
+            />
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
+            <Button type="submit" className="w-full h-11 text-base" disabled={loading || Boolean(success)}>
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />

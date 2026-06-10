@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useSyncExternalStore } from "react";
+import { formatDistanceToNow } from "date-fns";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -9,6 +10,11 @@ import { api } from "@/lib/api";
 import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/store/chat-store";
+import { useSettingsStore } from "@/store/settings-store";
+
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 interface Props {
   message: ChatMsg;
@@ -72,6 +78,16 @@ export default function MessageBubble({ message }: Props) {
   const [feedbackState, setFeedbackState] = useState<"up" | "down" | null>(message.feedback ?? null);
   const setMessages = useChatStore((s) => s.setMessages);
 
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const fontSize = useSettingsStore((s) => s.fontSize);
+
+  const activeFontSize = mounted ? fontSize : "medium";
+  const fontSizeClass = {
+    small: "text-xs",
+    medium: "text-sm",
+    large: "text-base",
+  }[activeFontSize];
+
   const handleCopy = async () => {
     if (!message.content) return;
     try {
@@ -118,6 +134,7 @@ export default function MessageBubble({ message }: Props) {
       return;
     }
 
+    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(message.content);
     utteranceRef.current = utterance;
 
@@ -167,7 +184,7 @@ export default function MessageBubble({ message }: Props) {
         }`}
       >
         {isUser ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          <p className={`leading-relaxed whitespace-pre-wrap ${fontSizeClass}`}>{message.content}</p>
         ) : (
           <>
             {message.content && (
@@ -192,6 +209,28 @@ export default function MessageBubble({ message }: Props) {
                       <X className="w-3.5 h-3.5 text-destructive" />
                     ) : (
                       <Share2 className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                )}
+
+                {/* Speech button */}
+                {!message.isStreaming && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
+                      isSpeaking
+                        ? "opacity-100"
+                        : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                    }`}
+                    onClick={handleSpeech}
+                    aria-label={isSpeaking ? "Stop reading" : "Read response"}
+                  >
+                    {isSpeaking ? (
+                      <Pause className="w-3.5 h-3.5" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
                     )}
                   </Button>
                 )}
@@ -248,7 +287,7 @@ export default function MessageBubble({ message }: Props) {
               </>
             )}
 
-            <div className={`prose-chat text-sm ${message.content ? "pr-20" : ""}`}>
+            <div className={`prose-chat ${fontSizeClass} ${message.content ? "pr-20" : ""}`}>
               {message.content ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -299,9 +338,20 @@ export default function MessageBubble({ message }: Props) {
             )}
           </>
         )}
+        
+         <div
+          className={`text-xs text-muted-foreground mt-2 ${
+            isUser ? "text-right" : "text-left"
+          }`}
+          title={new Date(Number(message.id.split("-")[1])).toLocaleString()}
+        >
+          {formatDistanceToNow(
+            new Date(Number(message.id.split("-")[1])),
+            { addSuffix: true }
+          )}
+        </div>
       </div>
-
-      {isUser && (
+       {isUser && (
         <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
           <User className="w-4 h-4 text-primary-foreground" />
         </div>
