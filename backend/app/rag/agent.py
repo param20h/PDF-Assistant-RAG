@@ -6,12 +6,11 @@ import logging
 import json
 from typing import List, Dict, Any, Optional, Generator
 
-from sympy import python
-
 from huggingface_hub import InferenceClient
 from langchain_classic.agents import create_react_agent, AgentExecutor
 from langchain_core.prompts import PromptTemplate
-from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
+from langchain_huggingface import HuggingFaceEndpoint
+from langchain_huggingface.chat_models import ChatHuggingFace
 
 from app.config import get_settings
 from app.rag.retriever import retrieve
