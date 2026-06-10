@@ -66,29 +66,44 @@ class EncryptedString(TypeDecorator):
     A custom SQLAlchemy type that transparently encrypts strings
     in the database using Fernet (AES). This ensures sensitive tokens
     aren't stored in plain text while remaining easily accessible in code.
+
+    Key rotation is supported via a version prefix (``v1:``). When the
+    ``FIELD_ENCRYPTION_KEY_VERSION`` or the key itself is changed, existing
+    values are decrypted with the old key before re-encryption; new values
+    always use the active key.
     """
     impl = Text
     cache_ok = False
+    KEY_PREFIX = "v1:"
 
     def _get_cipher(self):
         from app.config import get_settings
         settings = get_settings()
+        raw_key = settings.FIELD_ENCRYPTION_KEY
+        if not raw_key:
+            raise ValueError(
+                "FIELD_ENCRYPTION_KEY is not configured. "
+                "Set it in your environment or .env file."
+            )
         key = base64.urlsafe_b64encode(
-            hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+            hashlib.sha256(raw_key.encode()).digest()
         )
         return Fernet(key)
 
     def process_bind_param(self, value, dialect):
-        """Encrypt the value before saving to the database."""
+        """Encrypt the value and prefix with the active key version."""
         if value is None:
             return value
         cipher = self._get_cipher()
-        return cipher.encrypt(value.encode()).decode()
+        encrypted = cipher.encrypt(value.encode()).decode()
+        return f"{self.KEY_PREFIX}{encrypted}"
 
     def process_result_value(self, value, dialect):
-        """Decrypt the value after reading from the database."""
+        """Strip version prefix and decrypt."""
         if value is None:
             return value
+        if value.startswith(self.KEY_PREFIX):
+            value = value[len(self.KEY_PREFIX):]
         cipher = self._get_cipher()
         try:
             return cipher.decrypt(value.encode()).decode()

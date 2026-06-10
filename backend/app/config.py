@@ -110,6 +110,17 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.3
     SUMMARY_MAX_TOKENS: int = 512
 
+    # ── Field-level Encryption ────────────────────────
+    # Dedicated key for encrypting sensitive user fields (tokens, secrets).
+    # Must be set in production — no default value is provided.
+    # Generate one: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    FIELD_ENCRYPTION_KEY: str = ""
+    FIELD_ENCRYPTION_KEY_VERSION: int = 1
+
+    # ── Document Cleanup ─────────────────────────────
+    DOC_CLEANUP_ENABLED: bool = True
+    DOC_CLEANUP_INACTIVE_DAYS: int = 30
+
     # ── LangSmith Tracing (optional) ─────────────────────
     LANGSMITH_TRACING: bool = False
     LANGSMITH_API_KEY: str = ""
@@ -137,6 +148,21 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT == "production":
             return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
         return ["*"]
+
+    def validate_production(self):
+        """Raises ValueError if dangerous defaults are active in production."""
+        if self.ENVIRONMENT != "production":
+            return
+        if self.SECRET_KEY in ("change-me-in-production-please", "dev-secret-key-change-me"):
+            raise ValueError(
+                "SECRET_KEY must be overridden in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        if not self.FIELD_ENCRYPTION_KEY:
+            raise ValueError(
+                "FIELD_ENCRYPTION_KEY must be set in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
 
     class Config:
         env_file = ".env"
