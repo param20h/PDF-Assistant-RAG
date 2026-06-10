@@ -356,6 +356,50 @@ def rename_chat_session(
     return session
 
 
+# ---- NEW ROUTE added for issue #434 ----
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=ChatSessionResponse,
+    summary="Rename a chat session",
+    description="Updates the title of one chat session after verifying it belongs to the authenticated user.",
+)
+def patch_chat_session(
+    session_id: str,
+    payload: ChatSessionCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Rename an existing chat session owned by the authenticated user via PATCH.
+
+    Args:
+        session_id: The ID of the chat session to rename.
+        payload: ChatSessionCreate containing the new `title`.
+        user: The currently authenticated user.
+        db: SQLAlchemy database session.
+
+    Returns:
+        ChatSessionResponse: The updated session with the new title.
+
+    Raises:
+        HTTPException: 404 if the session does not exist or does not belong to the user.
+    """
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user.id,
+        )
+        .first()
+    )
+    if not session:
+        raise NotFoundException("Chat session")
+    session.title = payload.title
+    db.commit()
+    db.refresh(session)
+    return session
+# ---- END NEW ROUTE ----
+
+
 @router.delete(
     "/sessions/{session_id}",
     summary="Delete a chat session",
