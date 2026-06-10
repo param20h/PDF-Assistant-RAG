@@ -11,7 +11,6 @@ import { Brain } from "lucide-react";
 import Link from "next/link";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 import { PasswordField } from "@/components/auth/PasswordField";
-import { isPasswordValid } from "@/lib/password-validation";
 import HuggingFaceSignInButton from "@/components/auth/HuggingFaceSignInButton";
 
 export default function RegisterPage() {
@@ -27,8 +26,7 @@ export default function RegisterPage() {
   const [verificationUrl, setVerificationUrl] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const passwordValid = isPasswordValid(password);
-  const canSubmit = username.trim().length >= 3 && email.trim().length > 0 && passwordValid && !loading;
+
   // Redirect if already logged in
   useEffect(() => {
     if (initialized && user) {

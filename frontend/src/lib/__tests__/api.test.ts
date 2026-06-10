@@ -7,7 +7,7 @@ describe('ApiClient', () => {
 
   beforeEach(() => {
     fetchMock = vi.fn();
-    global.fetch = fetchMock as any;
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     localStorageStore = {};
     const mockLocalStorage = {
@@ -38,7 +38,7 @@ describe('ApiClient', () => {
 
   describe('Headers & Auth', () => {
     it('should include Authorization header if token exists in localStorage', async () => {
-      localStorageStore['token'] = 'test-token';
+      localStorageStore['token'] = 'dummy_auth_token_string';
       fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
       
       await api.get('/test');
@@ -49,7 +49,7 @@ describe('ApiClient', () => {
           method: 'GET',
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer test-token',
+            'Authorization': 'Bearer dummy_auth_token_string',
           })
         })
       );
@@ -130,15 +130,15 @@ describe('ApiClient', () => {
 
   describe('Token Refresh', () => {
     it('should auto-refresh token on 401 response', async () => {
-      localStorageStore['token'] = 'old-token';
-      localStorageStore['refresh_token'] = 'refresh-token';
+      localStorageStore['token'] = 'old_dummy_token';
+      localStorageStore['refresh_token'] = 'dummy_refresh_string';
       
       // 1st request -> 401
       fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
       
       // Refresh request -> 200
       fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
-        access_token: 'new-token'
+        access_token: 'new_dummy_token'
       })));
       
       // Retry original request -> 200
@@ -147,7 +147,7 @@ describe('ApiClient', () => {
       const res = await api.get('/protected');
       
       expect(res).toEqual({ data: 'success' });
-      expect(localStorageStore['token']).toBe('new-token');
+      expect(localStorageStore['token']).toBe('new_dummy_token');
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
   });
