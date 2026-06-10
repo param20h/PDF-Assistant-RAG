@@ -162,28 +162,31 @@ graph TD
 
 | | Technology | Purpose |
 |---|---|---|
-| <img src="https://skillicons.dev/icons?i=flask" width="30"/> | **Flask 2.x** | Web framework + routing |
+| <img src="https://skillicons.dev/icons?i=fastapi" width="30"/> | **FastAPI** | Async web framework + routing |
 | <img src="https://skillicons.dev/icons?i=python" width="30"/> | **Python 3.11** | Runtime environment |
-| <img src="https://skillicons.dev/icons?i=mongodb" width="30"/> | **MongoDB + PyMongo** | User accounts & metadata storage |
-| <img src="https://img.shields.io/badge/Flask--Login-000000?style=flat" height="24"/> | **Flask-Login + Flask-Dance** | Session auth + Google OAuth |
-| <img src="https://img.shields.io/badge/Pinecone-000000?style=flat" height="24"/> | **Pinecone** | Vector store (per-user namespace) |
-| <img src="https://img.shields.io/badge/Google_Gemini-4285F4?style=flat&logo=google&logoColor=white" height="24"/> | **Google Gemini API** | Document chunk embeddings |
-| <img src="https://img.shields.io/badge/Groq-F55036?style=flat" height="24"/> | **Groq (Llama 3)** | LLM answer generation |
+| <img src="https://skillicons.dev/icons?i=postgresql" width="30"/> | **PostgreSQL / SQLite** | Relational database (SQLAlchemy ORM) |
+| <img src="https://img.shields.io/badge/JWT-000000?style=flat&logo=jsonwebtokens&logoColor=white" height="24"/> | **JWT + bcrypt** | Authentication & password hashing |
+| <img src="https://img.shields.io/badge/ChromaDB-000000?style=flat" height="24"/> | **ChromaDB** | Local vector store (embeddings) |
+| <img src="https://img.shields.io/badge/HuggingFace-FFD21E?style=flat&logo=huggingface&logoColor=black" height="24"/> | **HuggingFace Inference API** | LLM answer generation |
+| <img src="https://img.shields.io/badge/sentence--transformers-000000?style=flat" height="24"/> | **sentence-transformers** | Local embedding model (all-MiniLM-L6-v2) |
 
 ### Frontend
 
 | | Technology | Purpose |
 |---|---|---|
-| <img src="https://skillicons.dev/icons?i=html" width="30"/> | **Jinja2 (via Flask)** | Server-side HTML templating |
-| <img src="https://skillicons.dev/icons?i=js" width="30"/> | **HTML + CSS + JavaScript** | Frontend UI (served from `/static` and `/templates`) |
+| <img src="https://skillicons.dev/icons?i=nextjs" width="30"/> | **Next.js 14** | React framework (App Router) |
+| <img src="https://skillicons.dev/icons?i=typescript" width="30"/> | **TypeScript** | Frontend language |
+| <img src="https://skillicons.dev/icons?i=tailwind" width="30"/> | **Tailwind CSS** | Utility-first styling |
 
 ### AI / ML Pipeline
 
 | | Technology | Purpose |
 |---|---|---|
-| <img src="https://img.shields.io/badge/Google_Gemini-4285F4?style=flat&logo=google&logoColor=white" height="24"/> | **Google Gemini API** | Generates vector embeddings for document chunks |
-| <img src="https://img.shields.io/badge/Pinecone-000000?style=flat" height="24"/> | **Pinecone** | Stores + retrieves embeddings per user namespace |
-| <img src="https://img.shields.io/badge/Groq-F55036?style=flat" height="24"/> | **Groq API (Llama 3)** | Generates answers from retrieved context |
+| <img src="https://img.shields.io/badge/sentence--transformers-000000?style=flat" height="24"/> | **sentence-transformers (all-MiniLM-L6-v2)** | Generates vector embeddings for document chunks |
+| <img src="https://img.shields.io/badge/ChromaDB-000000?style=flat" height="24"/> | **ChromaDB** | Stores + retrieves embeddings locally |
+| <img src="https://img.shields.io/badge/HuggingFace-FFD21E?style=flat&logo=huggingface&logoColor=black" height="24"/> | **HuggingFace Inference API** | Generates answers from retrieved context |
+| <img src="https://img.shields.io/badge/Cross--Encoder-000000?style=flat" height="24"/> | **BAAI/bge-reranker-v2-m3** | Cross-encoder reranking for retrieval quality |
+| <img src="https://img.shields.io/badge/GraphRAG-000000?style=flat" height="24"/> | **Knowledge Graph (GraphRAG)** | Entity extraction + relationship graphs |
 | <img src="https://img.shields.io/badge/PyMuPDF-FF0000?style=flat" height="24"/> | **PyMuPDF + pdfplumber + python-docx** | Document text extraction |
 
 ### DevOps & Tooling
