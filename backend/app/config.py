@@ -112,9 +112,9 @@ class Settings(BaseSettings):
 
     # ── Field-level Encryption ────────────────────────
     # Dedicated key for encrypting sensitive user fields (tokens, secrets).
-    # Must be set in production — no default value is provided.
-    # Generate one: python -c "import secrets; print(secrets.token_urlsafe(32))"
-    FIELD_ENCRYPTION_KEY: str = ""
+    # Must be overridden in production — validate_production() enforces this.
+    # Generate a strong key: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    FIELD_ENCRYPTION_KEY: str = "change-me-in-production-field-encryption-key"
     FIELD_ENCRYPTION_KEY_VERSION: int = 1
 
     # ── Document Cleanup ─────────────────────────────
