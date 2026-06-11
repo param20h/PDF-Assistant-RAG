@@ -100,6 +100,13 @@ async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────
     logger.info(f"Starting {settings.APP_NAME}")
 
+    # Validate production settings
+    try:
+        settings.validate_production()
+    except ValueError as e:
+        logger.error("Configuration error: %s", e)
+        raise
+
     # Create tables
     init_db()
     logger.info("Database initialized")
