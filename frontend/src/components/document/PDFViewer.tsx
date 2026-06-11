@@ -4,15 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertCircle, RotateCw } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 
 // Import styles for react-pdf layers
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-// Configure PDF.js worker using standard URL
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// Configure PDF.js worker locally using Next.js/Webpack asset bundling
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 export interface PdfHighlightRect {
   left: number;
@@ -53,7 +56,9 @@ export default function PDFViewer({
   highlightTarget,
 }: Props) {
   const [scale, setScale] = useState(1.0);
+  const [rotation, setRotation] = useState(0);
   const [pageInput, setPageInput] = useState(String(currentPage));
+  const [pageInputError, setPageInputError] = useState(false);
   const [prevCurrentPage, setPrevCurrentPage] = useState(currentPage);
   const viewerRef = useRef<HTMLDivElement>(null);
 
@@ -61,24 +66,46 @@ export default function PDFViewer({
   if (currentPage !== prevCurrentPage) {
     setPrevCurrentPage(currentPage);
     setPageInput(String(currentPage));
+    setPageInputError(false);
   }
 
   const pdfUrl = `${API_BASE}/api/v1/documents/${documentId}/pdf`;
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // Configure file object with Authorization headers
-  const fileConfig = {
+  // Configure file object with Authorization headers (memoized to prevent re-renders)
+  const fileConfig = useMemo(() => ({
     url: pdfUrl,
     httpHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
-  };
-
-
+  }), [pdfUrl, token]);
 
   useEffect(() => {
     if (viewerRef.current && highlightTarget?.page === currentPage) {
       viewerRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [currentPage, highlightTarget?.page]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isModifier = e.ctrlKey || e.metaKey;
+      if (isModifier) {
+        if (e.key === "=" || e.key === "+") {
+          e.preventDefault();
+          setScale((s) => Math.min(2.0, s + 0.1));
+        } else if (e.key === "-") {
+          e.preventDefault();
+          setScale((s) => Math.max(0.5, s - 0.1));
+        } else if (e.key === "r" || e.key === "R") {
+          e.preventDefault();
+          setRotation((r) => (r + 90) % 360);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   const overlayRects = useMemo(() => {
     if (!highlightTarget || highlightTarget.page !== currentPage) return [];
@@ -111,7 +138,19 @@ export default function PDFViewer({
     });
   }, [highlightTarget, currentPage]);
 
-
+  const handlePageJump = (value: string) => {
+    const pageNumber = parseInt(value.trim(), 10);
+    if (!Number.isNaN(pageNumber) && pageNumber >= 1 && pageNumber <= totalPages) {
+      setPageInputError(false);
+      onPageChange(pageNumber);
+    } else {
+      setPageInputError(true);
+      setTimeout(() => {
+        setPageInput(String(currentPage));
+        setPageInputError(false);
+      }, 1000);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col bg-background" ref={viewerRef}>
@@ -132,27 +171,32 @@ export default function PDFViewer({
             <ChevronLeft className="w-4 h-4" />
           </Button>
 
+          {/* Page jump input — Page X of Y */}
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              const pageNumber = parseInt(pageInput.trim(), 10);
-              if (!Number.isNaN(pageNumber) && pageNumber >= 1 && pageNumber <= totalPages) {
-                onPageChange(pageNumber);
-              } else {
-                setPageInput(String(currentPage));
-              }
+              handlePageJump(pageInput);
             }}
             className="flex items-center gap-1 text-xs"
             aria-label="PDF page navigation"
           >
+            <span className="text-muted-foreground text-[10px] hidden sm:inline">Page</span>
             <Input
               value={pageInput}
-              onChange={(e) => setPageInput(e.target.value)}
-              className="w-10 h-7 text-center text-xs p-0 bg-background/50"
-              aria-label={`PDF page number, current page ${currentPage} of ${totalPages}`}
+              onChange={(e) => {
+                setPageInput(e.target.value);
+                setPageInputError(false);
+              }}
+              onBlur={() => handlePageJump(pageInput)}
+              className={`h-7 text-center text-xs p-0 bg-background/50 transition-colors ${
+                String(currentPage).length >= 3 ? "w-14" : "w-10"
+              } ${pageInputError ? "border-destructive text-destructive" : ""}`}
+              aria-label={`Page number input, current page ${currentPage} of ${totalPages}`}
+              aria-invalid={pageInputError}
+              title={`Enter page number between 1 and ${totalPages}`}
               inputMode="numeric"
             />
-            <span className="text-muted-foreground">/ {totalPages}</span>
+            <span className="text-muted-foreground text-[10px]">of {totalPages}</span>
           </form>
 
           <Button
@@ -176,7 +220,7 @@ export default function PDFViewer({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => setScale((current) => Math.max(0.5, current - 0.15))}
+            onClick={() => setScale((current) => Math.max(0.5, current - 0.1))}
             aria-label="Zoom out PDF"
           >
             <ZoomOut className="w-3.5 h-3.5" />
@@ -188,10 +232,32 @@ export default function PDFViewer({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => setScale((current) => Math.min(2.5, current + 0.15))}
+            onClick={() => setScale((current) => Math.min(2.0, current + 0.1))}
             aria-label="Zoom in PDF"
           >
             <ZoomIn className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => setRotation((current) => (current + 90) % 360)}
+            aria-label="Rotate PDF"
+            title="Rotate 90°"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            className="h-7 px-2 text-[10px] font-medium"
+            onClick={() => {
+              setScale(1.0);
+              setRotation(0);
+            }}
+            aria-label="Reset PDF zoom and rotation"
+            title="Reset to 100% and 0°"
+          >
+            Reset
           </Button>
         </div>
       </div>
@@ -231,6 +297,7 @@ export default function PDFViewer({
             <Page
               pageNumber={currentPage}
               scale={scale}
+              rotate={rotation}
               renderAnnotationLayer={false}
               renderTextLayer={true}
               loading={
