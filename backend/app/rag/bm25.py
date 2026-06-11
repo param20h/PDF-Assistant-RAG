@@ -108,6 +108,7 @@ def query_bm25(
     query: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     top_k: int = 10,
 ) -> List[Dict[str, Any]]:
     """
@@ -122,7 +123,17 @@ def query_bm25(
         path = get_bm25_path(user_id, document_id)
         return _query_single_index(path, tokenized_query, top_k)
     
-    # If no document_id, query all documents for this user
+    if document_ids:
+        all_results = []
+        for doc_id in document_ids:
+            path = get_bm25_path(user_id, doc_id)
+            if os.path.exists(path):
+                results = _query_single_index(path, tokenized_query, top_k)
+                all_results.extend(results)
+        all_results.sort(key=lambda x: x["score"], reverse=True)
+        return all_results[:top_k]
+    
+    # If no document_id and no document_ids, query all documents for this user
     user_dir = get_bm25_dir(user_id)
     all_results = []
     
