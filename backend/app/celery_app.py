@@ -1,23 +1,19 @@
-"""Celery application configured for Redis-backed background jobs."""
+import os
 from celery import Celery
 
-from app.config import get_settings
-
-
-settings = get_settings()
-
+# Initialize the Celery application instance
 celery_app = Celery(
-    "pdf_assistant_rag",
-    broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks"],
+    "worker",
+    broker=os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
+    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 )
 
+# Optional configuration updates for reliable serialization
 celery_app.conf.update(
-    task_track_started=settings.CELERY_TASK_TRACK_STARTED,
     task_serializer="json",
-    result_serializer="json",
     accept_content=["json"],
-    timezone="UTC",
+    result_serializer="json",
 )
 
+# Tell Celery to discover background tasks dynamically to break circular loops
+celery_app.autodiscover_tasks(["app"])

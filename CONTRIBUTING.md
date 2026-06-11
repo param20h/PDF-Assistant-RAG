@@ -206,7 +206,3 @@ All checks must be green before your PR can be merged.
 ## 💬 Need Help?
 
 Open a [Discussion](https://github.com/param20h/PDF-Assistant-RAG/discussions) before opening an issue if you're unsure. Mentors and the admin check discussions regularly.
-
----
-
-Thanks for contributing! Every PR, no matter how small, makes a difference. 🚀

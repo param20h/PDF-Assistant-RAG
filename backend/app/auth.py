@@ -6,7 +6,7 @@ from typing import Optional, Any
 
 import jwt
 import bcrypt
-from fastapi import Depends, HTTPException, status, Cookie
+from fastapi import Depends, HTTPException, status, Cookie, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -97,6 +97,7 @@ def decode_invite_token(token: str) -> Optional[dict[str, Any]]:
 import hashlib
 
 def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     access_token: Optional[str] = Cookie(None),
     db: Session = Depends(get_db),
@@ -136,6 +137,10 @@ def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found for this API key",
             )
+        # Store user ID on request state and set context variable
+        request.state.user_id = user.id
+        from app.observability import user_id_var
+        user_id_var.set(user.id)
         return user
 
     # Otherwise, process as JWT
@@ -155,6 +160,11 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+
+    # Store user ID on request state and set context variable
+    request.state.user_id = user.id
+    from app.observability import user_id_var
+    user_id_var.set(user.id)
 
     return user
 

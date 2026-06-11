@@ -17,6 +17,7 @@ import {
 import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
+import DocumentCard from "./DocumentCard";
 import { toast } from "sonner";
 
 interface Props {
@@ -546,6 +547,7 @@ export default function DocumentSidebar({
                         </Badge>
                       )}
                     </div>
+                    <DocumentCard document={doc} />
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                     {viewMode === "active" ? (

@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 from app.models import Document
+from app.rag.agent import persist_document_keywords
 from app.rag.chunker import chunk_document, get_page_count
 from app.rag.vectorstore import store_chunks
 from app.config import get_settings
@@ -102,6 +103,8 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
             filename=original_name,
             user_id=user_id,
         )
+
+        persist_document_keywords(doc, chunks, db)
 
         doc.processing_progress = 85
         db.commit()
