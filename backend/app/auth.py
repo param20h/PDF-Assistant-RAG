@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.exceptions import ForbiddenException
 from app.models import User, UserRole
 
 settings = get_settings()
@@ -179,10 +180,7 @@ def get_admin_user(user: User = Depends(get_current_user)) -> User:
     Raises 403 Forbidden if the user lacks sufficient permissions.
     """
     if not _is_admin_user(user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
+        raise ForbiddenException("Admin access required")
     return user
 
 
