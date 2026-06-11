@@ -41,6 +41,7 @@ from app.auth import get_current_user
 from app.config import get_settings
 from app.tasks import process_document
 from app.services.document_ingestion import ingest_document
+from app.services.layout_parser import AdvancedPDFParser
 
 try:
     from crawl4ai import AsyncWebCrawler
