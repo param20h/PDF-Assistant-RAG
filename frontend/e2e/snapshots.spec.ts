@@ -34,6 +34,10 @@ async function mockDashboardApis(page: Page, documents: typeof uploadedDocument[
       },
     });
   });
+
+  await page.route("**/api/v1/chat/sessions", async (route) => {
+    await route.fulfill({ json: [] });
+  });
 }
 
 test.describe("Frontend Snapshot Tests", () => {
