@@ -4,7 +4,8 @@ Uses synchronous SQLAlchemy for simplicity and compatibility.
 """
 import os
 import logging
-from sqlalchemy import create_engine, inspect, text
+from contextlib import contextmanager
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import get_settings
 
@@ -29,6 +30,9 @@ else:
     engine = create_engine(
         settings.DATABASE_URL,
         echo=settings.DEBUG,
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        pool_pre_ping=settings.DATABASE_POOL_PRE_PING,
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -44,6 +48,55 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+@contextmanager
+def get_db_session():
+    """Context manager for background tasks, streaming, and other uses outside FastAPI DI.
+
+    Creates a new session, commits on success, rolls back SQLAlchemy errors
+    (converting them to typed AppException), re-raises non-DB exceptions,
+    and always closes the session.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+    from app.exceptions import AppException
+
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise AppException(
+            "DATABASE_ERROR",
+            "A database error occurred while processing your request.",
+            500,
+            {"error": str(e)[:200]},
+        ) from e
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+# ── Session Lifecycle Logging (DEBUG only) ───────────
+if settings.DEBUG:
+    @event.listens_for(SessionLocal, "after_begin")
+    def _receive_after_begin(session, transaction, connection):
+        logger.debug("Session %s began transaction", id(session))
+
+    @event.listens_for(SessionLocal, "after_commit")
+    def _receive_after_commit(session):
+        logger.debug("Session %s committed", id(session))
+
+    @event.listens_for(SessionLocal, "after_rollback")
+    def _receive_after_rollback(session):
+        logger.debug("Session %s rolled back", id(session))
+
+    @event.listens_for(SessionLocal, "after_close")
+    def _receive_after_close(session):
+        logger.debug("Session %s closed", id(session))
 
 
 def _migrate_schema():
@@ -113,6 +166,13 @@ def _migrate_schema():
         ("documents", "drive_file_id", "ALTER TABLE documents ADD COLUMN drive_file_id VARCHAR(255)"),
         ("documents", "drive_folder_id", "ALTER TABLE documents ADD COLUMN drive_folder_id VARCHAR(255)"),
         ("documents", "drive_synced_at", "ALTER TABLE documents ADD COLUMN drive_synced_at TIMESTAMP"),
+        ("documents", "processing_progress", "ALTER TABLE documents ADD COLUMN processing_progress INTEGER DEFAULT 0"),
+        ("documents", "processing_stage", "ALTER TABLE documents ADD COLUMN processing_stage VARCHAR(20) DEFAULT 'queued'"),
+        ("documents", "retry_count", "ALTER TABLE documents ADD COLUMN retry_count INTEGER DEFAULT 0"),
+        ("documents", "last_error_traceback", "ALTER TABLE documents ADD COLUMN last_error_traceback TEXT"),
+        ("documents", "processing_started_at", "ALTER TABLE documents ADD COLUMN processing_started_at TIMESTAMP"),
+        ("documents", "completed_at", "ALTER TABLE documents ADD COLUMN completed_at TIMESTAMP"),
+        ("documents", "extracted_urls", "ALTER TABLE documents ADD COLUMN extracted_urls TEXT"),
     ]
     for table, column, ddl in docs_migrations:
         if column not in existing_docs_columns:
@@ -144,6 +204,66 @@ def _migrate_schema():
                     "Migration skipped (may already exist): %s.%s", table, column
                 )
 
+
+    # Migrate documents — embedding cache tracking
+    try:
+        existing_docs_columns = {c["name"] for c in inspector.get_columns("documents")}
+    except Exception:
+        existing_docs_columns = set()
+
+    embedding_cache_migrations = [
+        (
+            "documents",
+            "extracted_urls",
+            "ALTER TABLE documents ADD COLUMN extracted_urls TEXT",
+        ),
+    ]
+    for table, column, ddl in embedding_cache_migrations:
+        if column not in existing_docs_columns:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+                logger.info("Migration: added column %s.%s", table, column)
+            except Exception:
+                logger.warning(
+                    "Migration skipped (may already exist): %s.%s", table, column
+                )
+
+
+def advisory_lock(lock_id: int):
+    """Context manager that acquires a PostgreSQL advisory lock (xact scope).
+
+    On SQLite the lock is a no-op because SQLite serializes all writes anyway.
+    On PostgreSQL the lock is released automatically at transaction commit.
+
+    Usage::
+
+        with advisory_lock(hash("cleanup_inactive") & 0x7FFFFFFF):
+            ...
+    """
+    if is_sqlite:
+        # SQLite serializes writes; no explicit lock needed.
+        return _noop_contextmanager()
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _pg_lock():
+        with engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": lock_id})
+            yield
+
+    return _pg_lock()
+
+
+def _noop_contextmanager():
+    from contextlib import contextmanager as _cm
+
+    @_cm
+    def _noop():
+        yield
+
+    return _noop()
 
 
 def init_db():

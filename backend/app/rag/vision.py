@@ -192,6 +192,20 @@ def caption_image(image_bytes: bytes, page: Optional[int] = None) -> str:
 
     Resolution order: OpenAI (if configured) → OCR → placeholder.
     """
+def caption_image(image_bytes: bytes | List[bytes], page: int | List[int] | None = None) -> str | List[str]:
+    """Generate a caption for a single image or a batch of images.
+
+    Order of operations:
+    - If a list of image bytes is passed, returns a list of captions.
+    - If an external VLM provider is configured, attempt to call it.
+    - Fall back to local OCR (pytesseract) if available.
+    - Otherwise return a simple placeholder caption including the page number.
+    """
+    if isinstance(image_bytes, list):
+        pages = page if isinstance(page, list) else ([page] * len(image_bytes) if page is not None else [None] * len(image_bytes))
+        return [caption_image(img, pg) for img, pg in zip(image_bytes, pages)]
+
+    # Placeholder for provider-based captioning (e.g., OpenAI / LLaVA hooks)
     provider = getattr(settings, "VISION_PROVIDER", None)
 
     if provider == "openai":

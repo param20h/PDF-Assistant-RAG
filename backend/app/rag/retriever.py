@@ -41,6 +41,7 @@ MAX_QUERY_VARIANTS = 4
 class CustomVectorRetriever(BaseRetriever):
     user_id: str = Field(description="User ID")
     document_id: Optional[str] = Field(default=None, description="Document ID")
+    document_ids: Optional[List[str]] = Field(default=None, description="Active Document IDs")
     top_k: int = Field(default=10, description="Top K results")
 
     def _get_relevant_documents(
@@ -51,6 +52,7 @@ class CustomVectorRetriever(BaseRetriever):
             query_embedding=query_vector,
             user_id=self.user_id,
             document_id=self.document_id,
+            document_ids=self.document_ids,
             top_k=self.top_k,
         )
         return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
@@ -59,6 +61,7 @@ class CustomVectorRetriever(BaseRetriever):
 class CustomBM25Retriever(BaseRetriever):
     user_id: str = Field(description="User ID")
     document_id: Optional[str] = Field(default=None, description="Document ID")
+    document_ids: Optional[List[str]] = Field(default=None, description="Active Document IDs")
     top_k: int = Field(default=10, description="Top K results")
 
     def _get_relevant_documents(
@@ -69,6 +72,7 @@ class CustomBM25Retriever(BaseRetriever):
             query=query,
             user_id=self.user_id,
             document_id=self.document_id,
+            document_ids=self.document_ids,
             top_k=self.top_k,
         )
         return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
@@ -228,17 +232,36 @@ def retrieve(
 
     Returns chunks with confidence scores.
     """
+    from app.database import SessionLocal
+    from app.models import Document
+
+    if document_id:
+        active_doc_ids = [document_id]
+    else:
+        with SessionLocal() as db:
+            active_docs = (
+                db.query(Document.id)
+                .filter(Document.user_id == user_id, Document.is_deleted.is_(False))
+                .all()
+            )
+            active_doc_ids = [str(d[0]) for d in active_docs]
+
+    if not active_doc_ids:
+        return []
+
     # ── Stage 1: Hybrid Search with Query Transformation ─────────────
     effective_top_k = top_k if top_k is not None else settings.TOP_K_RETRIEVAL
     vector_retriever = CustomVectorRetriever(
         user_id=user_id,
         document_id=document_id,
+        document_ids=active_doc_ids,
         top_k=effective_top_k,
     )
 
     bm25_retriever = CustomBM25Retriever(
         user_id=user_id,
         document_id=document_id,
+        document_ids=active_doc_ids,
         top_k=effective_top_k,
     )
 
@@ -252,15 +275,25 @@ def retrieve(
         docs = ensemble_retriever.invoke(search_query)
         for i, doc in enumerate(docs):
             chunk = doc.metadata.copy()
+            # Preserve raw similarity (ChromaDB cosine similarity or BM25 score)
+            chunk["raw_score"] = chunk.get("score")
             # Preserve a mock score based on rank for fallback if reranker fails
             # We use 1.0/(i+1) as a base RRF-like score
             chunk["score"] = 1.0 / (i + 1)
             all_candidates.append(chunk)
 
     if not all_candidates:
+        logger.debug(f"Stage 1 retrieval: 0 candidates found for query '{query}'")
         return []
 
     candidates = _merge_candidates(all_candidates)
+
+    # Log raw scores before reranking/filtering
+    raw_scores_log = [
+        f"[Chunk {c.get('chunk_index')}]: raw_score={c.get('raw_score')}"
+        for c in candidates
+    ]
+    logger.debug(f"Stage 1 candidates count: {len(candidates)}, raw scores: {', '.join(raw_scores_log)}")
 
     # ── Stage 2: Cross-encoder reranking ─────────────
     reranker = get_reranker()
@@ -271,6 +304,12 @@ def retrieve(
             documents=candidates,
             top_k=settings.TOP_K_RERANK
         )
+        # Log reranker scores
+        rerank_scores_log = [
+            f"[Chunk {c.get('chunk_index')}]: rerank_score={c.get('rerank_score')}"
+            for c in top_chunks
+        ]
+        logger.debug(f"Stage 2 reranked chunks count: {len(top_chunks)}, scores: {', '.join(rerank_scores_log)}")
     else:
         # Fall back to hybrid scores (no reranker)
         candidates.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -291,5 +330,11 @@ def retrieve(
             if "rerank_score" in chunk:
                 chunk["score"] = round(chunk["rerank_score"], 4)
                 del chunk["rerank_score"]
+
+    # Bind chunks count to contextvar and log retrieval
+    chunks_count = len(top_chunks)
+    from app.observability import chunks_retrieved_var
+    chunks_retrieved_var.set(chunks_count)
+    logger.info(f"Retrieved {chunks_count} relevant chunks from vector store for query: '{query}'")
 
     return top_chunks
