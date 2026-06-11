@@ -261,6 +261,7 @@ class Document(Base):
     processing_started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     extracted_urls = Column(Text, nullable=True)
+    keywords = Column(Text, nullable=True)   # JSON-encoded list[str]
 
     # Relationships
     owner = relationship("User", back_populates="documents")
