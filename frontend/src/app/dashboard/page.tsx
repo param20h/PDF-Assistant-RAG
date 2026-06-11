@@ -57,7 +57,7 @@ export interface DocInfo {
 }
 
 export default function DashboardPage() {
-  const { user, loading, initialized } = useAuth();
+  const { user, initialized } = useAuth();
   const router = useRouter();
 
   const [documents, setDocuments] = useState<DocInfo[]>([]);
