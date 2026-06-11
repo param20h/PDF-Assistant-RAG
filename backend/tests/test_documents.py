@@ -229,7 +229,8 @@ def test_permanent_delete_documents(client, auth_headers, ready_document, db_ses
     db_session.commit()
     
     deleted_chunks = []
-    monkeypatch.setattr("app.rag.vectorstore.delete_document_chunks", lambda document_id, user_id: deleted_chunks.append(document_id))
+    import app.rag.vectorstore
+    monkeypatch.setattr(app.rag.vectorstore, "delete_document_chunks", lambda document_id, user_id: deleted_chunks.append(document_id))
     
     response = client.post(
         "/api/v1/documents/permanent-delete",
