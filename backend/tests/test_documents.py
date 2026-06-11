@@ -182,3 +182,63 @@ def test_delete_document_soft_deletes_and_hides_document(client, auth_headers, r
 
     get_response = client.get(f"/api/v1/documents/{doc_id}", headers=auth_headers)
     assert get_response.status_code == 404
+
+
+def test_list_trash(client, auth_headers, ready_document, db_session):
+    ready_document.is_deleted = True
+    db_session.commit()
+    
+    response = client.get("/api/v1/documents/trash", headers=auth_headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["id"] == ready_document.id
+
+
+def test_bulk_delete_documents(client, auth_headers, ready_document, db_session):
+    response = client.post(
+        "/api/v1/documents/bulk-delete",
+        headers=auth_headers,
+        json={"document_ids": [ready_document.id]}
+    )
+    assert response.status_code == 200
+    assert ready_document.id in response.json()["deleted"]
+    
+    db_session.refresh(ready_document)
+    assert ready_document.is_deleted is True
+
+
+def test_restore_documents(client, auth_headers, ready_document, db_session):
+    ready_document.is_deleted = True
+    db_session.commit()
+    
+    response = client.post(
+        "/api/v1/documents/restore",
+        headers=auth_headers,
+        json={"document_ids": [ready_document.id]}
+    )
+    assert response.status_code == 200
+    assert ready_document.id in response.json()["restored"]
+    
+    db_session.refresh(ready_document)
+    assert ready_document.is_deleted is False
+
+
+def test_permanent_delete_documents(client, auth_headers, ready_document, db_session, monkeypatch):
+    ready_document.is_deleted = True
+    db_session.commit()
+    
+    deleted_chunks = []
+    monkeypatch.setattr("app.rag.vectorstore.delete_document_chunks", lambda document_id, user_id: deleted_chunks.append(document_id))
+    
+    response = client.post(
+        "/api/v1/documents/permanent-delete",
+        headers=auth_headers,
+        json={"document_ids": [ready_document.id]}
+    )
+    assert response.status_code == 200
+    assert ready_document.id in response.json()["deleted"]
+    assert ready_document.id in deleted_chunks
+    
+    doc = db_session.get(Document, ready_document.id)
+    assert doc is None
