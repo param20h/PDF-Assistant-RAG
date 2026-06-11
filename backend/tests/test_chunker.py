@@ -466,7 +466,7 @@ def test_image_chunks_appended_after_text_chunks_on_same_page(monkeypatch):
     chunks = chunk_document("img_and_table.pdf")
 
     table_chunks = [c for c in chunks if c.get("chunk_type") == "table"]
-    image_chunks = [c for c in chunks if c.get("image_bytes")]
+    image_chunks = [c for c in chunks if c.get("is_image")]
 
     assert table_chunks, "Expected a table chunk"
     assert image_chunks, "Expected an image chunk"
