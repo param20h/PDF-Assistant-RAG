@@ -86,7 +86,6 @@ export default function DashboardPage() {
   }, []);
 
   // Auth guard
-
   useEffect(() => {
     if (initialized && !user) router.replace("/login");
   }, [user, initialized, router]);
@@ -103,7 +102,6 @@ export default function DashboardPage() {
       }
     }
   }, [user]);
-
 
   // Load documents
   const loadDocuments = useCallback(async () => {
@@ -187,7 +185,8 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    // min-w-[375px] ensures the layout never squishes below iPhone SE width
+    <div className="h-screen flex flex-col overflow-hidden min-w-[375px]">
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
