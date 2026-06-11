@@ -231,7 +231,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         onAbort = () => {
           try {
             ws.close();
-          } catch (e) {
+          } catch {
             // ignore
           }
           reject(new DOMException("The user aborted a request.", "AbortError"));
@@ -247,7 +247,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         const connectTimeout = setTimeout(() => {
           try {
             ws.close();
-          } catch (e) {
+          } catch {
             // ignore
           }
           reject(new Error("WebSocket connection timeout"));
@@ -294,12 +294,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               ws.close();
               resolve();
             }
-          } catch (err) {
+          } catch {
             // ignore malformed messages
           }
         };
 
-        ws.onerror = (ev) => {
+        ws.onerror = () => {
           clearTimeout(connectTimeout);
           reject(new Error("WebSocket error"));
         };
@@ -581,11 +581,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       // Shortcut 2: Escape → Abort SSE stream OR clear input OR close modal
       if (e.key === "Escape") {
-        if (streaming && abortControllerRef.current) {
+        if (streaming) {
           e.preventDefault();
-          abortControllerRef.current.abort();
-          setStreaming(false);
-          setIsTyping(false);
+          handleStop();
           toast.info("Response cancelled");
         } else if (document.activeElement === textareaRef.current) {
           e.preventDefault();
@@ -636,6 +634,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, streaming, showHelpModal, showExportMenu, messages]); // Dependencies updated to capture fresh state data
 
   return (
@@ -844,10 +843,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               <Button
                 id="send-btn"
                 size="icon"
-                onClick={handleSend}
-                disabled={!input.trim() || streaming}
+                onClick={streaming ? handleStop : handleSend}
+                disabled={!streaming && !input.trim()}
                 className="h-10 w-10 sm:h-[44px] sm:w-[44px]"
-                aria-label={streaming ? "Sending message" : "Send message"}
+                aria-label={streaming ? "Stop generating" : "Send message"}
               >
                 {streaming ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

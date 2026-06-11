@@ -13,12 +13,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuPortal,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import {
   Brain,
@@ -29,7 +23,6 @@ import {
   LogOut,
   Menu,
   X,
-  Palette,
   Briefcase,
   ChevronDown,
   Sun,
@@ -37,7 +30,6 @@ import {
   Settings,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import ApiKeyManager from "@/components/auth/ApiKeyManager";
 import {
   Dialog,
   DialogContent,
@@ -72,13 +64,13 @@ export default function Header({
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot); // ← replaces useState + useEffect
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [temperature, setTemperature] = useState(0.5);
-  useEffect(() => {
-    const saved = localStorage.getItem("temperature");
-    if (saved) {
-      setTemperature(Number(saved));
+  const [temperature, setTemperature] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("temperature");
+      return saved ? Number(saved) : 0.5;
     }
-  }, []);
+    return 0.5;
+  });
 
   useEffect(() => {
     localStorage.setItem("temperature", temperature.toString());
@@ -261,6 +253,55 @@ export default function Header({
           </DropdownMenu>
         </div>
       </header>
+
+      {/* Mobile navigation sheet - backdrop */}
+      {sheetOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+          onClick={() => setSheetOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        id="mobile-document-navigation"
+        className={[
+          "fixed inset-y-0 left-0 z-50 w-72 flex flex-col",
+          "bg-sidebar border-r border-sidebar-border",
+          "transform transition-transform duration-300 ease-in-out md:hidden",
+          sheetOpen ? "translate-x-0" : "-translate-x-full",
+        ].join(" ")}
+        aria-label="Mobile navigation"
+        aria-hidden={!sheetOpen}
+        {...(!sheetOpen ? { inert: true } : {})}
+      >
+        <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border flex-shrink-0">
+          {/* MOBILE LOGO — clicking navigates to dashboard and closes the sheet */}
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 hover:opacity-75 transition-opacity cursor-pointer"
+            aria-label="Go to homepage"
+            onClick={() => setSheetOpen(false)}
+          >
+            <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
+              <Brain className="w-4 h-4 text-primary" />
+            </div>
+            <span className="font-semibold text-sm">Document AI Analyst</span>
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setSheetOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        <div className="flex-1 overflow-hidden">{sheetOpen ? mobileSheetContent : null}</div>
+      </aside>
+
       <Dialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
