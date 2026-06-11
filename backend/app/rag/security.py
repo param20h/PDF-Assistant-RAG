@@ -42,8 +42,14 @@ class InputClassification:
     reason: str | None = None
 
 
-class UnsafePromptError(ValueError):
+from app.exceptions import AppException
+
+
+class UnsafePromptError(AppException):
     """Raised when user input matches prompt-injection patterns."""
+
+    def __init__(self, message: str = BLOCKED_INPUT_MESSAGE):
+        super().__init__("UNSAFE_PROMPT", message, 400)
 
 
 class OutputParserError(ValueError):

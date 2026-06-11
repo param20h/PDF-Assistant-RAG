@@ -37,7 +37,7 @@ def test_upload_rejects_unsupported_extension_before_deep_validation(client, aut
     )
 
     assert response.status_code == 400
-    assert "not supported" in response.json()["detail"]
+    assert "not supported" in response.json()["error"]["message"]
 
 
 def test_rename_document_updates_original_name(client, auth_headers, ready_document, db_session):
