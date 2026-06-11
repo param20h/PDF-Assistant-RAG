@@ -53,6 +53,7 @@ export interface DocInfo {
   status: string;
   error_message: string | null;
   uploaded_at: string;
+  keywords?: string[];
 }
 
 export default function DashboardPage() {
