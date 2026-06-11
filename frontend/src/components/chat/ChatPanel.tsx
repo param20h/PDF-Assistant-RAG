@@ -104,6 +104,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const prevDocId = useRef<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const abortRef = abortControllerRef;
   const showEmptyState = messages.length === 0 && !isTyping && !historyLoading;
 
   useEffect(() => {
@@ -192,7 +193,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     setInput("");
 
     const abortController = new AbortController();
-    abortControllerRef.current = abortController;
+    abortRef.current = abortController;
     // Add user message
     const userMsg: ChatMsg = {
       id: `user-${Date.now()}`,
@@ -538,9 +539,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       // Shortcut 2: Escape → Abort SSE stream OR clear input OR close modal
       if (e.key === "Escape") {
-        if (streaming && abortControllerRef.current) {
+        if (streaming && abortRef.current) {
           e.preventDefault();
-          abortControllerRef.current.abort();
+          abortRef.current.abort();
           setStreaming(false);
           setIsTyping(false);
           toast.info("Response cancelled");
