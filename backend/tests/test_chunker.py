@@ -443,7 +443,6 @@ def test_image_chunks_appended_after_text_chunks_on_same_page(monkeypatch):
             return [FakeTable()]
 
         def extract_words(self):
-            # One paragraph word OUTSIDE the table bbox so the text path runs
             return [
                 {"text": "Intro", "x0": 0, "x1": 40, "top": 10, "bottom": 20},
             ]
@@ -457,8 +456,36 @@ def test_image_chunks_appended_after_text_chunks_on_same_page(monkeypatch):
         def __exit__(self, *_):
             return False
 
+    class FakeFitzPage:
+        rect = type("Rect", (), {"width": 100.0, "height": 100.0})()
+
+        def search_for(self, text):
+            return []
+
+    class FakeFitzDoc:
+        def __len__(self):
+            return 1
+
+        def __getitem__(self, idx):
+            return FakeFitzPage()
+
+        def close(self):
+            pass
+
     fake_pdfplumber = types.SimpleNamespace(open=lambda _: FakePdf())
     monkeypatch.setitem(sys.modules, "pdfplumber", fake_pdfplumber)
+    # Patch fitz.open used for bbox extraction inside chunk_document
+    monkeypatch.setattr(chunker.fitz, "open", lambda _: FakeFitzDoc())
+    # Patch extract_pdf directly to guarantee pdfplumber path output
+    monkeypatch.setattr(
+        chunker,
+        "extract_pdf",
+        lambda _: [
+            {"text": "Intro", "page": 1, "chunk_type": "text"},
+            {"text": "| Col |\n| --- |\n| Val |", "page": 1, "chunk_type": "table",
+             "bbox": "[0.0, 0.5, 1.0, 1.0]", "table_index": 0},
+        ],
+    )
     monkeypatch.setattr(
         chunker,
         "extract_pdf_images",
@@ -476,7 +503,6 @@ def test_image_chunks_appended_after_text_chunks_on_same_page(monkeypatch):
     table_idx = chunks.index(table_chunks[0])
     image_idx = chunks.index(image_chunks[0])
     assert image_idx > table_idx
-
 
 # ── chunk_index continuity ────────────────────────────────────────────────────
 
