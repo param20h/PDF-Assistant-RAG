@@ -372,3 +372,19 @@
 .light .prose-chat .hljs-comment { color: oklch(0.5 0 0); }
 .light .prose-chat strong { color: oklch(0.2 0 0); }
 .light .prose-chat blockquote { color: oklch(0.4 0 0); }
+
+html,
+body {
+  min-width: 375px;
+}
+
+/*
+ * Enable iOS safe-area insets so fixed elements (FAB, modals) clear
+ * the home indicator bar on iPhone SE and similar devices.
+ * Requires viewport-fit=cover in the <meta name="viewport"> tag.
+ */
+@supports (padding: env(safe-area-inset-bottom)) {
+  :root {
+    --safe-area-bottom: env(safe-area-inset-bottom);
+  }
+}
