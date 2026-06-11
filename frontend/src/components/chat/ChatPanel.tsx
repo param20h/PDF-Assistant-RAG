@@ -675,7 +675,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       </div>
 
       {/* ── Input Area ─────────────────────────────── */}
-      <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm relative">
+      <div className="border-t border-border/50 p-4 pl-16 sm:pl-4 bg-card/30 backdrop-blur-sm relative">
         <div className="max-w-3xl mx-auto relative">
           {/* Status / Error Message Area */}
           {(isRecording || speechError) && (
@@ -803,7 +803,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 size="icon"
                 onClick={handleSend}
                 disabled={!input.trim() || streaming}
-                className="h-[44px] w-[44px]"
+                className="h-10 w-10 sm:h-[44px] sm:w-[44px]"
                 aria-label={streaming ? "Sending message" : "Send message"}
               >
                 {streaming ? (
@@ -821,7 +821,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                       variant="ghost"
                       size="icon"
                       onClick={() => setShowExportMenu((v) => !v)}
-                      className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
+                      className="h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-primary"
                       title={t("chat.exportTitle")}
                       aria-label={t("chat.exportTitle")}
                       aria-expanded={showExportMenu}
@@ -836,7 +836,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                         role="menu"
                         aria-label="Export chat"
                         onKeyDown={handleExportMenuKeyDown}
-                        className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
+                        className="absolute bottom-full mb-2 right-0 min-w-[160px] max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
                       >
                         <button
                           id="export-md-btn"
@@ -876,7 +876,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     variant="ghost"
                     size="icon"
                     onClick={handleClear}
-                    className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
+                    className="h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-destructive"
                     aria-label="Clear chat history"
                   >
                     <Trash2 className="w-4 h-4" />
