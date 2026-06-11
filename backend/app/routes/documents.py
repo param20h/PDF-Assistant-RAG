@@ -435,57 +435,80 @@ def get_document_status(
 @router.get("/", response_model=DocumentListResponse)
 def list_documents(
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1),
+    limit: int = Query(10, ge=1),
+    q: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+
     """
-    List all documents for the authenticated user with pagination.
+    List documents for the authenticated user with pagination and optional search.
 
     Returns a paginated list of documents belonging to the current user,
     ordered by upload date (newest first).
 
     Args:
-        page: The page number to retrieve (1: indexed). Defaults to 1.
-        per_page: The number of documents to return per page. Defaults to 20.
+        page: The page number to retrieve (1-indexed). Defaults to 1.
+        limit: The number of documents to return per page. Defaults to 10.
+        q: Optional keyword to filter by `original_name` (case-insensitive).
         user: The currently authenticated user, injected by the `get_current_user` dependency.
         db: Database session, injected by the `get_db` dependency.
-        
+
     Returns:
         DocumentListResponse: A response model containing:
-            - items: A list of DocumentResponse objects for the current page.
-            - total: The total number of documents for the user.
-            - page: The current page number.
-            - pages: The total number of pages available.
+            - data: A list of DocumentResponse objects for the current page.
+            - meta.total: Total filtered records.
+            - meta.limit: Page size.
+            - meta.page: Current page.
+            - meta.total_pages: Total number of pages.
     """
 
-    """Number of rows to skip"""
-    skip: int = (page - 1) * per_page
 
-    """Total Pages"""
-    totalDocuments = (
-        db.query(Document)
-        .filter(Document.user_id == user.id, Document.is_deleted.is_(False))
-        .count()
-    )
-    """Total Pages"""
-    pages = (totalDocuments + per_page - 1) // per_page
-    
-    """List all documents for the authenticated user in Paginated form"""
-    docs = ((
-            db.execute(select(Document)
-            .where(Document.user_id == user.id, Document.is_deleted.is_(False))
+    # Normalize `q`: treat blank/whitespace-only as not provided.
+    q_norm: Optional[str] = q.strip() if q else None
+
+    # Shared active filters.
+    filters = [
+        Document.user_id == user.id,
+        Document.is_deleted.is_(False),
+    ]
+
+    # Case-insensitive keyword filtering on document name.
+    if q_norm:
+        # original_name exists on Document; use ILIKE where available.
+        filters.append(Document.original_name.ilike(f"%{q_norm}%"))
+
+    # Offset pagination.
+    offset = (page - 1) * limit
+
+    # Data query.
+    data_query = (
+        db.execute(
+            select(Document)
+            .where(*filters)
             .order_by(Document.uploaded_at.desc())
-            .limit(per_page).offset(skip))
-            )
-            .scalars().all())
+            .limit(limit)
+            .offset(offset)
+        )
+        .scalars()
+        .all()
+    )
+
+    # Count query (same active filters).
+    total = db.query(Document).filter(*filters).count()
+    total_pages = (total + limit - 1) // limit if total > 0 else 0
 
     return DocumentListResponse(
-        items=[_deserialize_doc(d) for d in docs],
-        total=totalDocuments,
-        page=page,
-        pages=pages
+        data=[_deserialize_doc(d) for d in data_query],
+        meta={
+            "total": total,
+            "limit": limit,
+            "page": page,
+            "total_pages": total_pages,
+        },
     )
+
+
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)

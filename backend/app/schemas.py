@@ -215,11 +215,17 @@ class DocumentStatusResponse(BaseModel):
         from_attributes = True
 
 
-class DocumentListResponse(BaseModel):
-    items: List[DocumentResponse]
+class DocumentListMeta(BaseModel):
     total: int
+    limit: int
     page: int
-    pages: int
+    total_pages: int
+
+
+class DocumentListResponse(BaseModel):
+    data: List[DocumentResponse]
+    meta: DocumentListMeta
+
 
 
 # Admin
