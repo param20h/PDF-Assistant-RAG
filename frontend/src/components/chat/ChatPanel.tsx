@@ -186,7 +186,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   }, [activeSessionId, activeDoc, fetchSessionHistory, setMessages]);
   
   const handleStop = () => {
-    abortRef.current?.abort();
+    abortControllerRef.current?.abort();
     setStreaming(false);
     setIsTyping(false);
   };
@@ -215,8 +215,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     setStreaming(true);
     setIsTyping(true);
 
-    abortRef.current = new AbortController();
-
     try {
       // Try WebSocket first for real-time agentic thought streaming
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -227,7 +225,19 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       const ws = new WebSocket(wsUrl);
 
+      let onAbort: (() => void) | null = null;
+
       const wsDone = new Promise<void>((resolve, reject) => {
+        onAbort = () => {
+          try {
+            ws.close();
+          } catch (e) {
+            // ignore
+          }
+          reject(new DOMException("The user aborted a request.", "AbortError"));
+        };
+        abortController.signal.addEventListener("abort", onAbort);
+
         ws.onopen = () => {
           // Send initial payload
           ws.send(JSON.stringify({ question, document_id: activeDoc?.id || null, session_id: activeSessionId }));
@@ -299,11 +309,17 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         };
       });
 
-      await wsDone;
+      try {
+        await wsDone;
+      } finally {
+        if (onAbort) {
+          abortController.signal.removeEventListener("abort", onAbort);
+        }
+      }
     } catch (err) {
       if (
         err instanceof Error &&
-        err.name === "AbortError"
+        (err.name === "AbortError" || err.message === "The user aborted a request.")
       ) {
         return;
       }
@@ -314,7 +330,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           question,
           document_id: activeDoc?.id || null,
           session_id: activeSessionId,
-        });
+        }, abortController.signal);
 
         for await (const event of stream) {
           if (event.type === "token") {
@@ -347,6 +363,17 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         }
       } catch (err2) {
         setIsTyping(false);
+        if (
+          err2 instanceof Error &&
+          (err2.name === "AbortError" || err2.message === "The user aborted a request.")
+        ) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, isStreaming: false } : m
+            )
+          );
+          return;
+        }
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
