@@ -183,14 +183,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [activeDoc, resetChat, setMessages]);
+  }, [activeSessionId, activeDoc, fetchSessionHistory, setMessages]);
   
   const handleStop = () => {
     abortRef.current?.abort();
     setStreaming(false);
     setIsTyping(false);
   };
-  }, [activeSessionId, activeDoc, fetchSessionHistory, setMessages]);
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
@@ -302,6 +301,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       await wsDone;
     } catch (err) {
+      if (
+        err instanceof Error &&
+        err.name === "AbortError"
+      ) {
+        return;
+      }
+
       // Fallback to existing SSE stream if WebSocket fails
       try {
         const stream = api.streamPost("/api/v1/chat/ask/stream", {
@@ -355,33 +361,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           )
         );
       }
-    } catch (err) {
-        if (
-          err instanceof Error &&
-          err.name === "AbortError"
-        ) {
-          return;
-        }
-
-        setIsTyping(false);
-
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? {
-                  ...m,
-                  content: t("chat.fallbackError", {
-                    message:
-                      err instanceof Error
-                        ? err.message
-                        : "Unknown error",
-                  }),
-                  isStreaming: false,
-                }
-              : m
-          )
-        );
-      }finally {
     } finally {
       setStreaming(false);
       setIsTyping(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -33,9 +33,9 @@ import {
   Briefcase,
   ChevronDown,
   Sun,
+  Moon,
   Settings,
 } from "lucide-react";
-import { useSyncExternalStore, useState } from "react";
 import { useTheme } from "next-themes";
 import ApiKeyManager from "@/components/auth/ApiKeyManager";
 import {
@@ -44,14 +44,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useEffect } from "react";
-  Moon
-} from "lucide-react";
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
-import { useTheme } from "next-themes";
-
-import { useSyncExternalStore } from "react";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -89,7 +83,6 @@ export default function Header({
   useEffect(() => {
     localStorage.setItem("temperature", temperature.toString());
   }, [temperature]);
-  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const workspace = useWorkspaceStore((s) => s.workspace);
@@ -182,6 +175,16 @@ export default function Header({
               <PanelRightOpen className="w-4 h-4" />
             )}
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setSettingsOpen(true)}
+            title="LLM Settings"
+            aria-label="Open LLM settings"
+          >
+            <Settings className="w-4 h-4" />
+          </Button>
 
           {mounted && (
             <Button
@@ -258,65 +261,6 @@ export default function Header({
           </DropdownMenu>
         </div>
       </header>
-
-      {/* Right */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onToggleViewer}
-          title={viewerOpen ? "Close Viewer" : "Open Viewer"}
-        >
-          {viewerOpen ? (
-            <PanelRightClose className="w-4 h-4" />
-          ) : (
-            <PanelRightOpen className="w-4 h-4" />
-          )}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <Settings className="w-4 h-4" />
-        </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button className="flex items-center h-8 gap-2 px-2 rounded-md hover:bg-accent transition-colors cursor-pointer">
-                <Avatar className="w-6 h-6">
-                  <AvatarFallback className="text-[10px] bg-primary/20 text-primary">
-                    {user?.username?.slice(0, 2).toUpperCase() || "U"}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-sm hidden sm:inline">{user?.username}</span>
-              </button>
-            }
-          />
-
-          <DropdownMenuContent align="end" className="w-56">
-            <div className="px-3 py-2">
-              <p className="text-sm font-medium">{user?.username}</p>
-              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-            </div>
-            <DropdownMenuSeparator />
-            {user?.is_admin && (
-              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/admin")}>
-                <Shield className="w-4 h-4 mr-2" />
-                Admin metrics
-              </DropdownMenuItem>
-            )}
-            {user?.is_admin && <DropdownMenuSeparator />}
-            <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              {t("header.signOut")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
       <Dialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
@@ -347,6 +291,6 @@ export default function Header({
           </div>
         </DialogContent>
       </Dialog>
-    </header>
+    </>
   );
 }
