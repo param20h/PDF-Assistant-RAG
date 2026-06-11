@@ -1,3 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
+import jwt
+
+from app.config import get_settings
+
+
 VALID_TEST_PASSWORD = "Password1!"
 
 
@@ -32,14 +39,14 @@ def test_register_duplicate_email_or_username_conflict(client):
         json={**payload, "username": "anotheruser"},
     )
     assert duplicate_email.status_code == 409
-    assert duplicate_email.json()["detail"] == "Email already registered"
+    assert duplicate_email.json()["error"]["message"] == "Email already registered"
 
     duplicate_username = client.post(
         "/api/v1/auth/register",
         json={**payload, "email": "another@example.com"},
     )
     assert duplicate_username.status_code == 409
-    assert duplicate_username.json()["detail"] == "Username already taken"
+    assert duplicate_username.json()["error"]["message"] == "Username already taken"
 
 
 def test_register_rejects_weak_password(client):
@@ -53,9 +60,8 @@ def test_register_rejects_weak_password(client):
     )
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert isinstance(detail, list)
-    messages = " ".join(item["msg"] for item in detail)
+    errors = response.json()["error"]["details"]["errors"]
+    messages = " ".join(item["message"] for item in errors)
     assert "uppercase" in messages.lower() or "8 characters" in messages.lower()
 
 
@@ -70,9 +76,8 @@ def test_register_rejects_password_missing_special_character(client):
     )
 
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert isinstance(detail, list)
-    messages = " ".join(item["msg"] for item in detail).lower()
+    errors = response.json()["error"]["details"]["errors"]
+    messages = " ".join(item["message"] for item in errors).lower()
     assert "special character" in messages
 
 
@@ -96,13 +101,56 @@ def test_login_invalid_password(client, user):
     )
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid email or password"
+    assert response.json()["error"]["message"] == "Invalid email or password"
+
+
+def test_login_invalid_email(client):
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "missing@example.com", "password": "password123"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["message"] == "Invalid email or password"
+
+
+def test_auth_me_success(client, auth_headers, user):
+    response = client.get("/api/v1/auth/me", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == str(user.id)
+    assert payload["username"] == user.username
+    assert payload["email"] == user.email
 
 
 def test_auth_me_requires_auth(client):
     response = client.get("/api/v1/auth/me")
 
     assert response.status_code in (401, 403)
+
+
+def test_auth_me_rejects_expired_token(client, user):
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    expired_token = jwt.encode(
+        {
+            "sub": str(user.id),
+            "type": "access",
+            "exp": now - timedelta(minutes=1),
+            "iat": now - timedelta(minutes=2),
+        },
+        settings.SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {expired_token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or expired token"
 
 
 def test_refresh_token_success(client, refresh_token):
@@ -168,7 +216,7 @@ def test_update_user_info_rejects_duplicate_email(client, auth_headers, other_us
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Email already exists"
+    assert response.json()["error"]["message"] == "Email already exists"
 from unittest.mock import patch, AsyncMock, MagicMock
 import urllib.parse
 
@@ -233,7 +281,7 @@ def test_huggingface_callback_invalid_state(client):
         cookies={"oauth_state": "actual-state"}
     )
     assert response.status_code == 400
-    assert "State verification failed" in response.json()["detail"]
+    assert "State verification failed" in response.json()["error"]["message"]
 
 
 def test_huggingface_logout(client):

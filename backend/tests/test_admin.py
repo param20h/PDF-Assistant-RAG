@@ -7,7 +7,7 @@ def test_admin_stats_requires_admin(client, auth_headers):
     response = client.get("/api/v1/admin/stats", headers=auth_headers)
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Admin access required"
+    assert response.json()["error"]["message"] == "Admin access required"
 
 
 def test_admin_stats_returns_aggregate_metrics(client, db_session):

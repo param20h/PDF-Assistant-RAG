@@ -144,10 +144,10 @@ def test_generate_answer_stream_error(mock_agent_executor, mock_retriever):
     assert error_event[0]["data"] == "LLM Down"
 
 def test_generate_answer_error(mock_agent_executor, mock_retriever):
+    from app.exceptions import ExternalServiceException
     executor, pdf_tool = mock_agent_executor
     executor.invoke.side_effect = Exception("LLM Down")
 
-    result = generate_answer("test question", "user123", "doc123")
-
-    assert "I encountered an error while processing your request:" in result["answer"]
-    assert "LLM Down" in result["answer"]
+    with pytest.raises(ExternalServiceException) as exc_info:
+        generate_answer("test question", "user123", "doc123")
+    assert "LLM Down" in str(exc_info.value)
