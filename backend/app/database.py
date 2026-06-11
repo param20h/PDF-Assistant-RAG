@@ -230,6 +230,42 @@ def _migrate_schema():
                 )
 
 
+def advisory_lock(lock_id: int):
+    """Context manager that acquires a PostgreSQL advisory lock (xact scope).
+
+    On SQLite the lock is a no-op because SQLite serializes all writes anyway.
+    On PostgreSQL the lock is released automatically at transaction commit.
+
+    Usage::
+
+        with advisory_lock(hash("cleanup_inactive") & 0x7FFFFFFF):
+            ...
+    """
+    if is_sqlite:
+        # SQLite serializes writes; no explicit lock needed.
+        return _noop_contextmanager()
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _pg_lock():
+        with engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": lock_id})
+            yield
+
+    return _pg_lock()
+
+
+def _noop_contextmanager():
+    from contextlib import contextmanager as _cm
+
+    @_cm
+    def _noop():
+        yield
+
+    return _noop()
+
+
 def init_db():
     """Create all tables on startup and apply schema migrations."""
     from app import models  # noqa: F401 — import to register models
