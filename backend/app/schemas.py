@@ -317,6 +317,9 @@ class FeedbackRequest(BaseModel):
 class ChatSessionCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
 
+class ChatSessionUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+
 
 class ChatSessionResponse(BaseModel):
     id: str

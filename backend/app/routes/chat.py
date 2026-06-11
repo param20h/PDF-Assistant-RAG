@@ -36,6 +36,7 @@ from app.schemas import (
     ShareLinkResponse,
     SourceChunk,
     ChatSessionCreate,
+    ChatSessionUpdate,
     ChatSessionResponse,
 )
 
@@ -221,12 +222,7 @@ def get_shared_answer(
     message_id: str,
     db: Session = Depends(get_db),
 ):
-    """Return a public shared assistant answer by message ID.
-
-    Only assistant messages that already have a `SharedMessage` record are
-    exposed. User prompts, private chat history, and unshared answers remain
-    protected.
-    """
+    """Return a public shared assistant answer by message ID."""
     message = (
         db.query(ChatMessage)
         .filter(
@@ -255,11 +251,7 @@ def create_share_link(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create or reuse a public share record for an assistant answer.
-
-    The message must belong to the authenticated user and must have the
-    assistant role. User-authored messages cannot be shared through this route.
-    """
+    """Create or reuse a public share record for an assistant answer."""
     message = (
         db.query(ChatMessage)
         .filter(
@@ -340,6 +332,35 @@ def rename_chat_session(
     db: Session = Depends(get_db),
 ):
     """Rename an existing chat session owned by the authenticated user."""
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user.id,
+        )
+        .first()
+    )
+    if not session:
+        raise NotFoundException("Chat session")
+    session.title = payload.title
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=ChatSessionResponse,
+    summary="Update a chat session title",
+    description="Partially updates a chat session title after verifying ownership.",
+)
+def update_chat_session(
+    session_id: str,
+    payload: ChatSessionUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update the title of an existing chat session owned by the authenticated user."""
     session = (
         db.query(ChatSession)
         .filter(
@@ -910,21 +931,7 @@ def submit_feedback(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Submit thumbs up/down feedback for an assistant message.
-
-    Args:
-        message_id: The ID of the chat message to add feedback to.
-        payload: FeedbackRequest containing `feedback` ("up", "down", or null to clear).
-        user: The currently authenticated user.
-        db: SQLAlchemy database session.
-
-    Returns:
-        ChatMessageResponse: The updated message with feedback.
-
-    Raises:
-        HTTPException: 404 if the message does not exist or does not belong to the user.
-        HTTPException: 400 if the message is not an assistant message.
-    """
+    """Submit thumbs up/down feedback for an assistant message."""
     msg = db.query(ChatMessage).filter(
         ChatMessage.id == message_id,
         ChatMessage.user_id == user.id,
