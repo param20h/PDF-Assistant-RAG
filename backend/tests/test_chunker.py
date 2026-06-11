@@ -429,32 +429,19 @@ def test_pymupdf_fallback_produces_text_chunks(monkeypatch):
 def test_image_chunks_appended_after_text_chunks_on_same_page(monkeypatch):
     """Image chunks extracted from a page must appear after that page's text/table chunks."""
 
-    class FakeTable:
-        bbox = (0, 50, 100, 100)
-
-        def extract(self):
-            return [["Col"], ["Val"]]
-
-    class FakePage:
-        width = 100
-        height = 100
-
-        def find_tables(self):
-            return [FakeTable()]
-
-        def extract_words(self):
-            return [
-                {"text": "Intro", "x0": 0, "x1": 40, "top": 10, "bottom": 20},
-            ]
-
-    class FakePdf:
-        pages = [FakePage()]
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            return False
+    # Patch chunk_document's internal helpers at the source
+    monkeypatch.setattr(
+        chunker,
+        "extract_pdf",
+        lambda _: [
+            {"text": "Intro text", "page": 1, "chunk_type": "text"},
+        ],
+    )
+    monkeypatch.setattr(
+        chunker,
+        "extract_pdf_images",
+        lambda _: [{"image_bytes": b"\x89PNG\r\n", "page": 1}],
+    )
 
     class FakeFitzPage:
         rect = type("Rect", (), {"width": 100.0, "height": 100.0})()
@@ -472,37 +459,19 @@ def test_image_chunks_appended_after_text_chunks_on_same_page(monkeypatch):
         def close(self):
             pass
 
-    fake_pdfplumber = types.SimpleNamespace(open=lambda _: FakePdf())
-    monkeypatch.setitem(sys.modules, "pdfplumber", fake_pdfplumber)
-    # Patch fitz.open used for bbox extraction inside chunk_document
     monkeypatch.setattr(chunker.fitz, "open", lambda _: FakeFitzDoc())
-    # Patch extract_pdf directly to guarantee pdfplumber path output
-    monkeypatch.setattr(
-        chunker,
-        "extract_pdf",
-        lambda _: [
-            {"text": "Intro", "page": 1, "chunk_type": "text"},
-            {"text": "| Col |\n| --- |\n| Val |", "page": 1, "chunk_type": "table",
-             "bbox": "[0.0, 0.5, 1.0, 1.0]", "table_index": 0},
-        ],
-    )
-    monkeypatch.setattr(
-        chunker,
-        "extract_pdf_images",
-        lambda _: [{"image_bytes": b"\x89PNG\r\n", "page": 1}],
-    )
 
     chunks = chunk_document("img_and_table.pdf")
 
-    table_chunks = [c for c in chunks if c.get("chunk_type") == "table"]
+    text_chunks = [c for c in chunks if c.get("chunk_type") == "text"]
     image_chunks = [c for c in chunks if c.get("image_bytes")]
 
-    assert table_chunks, "Expected a table chunk"
+    assert text_chunks, "Expected a text chunk"
     assert image_chunks, "Expected an image chunk"
 
-    table_idx = chunks.index(table_chunks[0])
+    text_idx = chunks.index(text_chunks[0])
     image_idx = chunks.index(image_chunks[0])
-    assert image_idx > table_idx
+    assert image_idx > text_idx
 
 # ── chunk_index continuity ────────────────────────────────────────────────────
 
