@@ -166,35 +166,32 @@ graph TD
 
 | | Technology | Purpose |
 |---|---|---|
-| <img src="https://skillicons.dev/icons?i=fastapi" width="30"/> | **FastAPI 0.115+** | Async API framework + SSE streaming |
+| <img src="https://skillicons.dev/icons?i=fastapi" width="30"/> | **FastAPI** | Async web framework + routing |
 | <img src="https://skillicons.dev/icons?i=python" width="30"/> | **Python 3.11** | Runtime environment |
-| <img src="https://skillicons.dev/icons?i=postgresql" width="30"/> | **PostgreSQL 16 / SQLite** | User accounts & document metadata |
-| <img src="https://skillicons.dev/icons?i=redis" width="30"/> | **Redis** | Celery broker, response cache, embedding cache |
-| <img src="https://img.shields.io/badge/Celery-37814A?style=flat" height="24"/> | **Celery** | Async document ingestion workers |
-| <img src="https://img.shields.io/badge/SQLAlchemy-D71F00?style=flat" height="24"/> | **SQLAlchemy** | ORM + migrations |
-| <img src="https://img.shields.io/badge/PyJWT-000000?style=flat" height="24"/> | **PyJWT + bcrypt** | JWT authentication |
+| <img src="https://skillicons.dev/icons?i=postgresql" width="30"/> | **PostgreSQL / SQLite** | Relational database (SQLAlchemy ORM) |
+| <img src="https://img.shields.io/badge/JWT-000000?style=flat&logo=jsonwebtokens&logoColor=white" height="24"/> | **JWT + bcrypt** | Authentication & password hashing |
+| <img src="https://img.shields.io/badge/ChromaDB-000000?style=flat" height="24"/> | **ChromaDB** | Local vector store (embeddings) |
+| <img src="https://img.shields.io/badge/HuggingFace-FFD21E?style=flat&logo=huggingface&logoColor=black" height="24"/> | **HuggingFace Inference API** | LLM answer generation |
+| <img src="https://img.shields.io/badge/sentence--transformers-000000?style=flat" height="24"/> | **sentence-transformers** | Local embedding model (all-MiniLM-L6-v2) |
 
 ### Frontend
 
 | | Technology | Purpose |
 |---|---|---|
-| <img src="https://skillicons.dev/icons?i=nextjs" width="30"/> | **Next.js 16** | React framework (App Router) |
-| <img src="https://skillicons.dev/icons?i=react" width="30"/> | **React 19** | UI components |
-| <img src="https://skillicons.dev/icons?i=tailwind" width="30"/> | **Tailwind CSS v4** | Utility-first styling |
-| <img src="https://img.shields.io/badge/Zustand-000000?style=flat" height="24"/> | **Zustand** | Client state management |
-| <img src="https://img.shields.io/badge/shadcn/ui-000000?style=flat" height="24"/> | **shadcn/ui** | Accessible component library |
+| <img src="https://skillicons.dev/icons?i=nextjs" width="30"/> | **Next.js 14** | React framework (App Router) |
+| <img src="https://skillicons.dev/icons?i=typescript" width="30"/> | **TypeScript** | Frontend language |
+| <img src="https://skillicons.dev/icons?i=tailwind" width="30"/> | **Tailwind CSS** | Utility-first styling |
 
 ### AI / ML Pipeline
 
 | | Technology | Purpose |
 |---|---|---|
-| <img src="https://img.shields.io/badge/all--MiniLM--L6--v2-FFD21E?style=flat" height="24"/> | **all-MiniLM-L6-v2** | Local 384-dim embeddings (no external API) |
-| <img src="https://img.shields.io/badge/ChromaDB-FF6B35?style=flat" height="24"/> | **ChromaDB** | Per-user persistent vector collections |
-| <img src="https://img.shields.io/badge/rank--bm25-000000?style=flat" height="24"/> | **rank-bm25** | BM25 keyword index per document |
-| <img src="https://img.shields.io/badge/RRF-Hybrid_Search-4F46E5?style=flat" height="24"/> | **Reciprocal Rank Fusion** | Merges vector + BM25 rankings |
-| <img src="https://img.shields.io/badge/BGE--Reranker--v2--m3-FFD21E?style=flat" height="24"/> | **BGE-Reranker-v2-m3** | Cross-encoder reranking |
-| <img src="https://img.shields.io/badge/Qwen2.5--72B-000000?style=flat" height="24"/> | **Qwen2.5-72B-Instruct** | LLM answer generation (HF Inference API) |
-| <img src="https://img.shields.io/badge/PyMuPDF-FF0000?style=flat" height="24"/> | **PyMuPDF + pdfplumber + python-docx** | Document text & image extraction |
+| <img src="https://img.shields.io/badge/sentence--transformers-000000?style=flat" height="24"/> | **sentence-transformers (all-MiniLM-L6-v2)** | Generates vector embeddings for document chunks |
+| <img src="https://img.shields.io/badge/ChromaDB-000000?style=flat" height="24"/> | **ChromaDB** | Stores + retrieves embeddings locally |
+| <img src="https://img.shields.io/badge/HuggingFace-FFD21E?style=flat&logo=huggingface&logoColor=black" height="24"/> | **HuggingFace Inference API** | Generates answers from retrieved context |
+| <img src="https://img.shields.io/badge/Cross--Encoder-000000?style=flat" height="24"/> | **BAAI/bge-reranker-v2-m3** | Cross-encoder reranking for retrieval quality |
+| <img src="https://img.shields.io/badge/GraphRAG-000000?style=flat" height="24"/> | **Knowledge Graph (GraphRAG)** | Entity extraction + relationship graphs |
+| <img src="https://img.shields.io/badge/PyMuPDF-FF0000?style=flat" height="24"/> | **PyMuPDF + pdfplumber + python-docx** | Document text extraction |
 
 ### DevOps & Tooling
 
