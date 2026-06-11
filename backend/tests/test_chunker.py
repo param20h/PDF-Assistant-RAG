@@ -443,7 +443,10 @@ def test_image_chunks_appended_after_text_chunks_on_same_page(monkeypatch):
             return [FakeTable()]
 
         def extract_words(self):
-            return []
+            # One paragraph word OUTSIDE the table bbox so the text path runs
+            return [
+                {"text": "Intro", "x0": 0, "x1": 40, "top": 10, "bottom": 20},
+            ]
 
     class FakePdf:
         pages = [FakePage()]
@@ -456,7 +459,6 @@ def test_image_chunks_appended_after_text_chunks_on_same_page(monkeypatch):
 
     fake_pdfplumber = types.SimpleNamespace(open=lambda _: FakePdf())
     monkeypatch.setitem(sys.modules, "pdfplumber", fake_pdfplumber)
-    # Inject one fake image on page 1
     monkeypatch.setattr(
         chunker,
         "extract_pdf_images",
@@ -466,12 +468,11 @@ def test_image_chunks_appended_after_text_chunks_on_same_page(monkeypatch):
     chunks = chunk_document("img_and_table.pdf")
 
     table_chunks = [c for c in chunks if c.get("chunk_type") == "table"]
-    image_chunks = [c for c in chunks if c.get("is_image")]
+    image_chunks = [c for c in chunks if c.get("image_bytes")]
 
     assert table_chunks, "Expected a table chunk"
     assert image_chunks, "Expected an image chunk"
 
-    # Image chunk must come after the table chunk in the list
     table_idx = chunks.index(table_chunks[0])
     image_idx = chunks.index(image_chunks[0])
     assert image_idx > table_idx
