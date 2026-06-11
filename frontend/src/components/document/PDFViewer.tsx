@@ -58,6 +58,7 @@ export default function PDFViewer({
   const [scale, setScale] = useState(1.0);
   const [rotation, setRotation] = useState(0);
   const [pageInput, setPageInput] = useState(String(currentPage));
+  const [pageInputError, setPageInputError] = useState(false);
   const [prevCurrentPage, setPrevCurrentPage] = useState(currentPage);
   const viewerRef = useRef<HTMLDivElement>(null);
 
@@ -65,6 +66,7 @@ export default function PDFViewer({
   if (currentPage !== prevCurrentPage) {
     setPrevCurrentPage(currentPage);
     setPageInput(String(currentPage));
+    setPageInputError(false);
   }
 
   const pdfUrl = `${API_BASE}/api/v1/documents/${documentId}/pdf`;
@@ -75,8 +77,6 @@ export default function PDFViewer({
     url: pdfUrl,
     httpHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
   }), [pdfUrl, token]);
-
-
 
   useEffect(() => {
     if (viewerRef.current && highlightTarget?.page === currentPage) {
@@ -138,7 +138,19 @@ export default function PDFViewer({
     });
   }, [highlightTarget, currentPage]);
 
-
+  const handlePageJump = (value: string) => {
+    const pageNumber = parseInt(value.trim(), 10);
+    if (!Number.isNaN(pageNumber) && pageNumber >= 1 && pageNumber <= totalPages) {
+      setPageInputError(false);
+      onPageChange(pageNumber);
+    } else {
+      setPageInputError(true);
+      setTimeout(() => {
+        setPageInput(String(currentPage));
+        setPageInputError(false);
+      }, 1000);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col bg-background" ref={viewerRef}>
@@ -159,27 +171,32 @@ export default function PDFViewer({
             <ChevronLeft className="w-4 h-4" />
           </Button>
 
+          {/* Page jump input — Page X of Y */}
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              const pageNumber = parseInt(pageInput.trim(), 10);
-              if (!Number.isNaN(pageNumber) && pageNumber >= 1 && pageNumber <= totalPages) {
-                onPageChange(pageNumber);
-              } else {
-                setPageInput(String(currentPage));
-              }
+              handlePageJump(pageInput);
             }}
             className="flex items-center gap-1 text-xs"
             aria-label="PDF page navigation"
           >
+            <span className="text-muted-foreground text-[10px] hidden sm:inline">Page</span>
             <Input
               value={pageInput}
-              onChange={(e) => setPageInput(e.target.value)}
-              className="w-10 h-7 text-center text-xs p-0 bg-background/50"
-              aria-label={`PDF page number, current page ${currentPage} of ${totalPages}`}
+              onChange={(e) => {
+                setPageInput(e.target.value);
+                setPageInputError(false);
+              }}
+              onBlur={() => handlePageJump(pageInput)}
+              className={`h-7 text-center text-xs p-0 bg-background/50 transition-colors ${
+                String(currentPage).length >= 3 ? "w-14" : "w-10"
+              } ${pageInputError ? "border-destructive text-destructive" : ""}`}
+              aria-label={`Page number input, current page ${currentPage} of ${totalPages}`}
+              aria-invalid={pageInputError}
+              title={`Enter page number between 1 and ${totalPages}`}
               inputMode="numeric"
             />
-            <span className="text-muted-foreground">/ {totalPages}</span>
+            <span className="text-muted-foreground text-[10px]">of {totalPages}</span>
           </form>
 
           <Button
