@@ -488,13 +488,21 @@ def generate_answer_stream(
 )
 @limiter.limit(CHAT_QUERY_RATE_LIMIT)
 def ask_question(
-    request: Request,
     payload: ChatRequest,
+    request: Request = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Ask a question with RAG retrieval and return the complete answer."""
     started_at = time.perf_counter()
+    
+    # Bind query parameters to request context variables and state
+    if request is not None:
+        request.state.query = payload.question
+    from app.observability import query_text_var
+    query_text_var.set(payload.question)
+    logger.info(f"Processing RAG chat query: '{payload.question}'")
+
     try:
         try:
             validate_user_input(payload.question)
@@ -577,6 +585,14 @@ def ask_question(
             chat_history=chat_history,
         )
 
+        # Bind chunks retrieved to request state and context variables
+        chunks_count = len(result.get("sources", []))
+        if request is not None:
+            request.state.chunks_retrieved = chunks_count
+        from app.observability import chunks_retrieved_var
+        chunks_retrieved_var.set(chunks_count)
+        logger.info(f"RAG chat query processed successfully, retrieved {chunks_count} chunks")
+
         # Store result in cache for future identical questions
         set_cached_response(
             document_id=str(payload.document_id or ""),
@@ -609,12 +625,19 @@ def ask_question(
 )
 @limiter.limit(CHAT_QUERY_RATE_LIMIT)
 def ask_question_stream(
-    request: Request,
     payload: ChatRequest,
+    request: Request = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Ask a question and stream the answer using Server-Sent Events."""
+    # Bind query parameters to request context variables and state
+    if request is not None:
+        request.state.query = payload.question
+    from app.observability import query_text_var
+    query_text_var.set(payload.question)
+    logger.info(f"Processing streaming RAG chat query: '{payload.question}'")
+
     try:
         validate_user_input(payload.question)
     except UnsafePromptError as exc:
@@ -745,6 +768,14 @@ def ask_question_stream(
                 _save_message(
                     save_db, user.id, payload.document_id, "assistant", full_answer, sources, session_id=session_id
                 )
+
+            # Log streaming response RAG completion
+            chunks_count = len(sources)
+            from app.observability import chunks_retrieved_var, query_text_var, user_id_var
+            user_id_var.set(user.id)
+            query_text_var.set(payload.question)
+            chunks_retrieved_var.set(chunks_count)
+            logger.info(f"Streaming RAG chat query completed, retrieved {chunks_count} chunks")
         finally:
             record_query_response_time(time.perf_counter() - started_at)
 

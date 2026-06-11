@@ -23,17 +23,15 @@ from app.config import get_settings
 from app.exceptions import AppException
 from app.rate_limit import limiter
 from app.database import init_db, get_db
-from app.observability import setup_prometheus_metrics
+from app.observability import setup_prometheus_metrics, setup_logging, StructuredLoggingMiddleware
 from app.rag.vectorstore import get_chroma_client
 from app.scheduler import start_scheduler, stop_scheduler
 from app.routes.profile import router as profile_router
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger(__name__)
+# Configure logging using loguru structured JSON logging
+setup_logging()
+from loguru import logger
+
 
 settings = get_settings()
 
@@ -235,6 +233,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 logger.info(f"CORS origins: {settings.cors_origins}")
+
+# Add structured logging middleware as the outermost middleware
+app.add_middleware(StructuredLoggingMiddleware)
 
 # ── Mount API Routes ─────────────────────────────────
 from app.routes.auth import router as auth_router

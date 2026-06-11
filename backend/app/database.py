@@ -166,6 +166,13 @@ def _migrate_schema():
         ("documents", "drive_file_id", "ALTER TABLE documents ADD COLUMN drive_file_id VARCHAR(255)"),
         ("documents", "drive_folder_id", "ALTER TABLE documents ADD COLUMN drive_folder_id VARCHAR(255)"),
         ("documents", "drive_synced_at", "ALTER TABLE documents ADD COLUMN drive_synced_at TIMESTAMP"),
+        ("documents", "processing_progress", "ALTER TABLE documents ADD COLUMN processing_progress INTEGER DEFAULT 0"),
+        ("documents", "processing_stage", "ALTER TABLE documents ADD COLUMN processing_stage VARCHAR(20) DEFAULT 'queued'"),
+        ("documents", "retry_count", "ALTER TABLE documents ADD COLUMN retry_count INTEGER DEFAULT 0"),
+        ("documents", "last_error_traceback", "ALTER TABLE documents ADD COLUMN last_error_traceback TEXT"),
+        ("documents", "processing_started_at", "ALTER TABLE documents ADD COLUMN processing_started_at TIMESTAMP"),
+        ("documents", "completed_at", "ALTER TABLE documents ADD COLUMN completed_at TIMESTAMP"),
+        ("documents", "extracted_urls", "ALTER TABLE documents ADD COLUMN extracted_urls TEXT"),
     ]
     for table, column, ddl in docs_migrations:
         if column not in existing_docs_columns:
