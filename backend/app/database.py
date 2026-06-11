@@ -205,6 +205,30 @@ def _migrate_schema():
                 )
 
 
+    # Migrate documents — embedding cache tracking
+    try:
+        existing_docs_columns = {c["name"] for c in inspector.get_columns("documents")}
+    except Exception:
+        existing_docs_columns = set()
+
+    embedding_cache_migrations = [
+        (
+            "documents",
+            "extracted_urls",
+            "ALTER TABLE documents ADD COLUMN extracted_urls TEXT",
+        ),
+    ]
+    for table, column, ddl in embedding_cache_migrations:
+        if column not in existing_docs_columns:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+                logger.info("Migration: added column %s.%s", table, column)
+            except Exception:
+                logger.warning(
+                    "Migration skipped (may already exist): %s.%s", table, column
+                )
+
 
 def init_db():
     """Create all tables on startup and apply schema migrations."""
