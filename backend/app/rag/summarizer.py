@@ -46,7 +46,8 @@ def generate_document_summary(
         chunk_texts = []
         for chunk in chunks[:10]:  # Use first 10 chunks to limit input size
             text = chunk.get("text")
-            if text:  # Ensures text is not None and not an empty string
+            # Ensure text is explicitly a string instance and not just whitespace
+            if isinstance(text, str) and text.strip():
                 chunk_texts.append(text) 
 
         if not chunk_texts:
@@ -67,7 +68,7 @@ def generate_document_summary(
         )
         summary = response.choices[0].message.content.strip() if response.choices else None
 
-        return summary if summary else None
+        return summary or None
 
     except Exception as e:
         identifier = filePath if filePath else "pre-extracted chunks"
