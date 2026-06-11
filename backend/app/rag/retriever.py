@@ -25,24 +25,6 @@ def rrf_merge(
     k: int = 60,
 ) -> List[Dict[str, Any]]:
     """Merge vector and BM25 ranked lists using Reciprocal Rank Fusion.
-class CustomVectorRetriever(BaseRetriever):
-    user_id: str = Field(description="User ID")
-    document_id: Optional[str] = Field(default=None, description="Document ID")
-    document_ids: Optional[List[str]] = Field(default=None, description="Active Document IDs")
-    top_k: int = Field(default=10, description="Top K results")
-
-    def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[LangchainDocument]:
-        query_vector = embed_query(query)
-        candidates = query_chunks(
-            query_embedding=query_vector,
-            user_id=self.user_id,
-            document_id=self.document_id,
-            document_ids=self.document_ids,
-            top_k=self.top_k,
-        )
-        return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
 
     RRF formula:  score(d) = Σ  1 / (k + rank(d, list))
     where rank is 1-based and k=60 is the standard smoothing constant.
@@ -70,31 +52,11 @@ class CustomVectorRetriever(BaseRetriever):
             str(chunk.get("page", "")),
             text[:200],
         ])
-class CustomBM25Retriever(BaseRetriever):
-    user_id: str = Field(description="User ID")
-    document_id: Optional[str] = Field(default=None, description="Document ID")
-    document_ids: Optional[List[str]] = Field(default=None, description="Active Document IDs")
-    top_k: int = Field(default=10, description="Top K results")
-
-    def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[LangchainDocument]:
-        from app.rag.bm25 import query_bm25
-        candidates = query_bm25(
-            query=query,
-            user_id=self.user_id,
-            document_id=self.document_id,
-            document_ids=self.document_ids,
-            top_k=self.top_k,
-        )
-        return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
 
     def _accumulate(results: List[Dict[str, Any]]) -> None:
         for rank, chunk in enumerate(results, start=1):
             key = _key(chunk)
             rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (k + rank)
-            # Keep the highest-scoring raw chunk when the same key appears
-            # in both lists (vector chunk carries similarity score).
             if key not in chunk_store or chunk.get("score", 0) > chunk_store[key].get("score", 0):
                 chunk_store[key] = chunk
 
@@ -261,43 +223,6 @@ def retrieve(
 
     # ── Stage 1: Hybrid retrieval with query transformation ───────────────────
     all_candidates: List[Dict[str, Any]] = []
-    from app.database import SessionLocal
-    from app.models import Document
-
-    if document_id:
-        active_doc_ids = [document_id]
-    else:
-        with SessionLocal() as db:
-            active_docs = (
-                db.query(Document.id)
-                .filter(Document.user_id == user_id, Document.is_deleted.is_(False))
-                .all()
-            )
-            active_doc_ids = [str(d[0]) for d in active_docs]
-
-    if not active_doc_ids:
-        return []
-
-    # ── Stage 1: Hybrid Search with Query Transformation ─────────────
-    effective_top_k = top_k if top_k is not None else settings.TOP_K_RETRIEVAL
-    vector_retriever = CustomVectorRetriever(
-        user_id=user_id,
-        document_id=document_id,
-        document_ids=active_doc_ids,
-        top_k=effective_top_k,
-    )
-
-    bm25_retriever = CustomBM25Retriever(
-        user_id=user_id,
-        document_id=document_id,
-        document_ids=active_doc_ids,
-        top_k=effective_top_k,
-    )
-
-    ensemble_retriever = EnsembleRetriever(
-        retrievers=[vector_retriever, bm25_retriever],
-        weights=[0.6, 0.4]
-    )
 
     for search_query in transform_query(query):
         query_vector = embed_query(search_query)
@@ -311,7 +236,6 @@ def retrieve(
         )
 
         if settings.USE_HYBRID_SEARCH:
-            # BM25 results
             try:
                 from app.rag.bm25 import query_bm25
                 bm25_results = query_bm25(
@@ -324,46 +248,25 @@ def retrieve(
                 logger.warning("BM25 retrieval failed, using vector-only: %s", exc)
                 bm25_results = []
 
-            # Apply RRF to merge both ranked lists
             merged = rrf_merge(
                 vector_results=vector_results,
                 bm25_results=bm25_results,
                 k=settings.RRF_K,
             )
 
-            # Promote rrf_score → score for downstream stages
             for chunk in merged:
                 chunk["score"] = chunk.pop("rrf_score")
 
             all_candidates.extend(merged)
         else:
-            # Vector-only fallback
             all_candidates.extend(vector_results)
-        docs = ensemble_retriever.invoke(search_query)
-        for i, doc in enumerate(docs):
-            chunk = doc.metadata.copy()
-            # Preserve raw similarity (ChromaDB cosine similarity or BM25 score)
-            chunk["raw_score"] = chunk.get("score")
-            # Preserve a mock score based on rank for fallback if reranker fails
-            # We use 1.0/(i+1) as a base RRF-like score
-            chunk["score"] = 1.0 / (i + 1)
-            all_candidates.append(chunk)
 
     if not all_candidates:
-        logger.debug(f"Stage 1 retrieval: 0 candidates found for query '{query}'")
         return []
 
     candidates = _merge_candidates(all_candidates)
 
     # ── Stage 2: Cross-encoder reranking ─────────────────────────────────────
-    # Log raw scores before reranking/filtering
-    raw_scores_log = [
-        f"[Chunk {c.get('chunk_index')}]: raw_score={c.get('raw_score')}"
-        for c in candidates
-    ]
-    logger.debug(f"Stage 1 candidates count: {len(candidates)}, raw scores: {', '.join(raw_scores_log)}")
-
-    # ── Stage 2: Cross-encoder reranking ─────────────
     reranker = get_reranker()
 
     if reranker is not None:
@@ -372,12 +275,6 @@ def retrieve(
             documents=candidates,
             top_k=settings.TOP_K_RERANK,
         )
-        # Log reranker scores
-        rerank_scores_log = [
-            f"[Chunk {c.get('chunk_index')}]: rerank_score={c.get('rerank_score')}"
-            for c in top_chunks
-        ]
-        logger.debug(f"Stage 2 reranked chunks count: {len(top_chunks)}, scores: {', '.join(rerank_scores_log)}")
     else:
         candidates.sort(key=lambda x: x.get("score", 0), reverse=True)
         top_chunks = candidates[:settings.TOP_K_RERANK]
@@ -397,10 +294,12 @@ def retrieve(
                 chunk["score"] = round(chunk["rerank_score"], 4)
                 del chunk["rerank_score"]
 
-    # Bind chunks count to contextvar and log retrieval
-    chunks_count = len(top_chunks)
     from app.observability import chunks_retrieved_var
-    chunks_retrieved_var.set(chunks_count)
-    logger.info(f"Retrieved {chunks_count} relevant chunks from vector store for query: '{query}'")
+    chunks_retrieved_var.set(len(top_chunks))
+    logger.info(
+        "Retrieved %d relevant chunks for query: '%s'",
+        len(top_chunks),
+        query,
+    )
 
     return top_chunks
