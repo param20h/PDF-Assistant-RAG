@@ -46,7 +46,7 @@ def start_scheduler():
 
     # Document processing recovery — every 5 minutes
     try:
-        from app.services.cleanup import cleanup_stale_documents, cleanup_old_deleted_documents
+        from app.services.cleanup import cleanup_stale_documents, cleanup_old_deleted_documents, cleanup_inactive_active_documents
 
         _scheduler.add_job(
             cleanup_stale_documents,
@@ -71,6 +71,18 @@ def start_scheduler():
             misfire_grace_time=300,
         )
         logger.info("Old deleted document cleanup scheduled daily")
+
+        _scheduler.add_job(
+            cleanup_inactive_active_documents,
+            trigger=IntervalTrigger(days=1),
+            id="cleanup_inactive_active",
+            name="Purge active documents inactive beyond threshold",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=300,
+        )
+        logger.info("Inactive active document cleanup scheduled daily")
     except Exception as e:
         logger.warning("Could not schedule cleanup jobs: %s", e)
 
