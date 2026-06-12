@@ -11,9 +11,10 @@ import {
   type SourceBoundingBox,
   type SourceChunk,
 } from "@/store/chat-store";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import {
@@ -784,94 +785,110 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               />
 
               {/* Mic Button */}
-              <Button
-                id="mic-btn"
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={streaming}
-                onClick={toggleRecording}
-                className={cn(
-                  "absolute right-10 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
-                  isRecording
-                    ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
-                    : "hover:text-primary hover:bg-accent",
-                )}
-                title={
-                  isRecording
+              <Tooltip>
+                <TooltipTrigger
+                  id="mic-btn"
+                  type="button"
+                  disabled={streaming}
+                  onClick={toggleRecording}
+                  className={cn(
+                    buttonVariants({ variant: "ghost", size: "icon" }),
+                    "absolute right-10 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
+                    isRecording
+                      ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
+                      : "hover:text-primary hover:bg-accent",
+                  )}
+                  aria-label={
+                    isRecording
+                      ? t("chat.stopRecording", {
+                          defaultValue: "Stop recording",
+                        })
+                      : t("chat.startRecording", {
+                          defaultValue: "Start recording",
+                        })
+                  }
+                  aria-pressed={isRecording}
+                >
+                  {isRecording ? (
+                    <MicOff className="h-4 w-4" />
+                  ) : (
+                    <Mic className="h-4 w-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isRecording
                     ? t("chat.stopRecording", {
                         defaultValue: "Stop recording",
                       })
                     : t("chat.startRecording", {
                         defaultValue: "Start recording",
-                      })
-                }
-                aria-label={
-                  isRecording
-                    ? t("chat.stopRecording", {
-                        defaultValue: "Stop recording",
-                      })
-                    : t("chat.startRecording", {
-                        defaultValue: "Start recording",
-                      })
-                }
-                aria-pressed={isRecording}
-              >
-                {isRecording ? (
-                  <MicOff className="h-4 w-4" />
-                ) : (
-                  <Mic className="h-4 w-4" />
-                )}
-              </Button>
+                      })}
+                </TooltipContent>
+              </Tooltip>
 
               {/* NEW Keyboard Shortcuts Info Button */}
-              <Button
-                id="shortcut-help-btn"
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowHelpModal(true)}
-                className="absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-all duration-200"
-                title="Keyboard Shortcuts"
-                aria-label="View Keyboard Shortcuts"
-              >
-                <HelpCircle className="h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  id="shortcut-help-btn"
+                  type="button"
+                  onClick={() => setShowHelpModal(true)}
+                  className={cn(
+                    buttonVariants({ variant: "ghost", size: "icon" }),
+                    "absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-all duration-200",
+                  )}
+                  aria-label="View Keyboard Shortcuts"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                </TooltipTrigger>
+                <TooltipContent>Keyboard shortcuts</TooltipContent>
+              </Tooltip>
             </div>
 
             <div className="flex gap-1.5 shrink-0">
-              <Button
-                id="send-btn"
-                size="icon"
-                onClick={streaming ? handleStop : handleSend}
-                disabled={!streaming && !input.trim()}
-                className="h-10 w-10 sm:h-[44px] sm:w-[44px]"
-                aria-label={streaming ? "Stop generating" : "Send message"}
-              >
-                {streaming ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  id="send-btn"
+                  type="button"
+                  onClick={streaming ? handleStop : handleSend}
+                  disabled={!streaming && !input.trim()}
+                  className={cn(
+                    buttonVariants({ size: "icon" }),
+                    "h-10 w-10 sm:h-[44px] sm:w-[44px]",
+                  )}
+                  aria-label={streaming ? "Stop generating" : "Send message"}
+                >
+                  {streaming ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {streaming ? "Stop generating" : "Send message"}
+                </TooltipContent>
+              </Tooltip>
               {messages.length > 0 && (
                 <>
                   {/* Export dropdown */}
                   <div className="relative" ref={exportMenuRef}>
-                    <Button
-                      id="export-chat-btn"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setShowExportMenu((v) => !v)}
-                      className="h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-primary"
-                      title={t("chat.exportTitle")}
-                      aria-label={t("chat.exportTitle")}
-                      aria-expanded={showExportMenu}
-                      aria-controls="chat-export-menu"
-                      aria-haspopup="menu"
-                    >
-                      <Download className="w-4 h-4" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        id="export-chat-btn"
+                        type="button"
+                        onClick={() => setShowExportMenu((v) => !v)}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "icon" }),
+                          "h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-primary",
+                        )}
+                        aria-label={t("chat.exportTitle")}
+                        aria-expanded={showExportMenu}
+                        aria-controls="chat-export-menu"
+                        aria-haspopup="menu"
+                      >
+                        <Download className="w-4 h-4" />
+                      </TooltipTrigger>
+                      <TooltipContent>{t("chat.exportTitle")}</TooltipContent>
+                    </Tooltip>
                     {showExportMenu && (
                       <div
                         id="chat-export-menu"
@@ -914,15 +931,20 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     )}
                   </div>
                   {/* Clear history */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleClear}
-                    className="h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-destructive"
-                    aria-label="Clear chat history"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      type="button"
+                      onClick={handleClear}
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "icon" }),
+                        "h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-destructive",
+                      )}
+                      aria-label="Clear chat history"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </TooltipTrigger>
+                    <TooltipContent>Clear chat history</TooltipContent>
+                  </Tooltip>
                 </>
               )}
             </div>
