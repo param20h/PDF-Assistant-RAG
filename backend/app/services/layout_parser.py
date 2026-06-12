@@ -1,12 +1,15 @@
 import os
+from typing import Any, Dict, List
+
 import fitz  # PyMuPDF
 import pymupdf4llm
-import base64
-from typing import List, Dict, Any
-from google import genai  # Since the repo uses Gemini, we'll swap to Gemini 2.5 Flash for vision tasks!
+from google import (
+    genai,  # Since the repo uses Gemini, we'll swap to Gemini 2.5 Flash for vision tasks!
+)
 
 # Initialize Gemini Client
 client = genai.Client()
+
 
 class AdvancedPDFParser:
     def __init__(self, pdf_path: str):
@@ -21,20 +24,24 @@ class AdvancedPDFParser:
         try:
             md_pages = pymupdf4llm.to_markdown(self.pdf_path, page_chunks=True)
             for page in md_pages:
-                pages_data.append({
-                    "page_number": page["metadata"]["page"],
-                    "text": page["text"],
-                    "type": "text_layout"
-                })
+                pages_data.append(
+                    {
+                        "page_number": page["metadata"]["page"],
+                        "text": page["text"],
+                        "type": "text_layout",
+                    }
+                )
         except Exception as e:
             print(f"Layout parsing failed, falling back to standard text: {e}")
             for page_num in range(len(self.doc)):
                 page = self.doc.load_page(page_num)
-                pages_data.append({
-                    "page_number": page_num + 1,
-                    "text": page.get_text(),
-                    "type": "fallback_text"
-                })
+                pages_data.append(
+                    {
+                        "page_number": page_num + 1,
+                        "text": page.get_text(),
+                        "type": "fallback_text",
+                    }
+                )
         return pages_data
 
     def process_embedded_images(self, page_num: int, page_obj: fitz.Page) -> List[str]:
@@ -46,15 +53,17 @@ class AdvancedPDFParser:
             xref = img[0]
             base_image = self.doc.extract_image(xref)
             image_bytes = base_image["image"]
-            
+
             try:
                 # Use Gemini 2.5 Flash via standard structured part inputs
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model="gemini-2.5-flash",
                     contents=[
-                        genai.types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
-                        "Analyze this chart/image extracted from a document. Provide a highly detailed summary of its numbers, structural trends, or data contents so it can be effectively used for downstream text retrieval."
-                    ]
+                        genai.types.Part.from_bytes(
+                            data=image_bytes, mime_type="image/jpeg"
+                        ),
+                        "Analyze this chart/image extracted from a document. Provide a highly detailed summary of its numbers, structural trends, or data contents so it can be effectively used for downstream text retrieval.",
+                    ],
                 )
                 if response.text:
                     image_descriptions.append(response.text)
@@ -69,15 +78,17 @@ class AdvancedPDFParser:
         final_payload = []
         structured_chunks = self.extract_structured_text()
         final_payload.extend(structured_chunks)
-            
+
         for page_num in range(len(self.doc)):
             page = self.doc.load_page(page_num)
             img_summaries = self.process_embedded_images(page_num, page)
             for summary in img_summaries:
-                final_payload.append({
-                    "page_number": page_num + 1,
-                    "text": f"[Visual Data Extraction Summary]: {summary}",
-                    "type": "visual_image_summary"
-                })
-                
+                final_payload.append(
+                    {
+                        "page_number": page_num + 1,
+                        "text": f"[Visual Data Extraction Summary]: {summary}",
+                        "type": "visual_image_summary",
+                    }
+                )
+
         return final_payload
