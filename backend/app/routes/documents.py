@@ -16,7 +16,7 @@ import socket
 import ipaddress
 import tempfile
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks, Request, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
@@ -192,41 +192,21 @@ def _crawl_in_new_loop(url: str) -> str:
 async def upload_document(
     request: Request = None,
     file: UploadFile = File(...),
+    chunk_size: int = Form(1000),
+    chunk_overlap: int = Form(200),
     background_tasks: BackgroundTasks = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Upload a document and enqueue RAG processing.
-    
-    Validates the uploaded file (extension, size, MIME type, integrity),
-    saves it to the user's directory, creates a database record with status
-    'pending', queues a Celery task for chunking and embedding, and returns
-    202 Accepted immediately so large documents do not block the API request
-    while embeddings are generated.
-
-    Args:
-        request: The FastAPI request object.
-        file: The uploaded file, provided as a multipart/form-data field in the request.
-        background_tasks: FastAPI BackgroundTasks instance for in-process fallback execution.
-        user: The currently authenticated user, injected by the `get_current_user` dependency.
-        db: Database session, injected by the `get_db` dependency.
-
-    Returns:
-        DocumentResponse: The created document record, validated against the
-        response model (includes id, filename, original_name, file_size, status, etc.).
-
-    Raises:
-        HTTPException: With status code 400 if:
-            - No filename is provided.
-            - The file extension is not allowed. (only .pdf or .docx)
-            - The file fails validation checks (size, MIME type, integrity).
-        HTTPException: With status code 500 if:
-            - The server lacks the 'python-magic' dependency. 
-    """
     # ── Validate file type ───────────────────────────
     if not file.filename:
         raise ValidationException("No filename provided")
+
+    # ── Validate chunking params ─────────────────────
+    if chunk_size < 100 or chunk_size > 2000:
+        raise ValidationException("Chunk size must be between 100 and 2000")
+    if chunk_overlap < 0 or chunk_overlap >= chunk_size:
+        raise ValidationException("Chunk overlap must be non-negative and less than chunk_size")
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in settings.ALLOWED_EXTENSIONS:
@@ -243,19 +223,8 @@ async def upload_document(
     stored_filename = f"{uuid.uuid4().hex}.{ext}"
     filepath = os.path.join(user_dir, stored_filename)
 
-    # Move temp file to final destination
     shutil.move(temp_path, filepath)
-
     file_size = Path(filepath).stat().st_size
-
-    # Bind upload metadata to request state and context variables
-    if request is not None:
-        request.state.filename = file.filename
-        request.state.filesize = file_size
-    from app.observability import upload_filename_var, upload_filesize_var
-    upload_filename_var.set(file.filename)
-    upload_filesize_var.set(file_size)
-    logger.info(f"File upload completed locally, starting ingestion: {file.filename} ({file_size} bytes)")
 
     # ── Create database record ───────────────────────
     document = Document(
@@ -264,6 +233,8 @@ async def upload_document(
         original_name=file.filename,
         file_size=file_size,
         status="pending",
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap
     )
     db.add(document)
     db.commit()
