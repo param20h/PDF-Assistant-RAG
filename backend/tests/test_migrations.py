@@ -29,12 +29,20 @@ def _columns(engine, table: str) -> set:
 def _run_migrate(engine):
     """Patch app.database.engine and call _migrate_schema()."""
     import app.database as db_module
-    original = db_module.engine
+    from sqlalchemy import inspect as sa_inspect
+
+    original_engine = db_module.engine
     db_module.engine = engine
+
+    # Also patch inspect so _migrate_schema uses our engine's inspector
+    original_inspect = db_module.inspect
+    db_module.inspect = lambda _: sa_inspect(engine)
+
     try:
         db_module._migrate_schema()
     finally:
-        db_module.engine = original
+        db_module.engine = original_engine
+        db_module.inspect = original_inspect
 
 
 def _create_minimal_users(engine):
