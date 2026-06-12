@@ -194,6 +194,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     abortRef.current = null;
   };
   }, [activeSessionId, activeDoc, fetchSessionHistory, setMessages]);
+  
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
+    setStreaming(false);
+    setIsTyping(false);
+  };
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
@@ -231,7 +237,19 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       const ws = new WebSocket(wsUrl);
 
+      let onAbort: (() => void) | null = null;
+
       const wsDone = new Promise<void>((resolve, reject) => {
+        onAbort = () => {
+          try {
+            ws.close();
+          } catch {
+            // ignore
+          }
+          reject(new DOMException("The user aborted a request.", "AbortError"));
+        };
+        abortController.signal.addEventListener("abort", onAbort);
+
         ws.onopen = () => {
           // Send initial payload
           ws.send(JSON.stringify({ question, document_id: activeDoc?.id || null, session_id: activeSessionId }));
@@ -241,7 +259,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         const connectTimeout = setTimeout(() => {
           try {
             ws.close();
-          } catch (e) {
+          } catch {
             // ignore
           }
           reject(new Error("WebSocket connection timeout"));
@@ -288,12 +306,12 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               ws.close();
               resolve();
             }
-          } catch (err) {
+          } catch {
             // ignore malformed messages
           }
         };
 
-        ws.onerror = (ev) => {
+        ws.onerror = () => {
           clearTimeout(connectTimeout);
           reject(new Error("WebSocket error"));
         };
@@ -303,15 +321,28 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         };
       });
 
-      await wsDone;
+      try {
+        await wsDone;
+      } finally {
+        if (onAbort) {
+          abortController.signal.removeEventListener("abort", onAbort);
+        }
+      }
     } catch (err) {
+      if (
+        err instanceof Error &&
+        (err.name === "AbortError" || err.message === "The user aborted a request.")
+      ) {
+        return;
+      }
+
       // Fallback to existing SSE stream if WebSocket fails
       try {
         const stream = api.streamPost("/api/v1/chat/ask/stream", {
           question,
           document_id: activeDoc?.id || null,
           session_id: activeSessionId,
-        });
+        }, abortController.signal);
 
         for await (const event of stream) {
           if (event.type === "token") {
@@ -344,6 +375,17 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         }
       } catch (err2) {
         setIsTyping(false);
+        if (
+          err2 instanceof Error &&
+          (err2.name === "AbortError" || err2.message === "The user aborted a request.")
+        ) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, isStreaming: false } : m
+            )
+          );
+          return;
+        }
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
@@ -551,11 +593,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       // Shortcut 2: Escape → Abort SSE stream OR clear input OR close modal
       if (e.key === "Escape") {
-        if (streaming && abortControllerRef.current) {
+        if (streaming) {
           e.preventDefault();
-          abortControllerRef.current.abort();
-          setStreaming(false);
-          setIsTyping(false);
+          handleStop();
           toast.info("Response cancelled");
         } else if (document.activeElement === textareaRef.current) {
           e.preventDefault();
@@ -606,6 +646,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, streaming, showHelpModal, showExportMenu, messages]); // Dependencies updated to capture fresh state data
 
   return (
@@ -724,6 +765,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 {/* Export dropdown */}
                 <div className="relative" ref={exportMenuRef}>
       <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm relative">
+      <div className="border-t border-border/50 p-4 pl-16 sm:pl-4 bg-card/30 backdrop-blur-sm relative">
         <div className="max-w-3xl mx-auto relative">
           {/* Status / Error Message Area */}
           {(isRecording || speechError) && (
@@ -849,10 +891,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               <Button
                 id="send-btn"
                 size="icon"
-                onClick={handleSend}
-                disabled={!input.trim() || streaming}
-                className="h-[44px] w-[44px]"
-                aria-label={streaming ? "Sending message" : "Send message"}
+                onClick={streaming ? handleStop : handleSend}
+                disabled={!streaming && !input.trim()}
+                className="h-10 w-10 sm:h-[44px] sm:w-[44px]"
+                aria-label={streaming ? "Stop generating" : "Send message"}
               >
                 {streaming ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -869,7 +911,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                       variant="ghost"
                       size="icon"
                       onClick={() => setShowExportMenu((v) => !v)}
-                      className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
+                      className="h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-primary"
                       title={t("chat.exportTitle")}
                       aria-label={t("chat.exportTitle")}
                       aria-expanded={showExportMenu}
@@ -884,7 +926,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                         role="menu"
                         aria-label="Export chat"
                         onKeyDown={handleExportMenuKeyDown}
-                        className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
+                        className="absolute bottom-full mb-2 right-0 min-w-[160px] max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
                       >
                         <button
                           id="export-md-btn"
@@ -924,7 +966,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     variant="ghost"
                     size="icon"
                     onClick={handleClear}
-                    className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
+                    className="h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-destructive"
                     aria-label="Clear chat history"
                   >
                     <Trash2 className="w-4 h-4" />
