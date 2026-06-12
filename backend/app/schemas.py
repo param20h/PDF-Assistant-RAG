@@ -93,6 +93,16 @@ class UpdatePasswordResponse(BaseModel):
     email: EmailStr
     password_changed: bool = True
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        validate_password(value)
+        return value    
+
 
 class WorkspaceInviteRequest(BaseModel):
     email: EmailStr
