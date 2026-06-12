@@ -3,7 +3,7 @@ Admin-only operational statistics and database maintenance routes.
 """
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from pathlib import Path
 from typing import List
 
@@ -119,7 +119,6 @@ def export_database(
             detail="Invalid export format specified. Supported variants: json, sql"
         )
 
-    # Inspect schema names dynamically from current environment binding context
     inspector = inspect(db.get_bind())
     table_names = inspector.get_table_names()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -133,7 +132,7 @@ def export_database(
             for row in result.fetchall():
                 row_dict = {}
                 for col, val in zip(columns, row):
-                    if isinstance(val, (datetime, datetime.date)):
+                    if isinstance(val, (datetime, date)):  # ◄ Fixed type tuple evaluation
                         row_dict[col] = val.isoformat()
                     elif isinstance(val, bytes):
                         row_dict[col] = val.decode("utf-8", errors="ignore")
@@ -147,7 +146,6 @@ def export_database(
         media_type = "application/json"
 
     else:
-        # SQL Injection Script Generation
         sql_lines = [
             "-- Enterprise Agentic RAG System Database Backup",
             f"-- Generated at: {datetime.now(timezone.utc).isoformat()}",
@@ -169,7 +167,7 @@ def export_database(
                             vals.append(str(val))
                         elif isinstance(val, bool):
                             vals.append("1" if val else "0")
-                        elif isinstance(val, (datetime, datetime.date)):
+                        elif isinstance(val, (datetime, date)):  # ◄ Fixed type tuple evaluation
                             vals.append(f"'{val.isoformat()}'")
                         else:
                             escaped_val = str(val).replace("'", "''")
@@ -182,7 +180,6 @@ def export_database(
         filename = f"db_backup_{timestamp}.sql"
         media_type = "application/sql"
 
-    # Enforce strict security standard response headers
     headers = {
         "Content-Disposition": f"attachment; filename={filename}",
         "X-Content-Type-Options": "nosniff",
