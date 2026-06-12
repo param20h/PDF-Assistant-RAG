@@ -109,11 +109,19 @@ def _create_minimal_chat_messages(engine):
         """))
 
 
+def _setup_all_minimal_tables(engine):
+    """Create all tables with older schemas so the migration script doesn't crash."""
+    _create_minimal_users(engine)
+    _create_minimal_documents(engine)
+    _create_minimal_api_keys(engine)
+    _create_minimal_chat_messages(engine)
+
+
 # ── users migrations ──────────────────────────────────────────────────────────
 
 def test_migrate_adds_hf_token_to_users():
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     assert "hf_token" not in _columns(engine, "users")
     _run_migrate(engine)
     assert "hf_token" in _columns(engine, "users")
@@ -121,7 +129,7 @@ def test_migrate_adds_hf_token_to_users():
 
 def test_migrate_adds_role_to_users():
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     assert "role" not in _columns(engine, "users")
     _run_migrate(engine)
     assert "role" in _columns(engine, "users")
@@ -129,7 +137,7 @@ def test_migrate_adds_role_to_users():
 
 def test_migrate_adds_google_refresh_token_to_users():
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     assert "google_refresh_token" not in _columns(engine, "users")
     _run_migrate(engine)
     assert "google_refresh_token" in _columns(engine, "users")
@@ -137,14 +145,14 @@ def test_migrate_adds_google_refresh_token_to_users():
 
 def test_migrate_adds_last_login_to_users():
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     assert "last_login" in _columns(engine, "users")
 
 
 def test_migrate_adds_is_verified_to_users():
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     assert "is_verified" not in _columns(engine, "users")
     _run_migrate(engine)
     assert "is_verified" in _columns(engine, "users")
@@ -152,14 +160,14 @@ def test_migrate_adds_is_verified_to_users():
 
 def test_migrate_adds_verification_token_hash_to_users():
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     assert "verification_token_hash" in _columns(engine, "users")
 
 
 def test_migrate_adds_verification_token_created_at_to_users():
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     assert "verification_token_created_at" in _columns(engine, "users")
 
@@ -167,7 +175,7 @@ def test_migrate_adds_verification_token_created_at_to_users():
 def test_migrate_preserves_existing_users_columns():
     """Migration must never drop or rename any original users column."""
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     original = _columns(engine, "users")
     _run_migrate(engine)
     after = _columns(engine, "users")
@@ -177,7 +185,7 @@ def test_migrate_preserves_existing_users_columns():
 def test_migrate_preserves_existing_user_data():
     """Rows inserted before migration must still be readable afterwards."""
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     with engine.begin() as conn:
         conn.execute(text(
             "INSERT INTO users (id, username, email, hashed_password) "
@@ -197,8 +205,7 @@ def test_migrate_preserves_existing_user_data():
 
 def test_migrate_adds_is_deleted_to_documents():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     assert "is_deleted" not in _columns(engine, "documents")
     _run_migrate(engine)
     assert "is_deleted" in _columns(engine, "documents")
@@ -206,8 +213,7 @@ def test_migrate_adds_is_deleted_to_documents():
 
 def test_migrate_adds_summary_to_documents():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     assert "summary" not in _columns(engine, "documents")
     _run_migrate(engine)
     assert "summary" in _columns(engine, "documents")
@@ -215,8 +221,7 @@ def test_migrate_adds_summary_to_documents():
 
 def test_migrate_adds_chunk_size_and_overlap_to_documents():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     cols = _columns(engine, "documents")
     assert "chunk_size" in cols
@@ -225,24 +230,21 @@ def test_migrate_adds_chunk_size_and_overlap_to_documents():
 
 def test_migrate_adds_processing_progress_to_documents():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     assert "processing_progress" in _columns(engine, "documents")
 
 
 def test_migrate_adds_processing_stage_to_documents():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     assert "processing_stage" in _columns(engine, "documents")
 
 
 def test_migrate_adds_extracted_urls_to_documents():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     assert "extracted_urls" not in _columns(engine, "documents")
     _run_migrate(engine)
     assert "extracted_urls" in _columns(engine, "documents")
@@ -250,16 +252,14 @@ def test_migrate_adds_extracted_urls_to_documents():
 
 def test_migrate_adds_completed_at_to_documents():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     assert "completed_at" in _columns(engine, "documents")
 
 
 def test_migrate_adds_drive_columns_to_documents():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     cols = _columns(engine, "documents")
     assert "drive_file_id" in cols
@@ -269,8 +269,7 @@ def test_migrate_adds_drive_columns_to_documents():
 
 def test_migrate_preserves_existing_documents_columns():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     original = _columns(engine, "documents")
     _run_migrate(engine)
     after = _columns(engine, "documents")
@@ -279,8 +278,7 @@ def test_migrate_preserves_existing_documents_columns():
 
 def test_migrate_preserves_existing_document_data():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     with engine.begin() as conn:
         conn.execute(text(
             "INSERT INTO documents "
@@ -301,8 +299,7 @@ def test_migrate_preserves_existing_document_data():
 
 def test_migrate_adds_name_to_api_keys():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_api_keys(engine)
+    _setup_all_minimal_tables(engine)
     assert "name" not in _columns(engine, "api_keys")
     _run_migrate(engine)
     assert "name" in _columns(engine, "api_keys")
@@ -310,8 +307,7 @@ def test_migrate_adds_name_to_api_keys():
 
 def test_migrate_adds_is_active_to_api_keys():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_api_keys(engine)
+    _setup_all_minimal_tables(engine)
     assert "is_active" not in _columns(engine, "api_keys")
     _run_migrate(engine)
     assert "is_active" in _columns(engine, "api_keys")
@@ -319,16 +315,14 @@ def test_migrate_adds_is_active_to_api_keys():
 
 def test_migrate_adds_last_used_at_to_api_keys():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_api_keys(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     assert "last_used_at" in _columns(engine, "api_keys")
 
 
 def test_migrate_preserves_existing_api_keys_columns():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_api_keys(engine)
+    _setup_all_minimal_tables(engine)
     original = _columns(engine, "api_keys")
     _run_migrate(engine)
     after = _columns(engine, "api_keys")
@@ -339,8 +333,7 @@ def test_migrate_preserves_existing_api_keys_columns():
 
 def test_migrate_adds_feedback_to_chat_messages():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_chat_messages(engine)
+    _setup_all_minimal_tables(engine)
     assert "feedback" not in _columns(engine, "chat_messages")
     _run_migrate(engine)
     assert "feedback" in _columns(engine, "chat_messages")
@@ -348,8 +341,7 @@ def test_migrate_adds_feedback_to_chat_messages():
 
 def test_migrate_preserves_existing_chat_messages_columns():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_chat_messages(engine)
+    _setup_all_minimal_tables(engine)
     original = _columns(engine, "chat_messages")
     _run_migrate(engine)
     after = _columns(engine, "chat_messages")
@@ -361,7 +353,7 @@ def test_migrate_preserves_existing_chat_messages_columns():
 def test_migrate_is_idempotent_users():
     """Running _migrate_schema() twice must not raise or duplicate columns."""
     engine = _make_engine()
-    _create_minimal_users(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     cols_after_first = _columns(engine, "users")
     _run_migrate(engine)
@@ -371,8 +363,7 @@ def test_migrate_is_idempotent_users():
 
 def test_migrate_is_idempotent_documents():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     cols_after_first = _columns(engine, "documents")
     _run_migrate(engine)
@@ -382,8 +373,7 @@ def test_migrate_is_idempotent_documents():
 
 def test_migrate_is_idempotent_api_keys():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_api_keys(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     cols_after_first = _columns(engine, "api_keys")
     _run_migrate(engine)
@@ -393,8 +383,7 @@ def test_migrate_is_idempotent_api_keys():
 
 def test_migrate_is_idempotent_chat_messages():
     engine = _make_engine()
-    _create_minimal_users(engine)
-    _create_minimal_chat_messages(engine)
+    _setup_all_minimal_tables(engine)
     _run_migrate(engine)
     cols_after_first = _columns(engine, "chat_messages")
     _run_migrate(engine)
@@ -407,14 +396,10 @@ def test_migrate_is_idempotent_chat_messages():
 def test_migrate_on_fully_migrated_schema_is_safe():
     """If all columns already exist, _migrate_schema() must complete without error."""
     engine = _make_engine()
-    # Create tables with ALL columns already present
-    _create_minimal_users(engine)
-    _create_minimal_documents(engine)
-    _create_minimal_api_keys(engine)
-    _create_minimal_chat_messages(engine)
-    # First pass adds all columns
+    _setup_all_minimal_tables(engine)
+    # First pass adds all missing columns
     _run_migrate(engine)
-    # Second pass should be a complete no-op
+    # Second pass should run safely as a complete no-op
     _run_migrate(engine)
     # Verify nothing was lost
     assert "hf_token" in _columns(engine, "users")
