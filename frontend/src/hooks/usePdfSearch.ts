@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
+import { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 
 export interface SearchMatch {
   page: number;
-  // Bounding box coordinates for highlighting
   rects: { left: number; top: number; width: number; height: number }[];
 }
 
@@ -11,7 +11,7 @@ export function usePdfSearch() {
   const [matches, setMatches] = useState<SearchMatch[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const performSearch = useCallback(async (pdfDoc: any, term: string) => {
+  const performSearch = useCallback(async (pdfDoc: PDFDocumentProxy | null, term: string) => {
     if (!term || !pdfDoc) {
       setMatches([]);
       return;

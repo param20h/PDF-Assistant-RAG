@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertCircle, RotateCw } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import { usePdfSearch } from "@/hooks/usePdfSearch";
+import { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 
 // Import styles for react-pdf layers
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -17,6 +18,13 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url
 ).toString();
+
+interface SearchRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
 
 export interface PdfHighlightRect {
   left: number;
@@ -64,7 +72,7 @@ export default function PDFViewer({
   const viewerRef = useRef<HTMLDivElement>(null);
 
   // --- NEW: Search State ---
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const { searchTerm, setSearchTerm, matches, currentIndex, setCurrentIndex, performSearch } = usePdfSearch();
 
   // Sync page input state with current page prop updates during render phase
@@ -146,7 +154,7 @@ export default function PDFViewer({
   // --- NEW: Search Highlights Logic ---
   const searchHighlights = useMemo(() => {
     if (!matches[currentIndex] || matches[currentIndex].page !== currentPage) return [];
-    return matches[currentIndex].rects.map((r: any) => ({
+    return matches[currentIndex].rects.map((r: SearchRect) => ({
       left: `${r.left}px`,
       top: `${r.top}px`,
       width: `${r.width}px`,
