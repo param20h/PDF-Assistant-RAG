@@ -484,3 +484,41 @@ def test_pdf_image_captioning_on_the_fly(monkeypatch):
     # Ensure image_bytes is not in the chunk dictionary (preventing memory leak)
     assert "image_bytes" not in chunks[1]
 
+def test_pdf_multi_column_layout_parsing_order(monkeypatch):
+    """Ensure multi-column layout extracts text column-by-column rather than row-by-row."""
+    class FakePage:
+        width = 600
+        height = 800
+
+        def find_tables(self):
+            return []
+
+        def extract_words(self):
+            # Simulated 2-column layout with 2 sequential reading rows
+            return [
+                # Left Column - Line 1
+                {"text": "Left1", "x0": 50, "x1": 100, "top": 100, "bottom": 115},
+                # Right Column - Line 1
+                {"text": "Right1", "x0": 350, "x1": 400, "top": 100, "bottom": 115},
+                # Left Column - Line 2
+                {"text": "Left2", "x0": 50, "x1": 100, "top": 130, "bottom": 145},
+                # Right Column - Line 2
+                {"text": "Right2", "x0": 350, "x1": 400, "top": 130, "bottom": 145},
+            ]
+
+    class FakePdf:
+        pages = [FakePage()]
+        def __enter__(self): return self
+        def __exit__(self, exc_type, exc, traceback): return False
+
+    fake_pdfplumber = types.SimpleNamespace(open=lambda _filepath: FakePdf())
+    monkeypatch.setitem(sys.modules, "pdfplumber", fake_pdfplumber)
+    monkeypatch.setattr(chunker, "extract_pdf_images", lambda _filepath: [])
+
+    chunks = chunk_document("multi_column.pdf")
+    
+    assert len(chunks) == 1
+    text_lines = chunks[0]["text"].splitlines()
+    
+    # Correct reading order reads entire Column 1 downward, then moves to Column 2
+    assert text_lines == ["Left1", "Left2", "Right1", "Right2"]
