@@ -7,7 +7,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, GitBranch } from "lucide-react";
+import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, GitBranch, ChevronDown } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -64,6 +64,13 @@ export default function MessageBubble({ message }: Props) {
   const [shared, setShared] = useState(false);
   const [shareFailed, setShareFailed] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showThoughts, setShowThoughts] = useState(false);
+
+  useEffect(() => {
+    if (message.isStreaming && message.thoughts && message.thoughts.length > 0) {
+      setShowThoughts(true);
+    }
+  }, [message.isStreaming, message.thoughts]);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -294,6 +301,36 @@ const handleBranch = () => {
                   <TooltipContent>Branch conversation</TooltipContent>
                 </Tooltip>
               </>
+            )}
+
+            {message.thoughts && message.thoughts.length > 0 && (
+              <div className="mb-3 border border-border/60 rounded-lg bg-muted/40 overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setShowThoughts((prev) => !prev)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-muted-foreground hover:text-foreground font-medium transition-colors"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Brain className="w-3.5 h-3.5 animate-pulse text-primary" />
+                    <span>{message.isStreaming ? "Thinking..." : "View reasoning steps"}</span>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      "w-3.5 h-3.5 transition-transform duration-200",
+                      showThoughts && "transform rotate-180"
+                    )}
+                  />
+                </button>
+                {showThoughts && (
+                  <div className="px-3 pb-3 pt-1 border-t border-border/40 space-y-2 max-h-60 overflow-y-auto font-mono text-[11px] leading-relaxed text-muted-foreground">
+                    {message.thoughts.map((thought, idx) => (
+                      <div key={idx} className="whitespace-pre-wrap border-l-2 border-primary/30 pl-2">
+                        {thought}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             <div className={`prose-chat ${fontSizeClass} ${message.content ? "pr-20" : ""}`}>

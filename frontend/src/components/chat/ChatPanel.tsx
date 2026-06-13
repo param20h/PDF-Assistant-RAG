@@ -275,36 +275,38 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           reject(new Error("WebSocket connection timeout"));
         }, 800);
 
+        const ensureAssistantCreated = (initialThoughts?: string[], initialSources?: SourceChunk[]) => {
+          if (!assistantCreated) {
+            assistantCreated = true;
+            setIsTyping(false);
+            const assistantMsg: ChatMsg = {
+              id: assistantId,
+              role: "assistant",
+              content: "",
+              sources: initialSources || [],
+              isStreaming: true,
+              thoughts: initialThoughts || [],
+            };
+            setMessages((prev) => [...prev, assistantMsg]);
+          }
+        };
+
         ws.onmessage = (ev) => {
           clearTimeout(connectTimeout);
           try {
             const event = JSON.parse(ev.data);
             if (event.type === "token") {
-              if (!assistantCreated) {
-                assistantCreated = true;
-                setIsTyping(false);
-
-                const assistantMsg: ChatMsg = {
-                  id: assistantId,
-                  role: "assistant",
-                  content: event.data as string,
-                  sources: [],
-                  isStreaming: true,
-                };
-
-                setMessages((prev) => [...prev, assistantMsg]);
-              } else {
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
-                );
-              }
+              ensureAssistantCreated();
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
+              );
             } else if (event.type === "sources") {
+              ensureAssistantCreated(undefined, event.data as SourceChunk[]);
               setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, sources: event.data as SourceChunk[] } : m)));
             } else if (event.type === "thought") {
-              // Append thoughts as a temporary assistant note (optional UI handling)
-              // For simplicity, add to assistant message content in brackets
+              ensureAssistantCreated([event.data as string]);
               setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + `\n[thought] ${event.data}` } : m))
+                prev.map((m) => (m.id === assistantId ? { ...m, thoughts: [...(m.thoughts || []), event.data as string] } : m))
               );
             } else if (event.type === "error") {
               setIsTyping(false);
@@ -354,28 +356,37 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           session_id: activeSessionId,
         }, abortController.signal);
 
+        let sseAssistantCreated = false;
+        const ensureSseAssistantCreated = (initialThoughts?: string[], initialSources?: SourceChunk[]) => {
+          if (!sseAssistantCreated) {
+            sseAssistantCreated = true;
+            setIsTyping(false);
+            const assistantMsg: ChatMsg = {
+              id: assistantId,
+              role: "assistant",
+              content: "",
+              sources: initialSources || [],
+              isStreaming: true,
+              thoughts: initialThoughts || [],
+            };
+            setMessages((prev) => [...prev, assistantMsg]);
+          }
+        };
+
         for await (const event of stream) {
           if (event.type === "token") {
-            if (!assistantCreated) {
-              assistantCreated = true;
-              setIsTyping(false);
-
-              const assistantMsg: ChatMsg = {
-                id: assistantId,
-                role: "assistant",
-                content: event.data as string,
-                sources: [],
-                isStreaming: true,
-              };
-
-              setMessages((prev) => [...prev, assistantMsg]);
-            } else {
-              setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
-              );
-            }
+            ensureSseAssistantCreated();
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
+            );
           } else if (event.type === "sources") {
+            ensureSseAssistantCreated(undefined, event.data as SourceChunk[]);
             setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, sources: event.data as SourceChunk[] } : m)));
+          } else if (event.type === "thought") {
+            ensureSseAssistantCreated([event.data as string]);
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, thoughts: [...(m.thoughts || []), event.data as string] } : m))
+            );
           } else if (event.type === "error") {
             setIsTyping(false);
             setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m)));

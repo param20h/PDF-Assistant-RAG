@@ -233,7 +233,10 @@ def generate_answer_stream(
 
         for step in executor.stream({"input": question, "chat_history": formatted_history}):
             if "actions" in step:
-                continue
+                for action in step["actions"]:
+                    log_content = getattr(action, "log", "")
+                    if log_content:
+                        yield f"data: {json.dumps({'type': 'thought', 'data': log_content.strip()})}\n\n"
 
             elif "intermediate_steps" in step:
                 if not sources_sent and getattr(pdf_tool, "last_sources", []):
@@ -251,6 +254,14 @@ def generate_answer_stream(
                     yield f"data: {json.dumps({'type': 'sources', 'data': sources})}\n\n"
                     sources_sent = True
 
+                for agent_step in step["intermediate_steps"]:
+                    if isinstance(agent_step, tuple) and len(agent_step) >= 2:
+                        observation = agent_step[1]
+                        obs_str = str(observation)
+                        if len(obs_str) > 1000:
+                            obs_str = obs_str[:1000] + "... (truncated)"
+                        yield f"data: {json.dumps({'type': 'thought', 'data': f'Observation: {obs_str}'})}\n\n"
+
             elif "output" in step:
                 full_answer = step["output"]
                 try:
@@ -258,7 +269,12 @@ def generate_answer_stream(
                 except OutputParserError as e:
                     logger.warning(f"Rejected malformed streamed LLM output: {e}")
                     clean_answer = MALFORMED_OUTPUT_MESSAGE
-                yield f"data: {json.dumps({'type': 'token', 'data': clean_answer})}\n\n"
+
+                import time
+                chunk_size = 4
+                for i in range(0, len(clean_answer), chunk_size):
+                    yield f"data: {json.dumps({'type': 'token', 'data': clean_answer[i:i+chunk_size]})}\n\n"
+                    time.sleep(0.01)
 
     except Exception as e:
         logger.error(f"Agent streaming error: {e}")

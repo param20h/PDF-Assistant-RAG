@@ -22,13 +22,14 @@ export interface SourceChunk {
 
 export interface ChatMsg {
   branch_id?: string;
-parent_message_id?: string;
+  parent_message_id?: string;
   id: string;
   role: "user" | "assistant";
   content: string;
   sources: SourceChunk[];
   feedback?: "up" | "down" | null;
   isStreaming?: boolean;
+  thoughts?: string[];
 }
 
 export interface ChatSession {
