@@ -1,11 +1,18 @@
 version: '3.8'
 
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   # Redis broker/result backend for Celery document processing
   redis:
     image: redis:7-alpine
     container_name: pdf_rag_redis
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "6379:6379"
     healthcheck:
@@ -20,6 +27,7 @@ services:
     image: postgres:16-alpine
     container_name: pdf_rag_postgres
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-pdf_rag}
       POSTGRES_USER: ${POSTGRES_USER:-pdf_rag_user}
@@ -41,6 +49,7 @@ services:
     build: .
     container_name: pdf_rag_app
     profiles: ["cpu"]
+    logging: *default-logging
     ports:
       - "7860:7860"
     volumes:
@@ -73,6 +82,7 @@ services:
     build: .
     container_name: pdf_rag_app
     profiles: ["gpu"]
+    logging: *default-logging
     ports:
       - "7860:7860"
     volumes:
@@ -112,6 +122,7 @@ services:
     build: .
     container_name: pdf_rag_worker
     profiles: ["cpu"]
+    logging: *default-logging
     command: >
       sh -c "cd /app/backend &&
       celery -A app.celery_app.celery_app worker --loglevel=info"
@@ -139,6 +150,7 @@ services:
     build: .
     container_name: pdf_rag_worker
     profiles: ["gpu"]
+    logging: *default-logging
     command: >
       sh -c "cd /app/backend &&
              celery -A app.celery_app.celery_app worker --loglevel=info"
@@ -168,12 +180,33 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Frontend (Next.js static export served by nginx) ─────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:7860}
+    container_name: pdf_rag_frontend
+    profiles: ["cpu", "gpu"]
+    logging: *default-logging
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
   # ── pgAdmin (optional — for local DB inspection) ─────────
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: pdf_rag_pgadmin
     restart: unless-stopped
-    profiles: ["debug"]   # only starts when: docker compose --profile debug up
+    profiles: ["debug"]
+    logging: *default-logging
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@local.dev
       PGADMIN_DEFAULT_PASSWORD: admin
@@ -187,22 +220,3 @@ services:
 volumes:
   postgres_data:
   app_data:
-
-  # ── Frontend (Next.js static export served by nginx) ─────
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:7860}
-    container_name: pdf_rag_frontend
-    profiles: ["cpu", "gpu"]
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s

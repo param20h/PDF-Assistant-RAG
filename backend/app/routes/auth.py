@@ -39,6 +39,7 @@ from app.schemas import (
     TokenResponse,
     UpdatePassword,
     UpdatePasswordResponse,
+    ChangePasswordRequest,
     UserLogin,
     UserRegister,
     UserResponse,
@@ -525,6 +526,46 @@ def update_password(payload:UpdatePassword,
     except SQLAlchemyError:
         db.rollback()
         raise ValidationException("Database error")
+
+
+@router.post("/change-password", response_model=MessageResponse)
+def change_password(
+    payload: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Securely rotate the authenticated user's password.
+
+    Validates that the provided current password matches the stored hash
+    before updating to the new password. This is the secure, recommended
+    way for users to change their own password since it confirms the
+    requester actually knows the existing credentials.
+
+    Args:
+        payload: ChangePasswordRequest containing `current_password` and `new_password`.
+        user: The currently authenticated user, obtained from the `get_current_user` dependency.
+        db: SQLAlchemy database session, obtained from the dependency.
+
+    Returns:
+        MessageResponse: Confirmation message on success.
+
+    Raises:
+        HTTPException: 401 if `current_password` does not match the stored hash.
+        HTTPException: 400 if a database error occurs during commit.
+    """
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise UnauthorizedException("Current password is incorrect")
+
+    try:
+        user.hashed_password = hash_password(payload.new_password)
+        db.commit()
+        db.refresh(user)
+    except SQLAlchemyError:
+        db.rollback()
+        raise ValidationException("Database error")
+
+    return MessageResponse(message="Password updated successfully")
+
 
 @router.post("/api-keys", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_api_key(
