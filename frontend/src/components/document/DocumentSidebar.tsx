@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen, Cloud,
+  FileText, Upload, UploadCloud, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen, Cloud,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
@@ -290,8 +290,15 @@ export default function DocumentSidebar({
             </div>
           ) : (
             <>
-              <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
-              <p className="text-xs text-muted-foreground">
+              {isDragActive ? (
+                <UploadCloud className="w-6 h-6 mx-auto text-primary mb-2 animate-bounce" />
+              ) : (
+                <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
+              )}
+              <p
+                className={`text-xs transition-colors ${isDragActive ? "text-primary font-medium" : "text-muted-foreground"}`}
+                aria-live="polite"
+              >
                 {isDragActive ? t("documents.dropHere") : t("documents.dropOrClick")}
               </p>
               <p className="text-[10px] text-muted-foreground/60 mt-1">
