@@ -29,6 +29,7 @@ httpx
 
 # Document Processing
 PyMuPDF
+pymupdf4llm
 pdfplumber
 python-docx
 unstructured[pdf]
