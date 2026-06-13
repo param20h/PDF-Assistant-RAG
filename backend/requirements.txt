@@ -55,6 +55,7 @@ spacy>=3.7
 neo4j>=5.0
 
 # LLM Inference
+google-generativeai
 huggingface-hub
 
 # Production
