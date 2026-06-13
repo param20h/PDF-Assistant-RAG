@@ -31,6 +31,7 @@ httpx
 PyMuPDF
 pymupdf4llm
 google-generativeai
+google-genai
 pdfplumber
 python-docx
 unstructured[pdf]

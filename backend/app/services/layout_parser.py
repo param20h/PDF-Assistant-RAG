@@ -3,12 +3,6 @@ from typing import Any, Dict, List
 
 import fitz  # PyMuPDF
 import pymupdf4llm
-from google import (
-    genai,  # Since the repo uses Gemini, we'll swap to Gemini 2.5 Flash for vision tasks!
-)
-
-# Initialize Gemini Client
-client = genai.Client()
 
 
 class AdvancedPDFParser:
@@ -48,6 +42,13 @@ class AdvancedPDFParser:
         """Extracts images/charts and uses Gemini Flash to generate dense data descriptions."""
         image_descriptions = []
         image_list = page_obj.get_images(full=True)
+
+        try:
+            from google import genai
+            client = genai.Client()
+        except Exception as e:
+            print(f"Gemini client init failed, skipping vision: {e}")
+            return image_descriptions
 
         for img_index, img in enumerate(image_list):
             xref = img[0]

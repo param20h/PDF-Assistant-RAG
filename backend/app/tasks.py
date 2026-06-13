@@ -84,11 +84,11 @@ def process_document(
                 pass
 
             # 4. Mark document pipeline processing as completely successful
-            doc.status = "completed"
+            doc.status = "ready"
             doc.processing_progress = 100
             db.commit()
 
-        return {"document_id": document_id, "status": "completed"}
+        return {"document_id": document_id, "status": "ready"}
 
     except Exception as exc:
         logger.error("Document %s processing failed (attempt %s): %s", document_id, self.request.retries + 1, exc)

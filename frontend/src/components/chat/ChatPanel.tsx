@@ -14,21 +14,25 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import {
-      Send,
-      Loader2,
-      Trash2,
-      MessageSquare,
-      Download,
-      Mic,
-      MicOff,
-      HelpCircle,
-      ChevronDown,
-    } from "lucide-react";
-    import { cn } from "@/lib/utils";
+  Send,
+  Loader2,
+  Trash2,
+  MessageSquare,
+  Download,
+  Mic,
+  MicOff,
+  HelpCircle,
+  ChevronDown,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 interface ISpeechRecognitionEvent {
   resultIndex: number;
   results: {
@@ -144,7 +148,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
   const scrollToBottom = () => {
     if (containerRef.current) {
-      containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
+      containerRef.current.scrollTo({
+        top: containerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
     }
   };
 
@@ -204,7 +211,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       cancelled = true;
     };
   }, [activeSessionId, activeDoc, fetchSessionHistory, setMessages]);
-  
+
   const handleStop = () => {
     abortControllerRef.current?.abort();
     setStreaming(false);
@@ -213,7 +220,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
-
 
     const question = input.trim();
     setInput("");
@@ -237,9 +243,14 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
     try {
       // Try WebSocket first for real-time agentic thought streaming
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const base = API_BASE || window.location.origin;
-      const wsScheme = base.startsWith("https") ? "wss" : base.startsWith("http") ? "ws" : "wss";
+      const wsScheme = base.startsWith("https")
+        ? "wss"
+        : base.startsWith("http")
+          ? "ws"
+          : "wss";
       const host = base.replace(/^https?:/, "");
       const wsUrl = `${wsScheme}:${host}/api/v1/chat/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 
@@ -260,7 +271,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
         ws.onopen = () => {
           // Send initial payload
-          ws.send(JSON.stringify({ question, document_id: activeDoc?.id || null, session_id: activeSessionId }));
+          ws.send(
+            JSON.stringify({
+              question,
+              document_id: activeDoc?.id || null,
+              session_id: activeSessionId,
+            }),
+          );
         };
 
         // If WS doesn't open within 800ms, treat as failure and fallback
@@ -293,24 +310,52 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 setMessages((prev) => [...prev, assistantMsg]);
               } else {
                 setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, content: m.content + (event.data as string) }
+                      : m,
+                  ),
                 );
               }
             } else if (event.type === "sources") {
-              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, sources: event.data as SourceChunk[] } : m)));
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, sources: event.data as SourceChunk[] }
+                    : m,
+                ),
+              );
             } else if (event.type === "thought") {
               // Append thoughts as a temporary assistant note (optional UI handling)
               // For simplicity, add to assistant message content in brackets
               setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + `\n[thought] ${event.data}` } : m))
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: m.content + `\n[thought] ${event.data}` }
+                    : m,
+                ),
               );
             } else if (event.type === "error") {
               setIsTyping(false);
-              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m)));
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        content: `Error: ${event.data}`,
+                        isStreaming: false,
+                      }
+                    : m,
+                ),
+              );
               ws.close();
               reject(new Error(String(event.data)));
             } else if (event.type === "done") {
-              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)));
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, isStreaming: false } : m,
+                ),
+              );
               ws.close();
               resolve();
             }
@@ -339,17 +384,22 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     } catch (err) {
       if (
         err instanceof Error &&
-        (err.name === "AbortError" || err.message === "The user aborted a request.")
+        (err.name === "AbortError" ||
+          err.message === "The user aborted a request.")
       ) {
         return;
       }
       // Fallback to existing SSE stream if WebSocket fails
       try {
-        const stream = api.streamPost("/api/v1/chat/ask/stream", {
-          question,
-          document_id: activeDoc?.id || null,
-          session_id: activeSessionId,
-        }, abortController.signal);
+        const stream = api.streamPost(
+          "/api/v1/chat/ask/stream",
+          {
+            question,
+            document_id: activeDoc?.id || null,
+            session_id: activeSessionId,
+          },
+          abortController.signal,
+        );
 
         for await (const event of stream) {
           if (event.type === "token") {
@@ -368,28 +418,53 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               setMessages((prev) => [...prev, assistantMsg]);
             } else {
               setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.data as string) } : m))
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: m.content + (event.data as string) }
+                    : m,
+                ),
               );
             }
           } else if (event.type === "sources") {
-            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, sources: event.data as SourceChunk[] } : m)));
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, sources: event.data as SourceChunk[] }
+                  : m,
+              ),
+            );
           } else if (event.type === "error") {
             setIsTyping(false);
-            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m)));
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      content: `Error: ${event.data}`,
+                      isStreaming: false,
+                    }
+                  : m,
+              ),
+            );
           } else if (event.type === "done") {
-            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)));
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, isStreaming: false } : m,
+              ),
+            );
           }
         }
       } catch (err2) {
         setIsTyping(false);
         if (
           err2 instanceof Error &&
-          (err2.name === "AbortError" || err2.message === "The user aborted a request.")
+          (err2.name === "AbortError" ||
+            err2.message === "The user aborted a request.")
         ) {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, isStreaming: false } : m
-            )
+              m.id === assistantId ? { ...m, isStreaming: false } : m,
+            ),
           );
           return;
         }
@@ -399,12 +474,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               ? {
                   ...m,
                   content: t("chat.fallbackError", {
-                    message: err2 instanceof Error ? err2.message : "Unknown error",
+                    message:
+                      err2 instanceof Error ? err2.message : "Unknown error",
                   }),
                   isStreaming: false,
                 }
-              : m
-          )
+              : m,
+          ),
         );
       }
     } finally {
@@ -618,7 +694,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         textareaRef.current?.focus();
       }
 
-
       // Shortcut 5: Ctrl/Cmd + Shift + C → Clear chat history
       if (isCmdOrCtrl && e.shiftKey && (e.key === "c" || e.key === "C")) {
         e.preventDefault();
@@ -652,10 +727,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   return (
     <div className="h-full flex flex-col relative">
       {/* ── Chat Messages ──────────────────────────── */}
-        <div 
-            ref={containerRef}
-            onScroll={handleScroll}
-            className="flex-1 px-4 overflow-y-auto custom-scrollbar" 
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="flex-1 px-4 overflow-y-auto custom-scrollbar"
         aria-busy={historyLoading}
       >
         {historyLoading ? (
@@ -737,7 +812,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         aria-label="Scroll to bottom"
         className={cn(
           "absolute right-4 bottom-20 z-50 rounded-full p-2 bg-primary text-primary-foreground shadow-lg transition-all duration-200",
-          showScrollButton ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+          showScrollButton
+            ? "opacity-100 translate-y-0"
+            : "opacity-0 translate-y-2 pointer-events-none",
         )}
       >
         <ChevronDown className="h-5 w-5" />
@@ -851,8 +928,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                       })}
                 </TooltipContent>
               </Tooltip>
-
-
             </div>
 
             <div className="flex gap-1.5 shrink-0">

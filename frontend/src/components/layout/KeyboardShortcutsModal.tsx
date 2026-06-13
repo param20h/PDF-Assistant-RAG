@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Keyboard } from "lucide-react";
 
@@ -29,7 +35,7 @@ export function KeyboardShortcutsModal() {
       ) {
         return;
       }
-      
+
       if (e.key === "?") {
         e.preventDefault();
         setOpen((prev) => !prev);
@@ -42,7 +48,19 @@ export function KeyboardShortcutsModal() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" title="Keyboard Shortcuts" aria-label="Keyboard Shortcuts"><Keyboard className="w-4 h-4" /></Button>} />
+      <DialogTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="Keyboard Shortcuts"
+            aria-label="Keyboard Shortcuts"
+          >
+            <Keyboard className="w-4 h-4" />
+          </Button>
+        }
+      />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Keyboard Shortcuts</DialogTitle>
@@ -50,7 +68,9 @@ export function KeyboardShortcutsModal() {
         <div className="flex flex-col gap-4 py-4">
           {SHORTCUTS.map((shortcut, idx) => (
             <div key={idx} className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{shortcut.description}</span>
+              <span className="text-sm text-muted-foreground">
+                {shortcut.description}
+              </span>
               <div className="flex gap-1">
                 {shortcut.keys.map((key, i) => (
                   <kbd
