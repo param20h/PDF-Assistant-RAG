@@ -41,7 +41,7 @@ jobs:
           # Install project deps (skip heavy ML libs with stub extras)
           pip install -r backend/requirements.txt --quiet || true
           # Install document-processing dependencies (force reinstall to fix cached stale files)
-          pip install --force-reinstall pymupdf4llm google-generativeai
+          pip install --force-reinstall pymupdf4llm google-genai
 
       - name: Flake8 lint (errors only, no style noise)
         run: |
