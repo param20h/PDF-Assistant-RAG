@@ -62,6 +62,7 @@ jobs:
           CHROMA_PERSIST_DIR: /tmp/chroma
         run: |
           python -c "import sys; sys.path.insert(0, 'backend'); from app.config import get_settings; get_settings(); print('Config imports OK')"
+          python -c "import google; print('google' in dir()); print(dir(google)); print(google.__file__ if hasattr(google, '__file__') else 'no __file__'); print(google.__path__ if hasattr(google, '__path__') else 'no __path__')"
 
       - name: Install pytest-cov
         run: pip install pytest-cov
