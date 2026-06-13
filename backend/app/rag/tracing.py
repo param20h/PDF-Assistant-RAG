@@ -41,20 +41,37 @@ def _sanitize_metadata(metadata: Optional[dict[str, Any]]) -> dict[str, Any]:
     return {key: value for key, value in (metadata or {}).items() if value is not None}
 
 
-def _build_traceable(name: str, run_type: str, metadata: Optional[dict[str, Any]] = None):
-    """Build a LangSmith traceable decorator safely across versions."""
+from functools import lru_cache
+
+@lru_cache(maxsize=1024)
+def _get_cached_decorator(name: str, run_type: str, metadata_tuple: Optional[tuple[tuple[str, Any], ...]]) -> Optional[Callable[..., Any]]:
+    """Internal helper to instantiate and cache LangSmith decorators exactly once."""
     if _langsmith_traceable is None:
         return None
 
-    sanitized = _sanitize_metadata(metadata)
+    metadata = dict(metadata_tuple) if metadata_tuple else None
     try:
         return _langsmith_traceable(
             name=name,
             run_type=run_type,
-            metadata=sanitized or None,
+            metadata=metadata or None,
         )
     except TypeError:
         return _langsmith_traceable(name=name, run_type=run_type)
+
+
+def _build_traceable(name: str, run_type: str, metadata: Optional[dict[str, Any]] = None):
+    """Build a LangSmith traceable decorator safely across versions using a cache."""
+    sanitized = _sanitize_metadata(metadata)
+    # Convert mutable dict to an immutable, sorted tuple of items for lru_cache key safety
+    metadata_tuple = tuple(sorted(sanitized.items())) if sanitized else None
+    return _get_cached_decorator(name, run_type, metadata_tuple)
+
+
+@lru_cache(maxsize=1024)
+def _get_cached_traced_fn(decorator: Callable[..., Any], fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Cache the application of the decorator onto the specific target function."""
+    return decorator(fn)
 
 
 def trace_call(
@@ -73,7 +90,8 @@ def trace_call(
     if decorator is None:
         return fn(*args, **kwargs)
 
-    traced_fn = decorator(fn)
+    # Completely eliminates runtime instantiation churn for both decorator and wrapped function
+    traced_fn = _get_cached_traced_fn(decorator, fn)
     return traced_fn(*args, **kwargs)
 
 
