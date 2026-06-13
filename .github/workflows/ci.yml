@@ -62,7 +62,9 @@ jobs:
           CHROMA_PERSIST_DIR: /tmp/chroma
         run: |
           python -c "import sys; sys.path.insert(0, 'backend'); from app.config import get_settings; get_settings(); print('Config imports OK')"
-          python -c "import google; print('google' in dir()); print(dir(google)); print(google.__file__ if hasattr(google, '__file__') else 'no __file__'); print(google.__path__ if hasattr(google, '__path__') else 'no __path__')"
+          python -c "import google; print('google.__file__:', google.__file__); print('google.__path__:', list(google.__path__))"
+          python -c "import os; google_path = '/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/google'; print('google dir contents:', os.listdir(google_path) if os.path.isdir(google_path) else 'NOT A DIR')"
+          python -c "from google import genai; print('genai imported successfully:', genai)"
 
       - name: Install pytest-cov
         run: pip install pytest-cov
