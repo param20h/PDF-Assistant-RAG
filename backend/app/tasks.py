@@ -41,6 +41,7 @@ def process_document(
                 doc.status = "processing"  # Set explicitly to show UI activity
                 db.commit()
 
+<<<<<<< HEAD
         logger.info("Starting Advanced Layout-Aware Ingestion for document: %s", original_name)
 
         # 2. Trigger your advanced structural parser
@@ -87,9 +88,9 @@ def process_document(
             doc.status = "completed"
             doc.processing_progress = 100
             db.commit()
+            status = doc.status
 
-        return {"document_id": document_id, "status": "completed"}
-
+        return {"document_id": document_id, "status": status}
     except Exception as exc:
         logger.error("Document %s processing failed (attempt %s): %s", document_id, self.request.retries + 1, exc)
         with get_db_session() as db:
