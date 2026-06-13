@@ -31,7 +31,7 @@ def test_process_document_ingestion_pipeline(db_session):
     # Patch the factory globally, and mock AdvancedPDFParser so no real PDF is parsed
     with patch("app.database.SessionLocal", mock_session_factory, create=True), \
          patch("app.services.document_ingestion.SessionLocal", mock_session_factory, create=True), \
-         patch("app.services.layout_parser.AdvancedPDFParser") as mock_parser_cls:
+         patch("app.tasks.AdvancedPDFParser") as mock_parser_cls:
 
         mock_parser = MagicMock()
         mock_parser_cls.return_value = mock_parser
