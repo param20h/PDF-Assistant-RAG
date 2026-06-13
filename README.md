@@ -37,7 +37,7 @@ short_description: Enterprise Agentic RAG — upload PDFs and chat with AI
 [![Flask](https://img.shields.io/badge/Flask-2.x-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://mongodb.com/)
-[![Pinecone](https://img.shields.io/badge/Pinecone-VectorDB-000000?style=for-the-badge)](https://pinecone.io/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-VectorDB-4285F4?style=for-the-badge)](https://www.trychroma.com/)
 [![Groq](https://img.shields.io/badge/Groq-LLM-F55036?style=for-the-badge)](https://console.groq.com/)
 [![Gemini](https://img.shields.io/badge/Google_Gemini-Embeddings-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://aistudio.google.com/)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com/)
@@ -166,7 +166,7 @@ graph TD
 | <img src="https://skillicons.dev/icons?i=python" width="30"/> | **Python 3.11** | Runtime environment |
 | <img src="https://skillicons.dev/icons?i=mongodb" width="30"/> | **MongoDB + PyMongo** | User accounts & metadata storage |
 | <img src="https://img.shields.io/badge/Flask--Login-000000?style=flat" height="24"/> | **Flask-Login + Flask-Dance** | Session auth + Google OAuth |
-| <img src="https://img.shields.io/badge/Pinecone-000000?style=flat" height="24"/> | **Pinecone** | Vector store (per-user namespace) |
+| <img src="https://img.shields.io/badge/ChromaDB-4285F4?style=flat" height="24"/> | **ChromaDB** | Vector store (per-user collections) |
 | <img src="https://img.shields.io/badge/Google_Gemini-4285F4?style=flat&logo=google&logoColor=white" height="24"/> | **Google Gemini API** | Document chunk embeddings |
 | <img src="https://img.shields.io/badge/Groq-F55036?style=flat" height="24"/> | **Groq (Llama 3)** | LLM answer generation |
 
@@ -182,7 +182,7 @@ graph TD
 | | Technology | Purpose |
 |---|---|---|
 | <img src="https://img.shields.io/badge/Google_Gemini-4285F4?style=flat&logo=google&logoColor=white" height="24"/> | **Google Gemini API** | Generates vector embeddings for document chunks |
-| <img src="https://img.shields.io/badge/Pinecone-000000?style=flat" height="24"/> | **Pinecone** | Stores + retrieves embeddings per user namespace |
+| <img src="https://img.shields.io/badge/ChromaDB-4285F4?style=flat" height="24"/> | **ChromaDB** | Stores + retrieves embeddings per-user collections |
 | <img src="https://img.shields.io/badge/Groq-F55036?style=flat" height="24"/> | **Groq API (Llama 3)** | Generates answers from retrieved context |
 | <img src="https://img.shields.io/badge/PyMuPDF-FF0000?style=flat" height="24"/> | **PyMuPDF + pdfplumber + python-docx** | Document text extraction |
 
@@ -253,8 +253,8 @@ PDF-Assistant-RAG/
 │
 ├── rag/
 │   ├── chunker.py          # Splits PDF/DOCX/TXT into text chunks
-│   ├── embeddings.py       # Gemini embeddings → Pinecone store/delete
-│   ├── retriever.py        # Pinecone similarity search → top-K chunks
+│   ├── embeddings.py       # Gemini embeddings → ChromaDB store/delete
+│   ├── retriever.py        # ChromaDB similarity search → top-K chunks
 │   └── generator.py        # Groq LLM → answer from retrieved context
 │
 ├── static/                 # CSS, JS, images
@@ -286,7 +286,7 @@ PDF-Assistant-RAG/
 
 - ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white) **Python 3.11+**
 - ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=flat&logo=mongodb&logoColor=white) **MongoDB** (Atlas free tier or local)
-- ![Pinecone](https://img.shields.io/badge/Pinecone-000000?style=flat) **Pinecone** account — [pinecone.io](https://pinecone.io)
+- ![ChromaDB](https://img.shields.io/badge/ChromaDB-4285F4?style=flat) **ChromaDB** (local persistent vector database)
 - ![Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?style=flat&logo=google&logoColor=white) **Google Gemini API key** — [aistudio.google.com](https://aistudio.google.com)
 - ![Groq](https://img.shields.io/badge/Groq-F55036?style=flat) **Groq API key** — [console.groq.com](https://console.groq.com)
 
