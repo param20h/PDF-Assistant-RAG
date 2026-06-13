@@ -40,6 +40,8 @@ jobs:
           pip install flake8 flake8-bugbear
           # Install project deps (skip heavy ML libs with stub extras)
           pip install -r backend/requirements.txt --quiet || true
+          # Install document-processing dependencies added after CI was broken
+          pip install pymupdf4llm google-generativeai
 
       - name: Flake8 lint (errors only, no style noise)
         run: |
