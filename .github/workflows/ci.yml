@@ -40,8 +40,8 @@ jobs:
           pip install flake8 flake8-bugbear
           # Install project deps (skip heavy ML libs with stub extras)
           pip install -r backend/requirements.txt --quiet || true
-          # Install document-processing dependencies added after CI was broken
-          pip install pymupdf4llm google-generativeai
+          # Install document-processing dependencies (force reinstall to fix cached stale files)
+          pip install --force-reinstall pymupdf4llm google-generativeai
 
       - name: Flake8 lint (errors only, no style noise)
         run: |
@@ -62,9 +62,6 @@ jobs:
           CHROMA_PERSIST_DIR: /tmp/chroma
         run: |
           python -c "import sys; sys.path.insert(0, 'backend'); from app.config import get_settings; get_settings(); print('Config imports OK')"
-          python -c "import google; print('google.__file__:', google.__file__); print('google.__path__:', list(google.__path__))"
-          python -c "import os; google_path = '/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/site-packages/google'; print('google dir contents:', os.listdir(google_path) if os.path.isdir(google_path) else 'NOT A DIR')"
-          python -c "from google import genai; print('genai imported successfully:', genai)"
 
       - name: Install pytest-cov
         run: pip install pytest-cov
