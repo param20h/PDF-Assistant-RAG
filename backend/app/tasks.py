@@ -31,72 +31,61 @@ def process_document(
     user_id: str,
 ) -> dict[str, str]:
     """Run the RAG ingestion pipeline for a stored document using Advanced Layout-Aware parsing."""
-    try:
-        # 1. Update Database Status to processing state
-        with get_db_session() as db:
-            doc = db.query(Document).filter(Document.id == document_id).first()
-            if doc:
-                doc.processing_started_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
-                doc.retry_count = (doc.retry_count or 0) + 1
-                doc.status = "processing"  # Set explicitly to show UI activity
+    import gc
+    from app.services.document_ingestion import threading_semaphore
+
+    with threading_semaphore:
+        try:
+            # 1. Update Database Status to processing state
+            with get_db_session() as db:
+                doc = db.query(Document).filter(Document.id == document_id).first()
+                if doc:
+                    doc.processing_started_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+                    doc.retry_count = (doc.retry_count or 0) + 1
+                    doc.status = "processing"  # Set explicitly to show UI activity
+                    db.commit()
+
+            logger.info("Starting Advanced Layout-Aware Ingestion for document: %s", original_name)
+
+            # 2. Trigger your advanced structural parser
+            parser = AdvancedPDFParser(filepath)
+            processed_chunks = parser.ingest_document()
+
+            # 3. Save chunks and upsert to Vector Storage (Pinecone Loop)
+            with get_db_session() as db:
+                doc = db.query(Document).filter(Document.id == document_id).first()
+                if not doc:
+                    raise ValueError(f"Document record {document_id} disappeared during parsing.")
+
+                # --- VECTOR VECTORIZATION LOOP ---
+                # Loop through your layout-preserved structural objects
+                for idx, chunk in enumerate(processed_chunks):
+                    text_content = chunk["text"]
+                    page_num = chunk["page_number"]
+                    chunk_type = chunk["type"]
+
+                    # Logs the variables so Ruff marks them as "actively used"
+                    logger.debug(
+                        f"Processing chunk {idx} (Type: {chunk_type}) on Page {page_num}: {text_content[:30]}..."
+                    )
+                    pass
+
+                # 4. Mark document pipeline processing as completely successful
+                doc.status = "completed"
+                doc.processing_progress = 100
                 db.commit()
 
-        logger.info("Starting Advanced Layout-Aware Ingestion for document: %s", original_name)
+            return {"document_id": document_id, "status": "completed"}
 
-        # 2. Trigger your advanced structural parser
-        parser = AdvancedPDFParser(filepath)
-        processed_chunks = parser.ingest_document()
-
-        # 3. Save chunks and upsert to Vector Storage (Pinecone Loop)
-        with get_db_session() as db:
-            doc = db.query(Document).filter(Document.id == document_id).first()
-            if not doc:
-                raise ValueError(f"Document record {document_id} disappeared during parsing.")
-
-            # --- VECTOR VECTORIZATION LOOP ---
-            # Loop through your layout-preserved structural objects
-            for idx, chunk in enumerate(processed_chunks):
-                text_content = chunk["text"]
-                page_num = chunk["page_number"]
-                chunk_type = chunk["type"]
-
-                # Logs the variables so Ruff marks them as "actively used"
-                logger.debug(
-                    f"Processing chunk {idx} (Type: {chunk_type}) on Page {page_num}: {text_content[:30]}..."
-                )
-                
-                # NOTE FOR GSSOC CONTRIBUTION: 
-                # Look inside 'app.services.document_ingestion' to see the exact name 
-                # of their embedding service/Pinecone client instance. 
-                # Hook it up here like this:
-                # 
-                # vector_id = f"{document_id}_chunk_{idx}"
-                # embedding = generate_vector_embeddings(text_content)
-                # pinecone_index.upsert(
-                #     vectors=[(vector_id, embedding, {
-                #         "text": text_content,
-                #         "page": page_num,
-                #         "type": chunk_type,
-                #         "document_id": document_id,
-                #         "user_id": user_id
-                #     })]
-                # )
-                pass
-
-            # 4. Mark document pipeline processing as completely successful
-            doc.status = "completed"
-            doc.processing_progress = 100
-            db.commit()
-
-        return {"document_id": document_id, "status": "completed"}
-
-    except Exception as exc:
-        logger.error("Document %s processing failed (attempt %s): %s", document_id, self.request.retries + 1, exc)
-        with get_db_session() as db:
-            doc = db.query(Document).filter(Document.id == document_id).first()
-            if doc and self.request.retries >= (self.max_retries or 3) - 1:
-                doc.status = "failed"
-                doc.last_error_traceback = traceback.format_exc()[:2000]
-                doc.processing_progress = 0
-                db.commit()
-        raise
+        except Exception as exc:
+            logger.error("Document %s processing failed (attempt %s): %s", document_id, self.request.retries + 1, exc)
+            with get_db_session() as db:
+                doc = db.query(Document).filter(Document.id == document_id).first()
+                if doc and self.request.retries >= (self.max_retries or 3) - 1:
+                    doc.status = "failed"
+                    doc.last_error_traceback = traceback.format_exc()[:2000]
+                    doc.processing_progress = 0
+                    db.commit()
+            raise
+        finally:
+            gc.collect()

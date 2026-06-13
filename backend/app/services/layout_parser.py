@@ -75,20 +75,26 @@ class AdvancedPDFParser:
 
     def ingest_document(self) -> List[Dict[str, Any]]:
         """Executes the hybrid pipeline generating combined text and image context strings."""
-        final_payload = []
-        structured_chunks = self.extract_structured_text()
-        final_payload.extend(structured_chunks)
+        import gc
+        try:
+            final_payload = []
+            structured_chunks = self.extract_structured_text()
+            final_payload.extend(structured_chunks)
 
-        for page_num in range(len(self.doc)):
-            page = self.doc.load_page(page_num)
-            img_summaries = self.process_embedded_images(page_num, page)
-            for summary in img_summaries:
-                final_payload.append(
-                    {
-                        "page_number": page_num + 1,
-                        "text": f"[Visual Data Extraction Summary]: {summary}",
-                        "type": "visual_image_summary",
-                    }
-                )
+            for page_num in range(len(self.doc)):
+                page = self.doc.load_page(page_num)
+                img_summaries = self.process_embedded_images(page_num, page)
+                for summary in img_summaries:
+                    final_payload.append(
+                        {
+                            "page_number": page_num + 1,
+                            "text": f"[Visual Data Extraction Summary]: {summary}",
+                            "type": "visual_image_summary",
+                        }
+                    )
+                gc.collect()
 
-        return final_payload
+            return final_payload
+        finally:
+            self.doc.close()
+            gc.collect()
