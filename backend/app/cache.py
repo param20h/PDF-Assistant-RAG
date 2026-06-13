@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -74,26 +75,30 @@ def _get_redis():
 
 _lru_store: dict = {}
 _lru_order: list = []
+_lru_lock = threading.Lock()
 
 
 def _lru_get(key: str) -> Optional[str]:
-    return _lru_store.get(key)
+    with _lru_lock:
+        return _lru_store.get(key)
 
 
 def _lru_set(key: str, value: str) -> None:
-    if key in _lru_store:
-        _lru_order.remove(key)
-    elif len(_lru_store) >= LRU_MAX_SIZE:
-        oldest = _lru_order.pop(0)
-        del _lru_store[oldest]
-    _lru_store[key] = value
-    _lru_order.append(key)
+    with _lru_lock:
+        if key in _lru_store:
+            _lru_order.remove(key)
+        elif len(_lru_store) >= LRU_MAX_SIZE:
+            oldest = _lru_order.pop(0)
+            del _lru_store[oldest]
+        _lru_store[key] = value
+        _lru_order.append(key)
 
 
 def _lru_delete(key: str) -> None:
-    if key in _lru_store:
-        del _lru_store[key]
-        _lru_order.remove(key)
+    with _lru_lock:
+        if key in _lru_store:
+            del _lru_store[key]
+            _lru_order.remove(key)
 
 
 # ---------------------------------------------------------------------------
