@@ -33,6 +33,7 @@ import { api } from "@/lib/api";
 import { useTheme } from "next-themes";
 
 import { useSyncExternalStore } from "react";
+import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -163,6 +164,8 @@ export default function Header({
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
           )}
+
+          <KeyboardShortcutsModal />
 
           {/* Workspace switcher */}
           <DropdownMenu>

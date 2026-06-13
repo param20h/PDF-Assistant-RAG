@@ -94,8 +94,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
 
-  // New State for Keyboard Shortcuts Help Modal
-  const [showHelpModal, setShowHelpModal] = useState(false);
 
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const initialInputRef = useRef<string>("");
@@ -547,8 +545,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         } else if (document.activeElement === textareaRef.current) {
           e.preventDefault();
           setInput("");
-        } else if (showHelpModal) {
-          setShowHelpModal(false);
         } else if (showExportMenu) {
           setShowExportMenu(false);
         }
@@ -560,11 +556,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         textareaRef.current?.focus();
       }
 
-      // Shortcut 4: Ctrl/Cmd + / → Toggle shortcuts help modal
-      if (isCmdOrCtrl && e.key === "/") {
-        e.preventDefault();
-        setShowHelpModal((prev) => !prev);
-      }
 
       // Shortcut 5: Ctrl/Cmd + Shift + C → Clear chat history
       if (isCmdOrCtrl && e.shiftKey && (e.key === "c" || e.key === "C")) {
@@ -594,7 +585,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, streaming, showHelpModal, showExportMenu, messages]); // Dependencies updated to capture fresh state data
+  }, [input, streaming, showExportMenu, messages]); // Dependencies updated to capture fresh state data
 
   return (
     <div className="h-full flex flex-col relative">
@@ -783,19 +774,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 )}
               </Button>
 
-              {/* NEW Keyboard Shortcuts Info Button */}
-              <Button
-                id="shortcut-help-btn"
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowHelpModal(true)}
-                className="absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-all duration-200"
-                title="Keyboard Shortcuts"
-                aria-label="View Keyboard Shortcuts"
-              >
-                <HelpCircle className="h-4 w-4" />
-              </Button>
             </div>
 
             <div className="flex gap-1.5 shrink-0">
@@ -892,144 +870,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           Ctrl+Enter to send from anywhere. Press Escape to cancel streaming.
         </p>
       </div>
-
-      {/* ── NEW KEYBOARD SHORTCUTS HELP MODAL OVERLAY ───────────────── */}
-      {showHelpModal && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200"
-          onClick={() => setShowHelpModal(false)}
-        >
-          <div
-            className="bg-popover text-popover-foreground border border-border p-6 rounded-xl w-80 relative shadow-2xl animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()} // Stop overlay closing when clicking inside
-          >
-            <button
-              onClick={() => setShowHelpModal(false)}
-              className="absolute top-3 right-4 text-xl font-medium text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Close shortcuts help"
-            >
-              &times;
-            </button>
-
-            <h3 className="text-lg font-bold mb-1 flex items-center gap-2 text-foreground">
-              ⌨️ Keyboard Shortcuts
-            </h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              Enhance your typing productivity
-            </p>
-            <hr className="border-border mb-4" />
-
-            <ul className="space-y-4 text-sm">
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Send Message
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Enter
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Cancel Streaming / Clear Input
-                </span>
-                <div>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Esc
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Focus Chat Input
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    K
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Toggle Shortcuts Help
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    /
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Clear Chat History
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Shift
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    C
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Toggle Export Menu
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Shift
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    E
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Toggle Mic Recording
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Shift
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    M
-                  </kbd>
-                </div>
-              </li>
-            </ul>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
