@@ -192,6 +192,7 @@ app.include_router(github_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(workspaces_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api/v1")
+app.include_router(profile_router)
 
 setup_prometheus_metrics(app)
 
@@ -294,4 +295,3 @@ else:
             "docs": "/docs",
             "health": "/api/health",
         }
-app.include_router(profile_router)
