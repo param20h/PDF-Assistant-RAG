@@ -41,7 +41,6 @@ def process_document(
                 doc.status = "processing"  # Set explicitly to show UI activity
                 db.commit()
 
-<<<<<<< HEAD
         logger.info("Starting Advanced Layout-Aware Ingestion for document: %s", original_name)
 
         # 2. Trigger your advanced structural parser
