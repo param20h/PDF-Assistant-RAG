@@ -29,6 +29,8 @@ httpx
 
 # Document Processing
 PyMuPDF
+pymupdf4llm
+google-generativeai
 pdfplumber
 python-docx
 unstructured[pdf]

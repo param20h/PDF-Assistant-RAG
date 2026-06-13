@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
-import { useSyncExternalStore } from "react";
+
 import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 
 interface HeaderProps {
