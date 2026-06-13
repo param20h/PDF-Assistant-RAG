@@ -24,11 +24,12 @@ def _is_word_inside_bbox(word: Dict[str, Any], bbox: tuple) -> bool:
 
 
 def _words_to_text(words: List[Dict[str, Any]], line_tolerance: float = 3.0) -> str:
-    """Rebuild readable text from positioned pdfplumber words."""
+    """Rebuild readable text from positioned pdfplumber words, preserving multi-column reading order."""
     if not words:
         return ""
 
-    sorted_words = sorted(words, key=lambda item: (round(float(item["top"]) / line_tolerance), item["x0"]))
+    # 1. Group words into horizontal lines based on vertical proximity
+    sorted_words = sorted(words, key=lambda item: (float(item["top"]), item["x0"]))
     lines: List[List[Dict[str, Any]]] = []
 
     for word in sorted_words:
@@ -42,11 +43,120 @@ def _words_to_text(words: List[Dict[str, Any]], line_tolerance: float = 3.0) -> 
         else:
             lines.append([word])
 
-    text_lines = [
-        " ".join(item["text"] for item in sorted(line, key=lambda item: item["x0"]))
-        for line in lines
-    ]
-    return "\n".join(line for line in text_lines if line.strip())
+    # 2. Split each line into segments based on horizontal gaps (column gutters)
+    GAP_THRESHOLD = 20.0
+    line_segments_list = []
+    for line in lines:
+        sorted_line_words = sorted(line, key=lambda item: item["x0"])
+        segments_in_line = []
+        current_seg = [sorted_line_words[0]]
+
+        for word in sorted_line_words[1:]:
+            prev_word = current_seg[-1]
+            gap = float(word["x0"]) - float(prev_word["x1"])
+            if gap > GAP_THRESHOLD:
+                segments_in_line.append(current_seg)
+                current_seg = [word]
+            else:
+                current_seg.append(word)
+        segments_in_line.append(current_seg)
+        line_segments_list.append(segments_in_line)
+
+    # 3. Detect global vertical gutters from lines with multiple layout segments
+    gutter_intervals = []
+    for seg_list in line_segments_list:
+        if len(seg_list) > 1:
+            for i in range(len(seg_list) - 1):
+                x1_prev = max(float(w["x1"]) for w in seg_list[i])
+                x0_next = min(float(w["x0"]) for w in seg_list[i+1])
+                if x0_next > x1_prev:
+                    gutter_intervals.append((x1_prev, x0_next))
+
+    significant_gutter_centers = []
+    if gutter_intervals:
+        sorted_gutters = sorted(gutter_intervals, key=lambda g: g[0])
+        current_gutter_groups = []
+        for g in sorted_gutters:
+            inserted = False
+            for group in current_gutter_groups:
+                group_x0 = max(item[0] for item in group)
+                group_x1 = min(item[1] for item in group)
+                if max(g[0], group_x0) < min(g[1], group_x1):
+                    group.append(g)
+                    inserted = True
+                    break
+            if not inserted:
+                current_gutter_groups.append([g])
+
+        num_multi_seg_lines = sum(1 for seg_list in line_segments_list if len(seg_list) > 1)
+        min_group_size = max(2, int(num_multi_seg_lines * 0.15))
+
+        for group in current_gutter_groups:
+            if len(group) >= min_group_size:
+                centers = [(g[0] + g[1]) / 2.0 for g in group]
+                significant_gutter_centers.append(sum(centers) / len(centers))
+        significant_gutter_centers.sort()
+
+    # 4. Flatten segments and capture absolute structural bounds
+    segment_objs = []
+    for seg_list in line_segments_list:
+        for seg in seg_list:
+            seg_x0 = min(float(w["x0"]) for w in seg)
+            seg_x1 = max(float(w["x1"]) for w in seg)
+            seg_top = min(float(w["top"]) for w in seg)
+            seg_bottom = max(float(w["bottom"]) for w in seg)
+            seg_text = " ".join(w["text"] for w in seg)
+            segment_objs.append({
+                "x0": seg_x0,
+                "x1": seg_x1,
+                "top": seg_top,
+                "bottom": seg_bottom,
+                "text": seg_text
+            })
+
+    # 5. Sort segments vertically into horizontal layout bands divided by full-width text structures
+    segment_objs.sort(key=lambda s: s["top"])
+
+    final_segments = []
+    current_band = []
+    GUTTER_TOLERANCE = 3.0
+
+    for seg in segment_objs:
+        crosses_gutter = False
+        for center in significant_gutter_centers:
+            if (seg["x0"] + GUTTER_TOLERANCE) < center < (seg["x1"] - GUTTER_TOLERANCE):
+                crosses_gutter = True
+                break
+
+        if crosses_gutter:
+            if current_band:
+                def get_col_idx(s):
+                    idx = 0
+                    s_mid = (s["x0"] + s["x1"]) / 2.0
+                    for c in significant_gutter_centers:
+                        if s_mid > c:
+                            idx += 1
+                    return idx
+                current_band.sort(key=lambda s: (get_col_idx(s), s["top"]))
+                final_segments.extend(current_band)
+                current_band = []
+            final_segments.append(seg)
+        else:
+            current_band.append(seg)
+
+    if current_band:
+        def get_col_idx(s):
+            idx = 0
+            s_mid = (s["x0"] + s["x1"]) / 2.0
+            for c in significant_gutter_centers:
+                if s_mid > c:
+                    idx += 1
+            return idx
+        current_band.sort(key=lambda s: (get_col_idx(s), s["top"]))
+        final_segments.extend(current_band)
+
+    text_lines = [seg["text"] for seg in final_segments if seg["text"].strip()]
+    return "\n".join(text_lines)
 
 
 def _clean_table_cell(cell: Any) -> str:
@@ -79,16 +189,10 @@ def _table_to_markdown(rows: List[List[Any]]) -> str:
 
 
 def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
-    """Extract PDF text while preserving tables as separate chunks.
-
-    Prefer Unstructured for robust table extraction. Fall back to pdfplumber
-    if Unstructured is not available, then to PyMuPDF as a last resort.
-    """
+    """Extract PDF text while preserving tables as separate chunks."""
     try:
         return extract_pdf_with_unstructured(filepath)
     except Exception as e:
-        # Unstructured may be installed but require native deps (poppler/pdfinfo).
-        # If anything goes wrong, fall back to pdfplumber then PyMuPDF.
         logger.warning(f"Unstructured extraction failed, falling back: {e}")
         try:
             return extract_pdf_with_tables(filepath)
@@ -116,11 +220,7 @@ def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
 
 
 def extract_pdf_with_unstructured(filepath: str) -> List[Dict[str, Any]]:
-    """Use Unstructured to partition PDF into elements and extract tables.
-
-    This function will raise ImportError when Unstructured isn't installed so
-    callers can fall back to other extractors.
-    """
+    """Use Unstructured to partition PDF into elements and extract tables."""
     try:
         from unstructured.partition.pdf import partition_pdf
         from unstructured.documents.elements import Table
@@ -132,7 +232,6 @@ def extract_pdf_with_unstructured(filepath: str) -> List[Dict[str, Any]]:
     table_idx = 0
 
     for elem in elements:
-        # Determine element type and page number
         elem_type = getattr(elem, "element_type", None) or elem.__class__.__name__
         page_num = None
         if hasattr(elem, "page_number"):
@@ -146,7 +245,6 @@ def extract_pdf_with_unstructured(filepath: str) -> List[Dict[str, Any]]:
             for raw_row in getattr(elem, "rows", []) or []:
                 row = []
                 for cell in raw_row:
-                    # Cells may be elements or lists of elements
                     if isinstance(cell, (list, tuple)):
                         cell_text = " ".join(getattr(c, "text", str(c)) for c in cell)
                     else:
@@ -203,7 +301,6 @@ def extract_pdf_with_tables(filepath: str) -> List[Dict[str, Any]]:
             for table_index, table in enumerate(tables):
                 table_text = _table_to_markdown(table.extract() or [])
                 if table_text.strip():
-                    # Normalize table bbox: [x0/W, y0/H, x1/W, y1/H]
                     W, H = float(page.width), float(page.height)
                     normalized_bbox = [
                         round(float(table.bbox[0]) / W, 4),
@@ -228,11 +325,7 @@ def extract_pdf_images(
     min_height: int = 50,
     min_size: int = 10240,
 ) -> Any:
-    """Generator to yield extracted images from a PDF page-by-page.
-
-    Accepts either a file path (str) or an open fitz.Document object.
-    Yields dict: {"image_bytes": b"...", "page": int, "width": int, "height": int}
-    """
+    """Generator to yield extracted images from a PDF page-by-page."""
     if not doc_or_path:
         return
 
@@ -260,13 +353,11 @@ def extract_pdf_images(
                     pix = fitz.Pixmap(doc, xref)
                     width, height = pix.width, pix.height
                     
-                    # Convert to RGB if it's CMYK or has alpha
                     if pix.n >= 4:
                         pix = fitz.Pixmap(fitz.csRGB, pix)
 
                     img_bytes = pix.tobytes("png")
                     
-                    # Skip tiny/decorative images (bullet points, spacers, logos)
                     if width < min_width or height < min_height or len(img_bytes) < min_size:
                         del img_bytes
                         del pix
@@ -311,7 +402,6 @@ def extract_txt(filepath: str) -> List[Dict[str, Any]]:
 
         if is_table_line:
             if not in_table:
-                # flush any accumulated text first
                 if current_text_lines:
                     chunk_text = "\n".join(current_text_lines).strip()
                     if chunk_text:
@@ -321,7 +411,6 @@ def extract_txt(filepath: str) -> List[Dict[str, Any]]:
             table_lines.append(line)
         else:
             if in_table:
-                # flush the table
                 table_text = "\n".join(table_lines).strip()
                 if table_text:
                     chunks.append({"text": table_text, "page": 1, "chunk_type": "table"})
@@ -329,7 +418,6 @@ def extract_txt(filepath: str) -> List[Dict[str, Any]]:
                 in_table = False
             current_text_lines.append(line)
 
-    # flush whatever's left
     if in_table and table_lines:
         chunks.append({"text": "\n".join(table_lines).strip(), "page": 1, "chunk_type": "table"})
     elif current_text_lines:
@@ -339,17 +427,11 @@ def extract_txt(filepath: str) -> List[Dict[str, Any]]:
 
     return chunks
 
-# Change the chunk_document function input to take a file path and optional chunk size and overlap parameters. 
+
 def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = None) -> List[Dict[str, Any]]:
-    """
-    Load a document, extract text per page, and split into semantic chunks.
-    Accepts a file path and optional chunk size and overlap parameters. 
-    If chunk size and overlap are not provided, defaults from settings will be used.
-    Returns list of dicts with 'text', 'page', and 'chunk_index'.
-    """
+    """Load a document, extract text per page, and split into semantic chunks."""
     ext = filepath.rsplit(".", 1)[-1].lower()
 
-    # ── Extract text by file type ────────────────────
     if ext == "pdf":
         pages = extract_pdf(filepath)
     elif ext == "docx":
@@ -372,16 +454,14 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
                 pdf_doc.close()
             return []
     
-    # Set chunk size and chunk overlap with defaults if not provided
     if not chunk_size:
         chunk_size = settings.CHUNK_SIZE
     if not chunk_overlap:
         chunk_overlap = settings.CHUNK_OVERLAP
 
-    # ── LangChain recursive splitter ─────────────────
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size, # Allow custom chunk size to be passed in for embedding
-        chunk_overlap=chunk_overlap, # Allow custom chunk overlap to be passed in for embedding
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
         separators=["\n\n", "\n", ". ", " ", ""],
         length_function=len,
     )
@@ -390,16 +470,13 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
     chunk_index = 0
 
     try:
-        # Determine total pages to process
         max_page_in_data = max(page_data["page"] for page_data in pages) if pages else 0
         total_pages = max(max_page_in_data, len(pdf_doc) if pdf_doc else 0)
 
-        # Set up image generator iterator
         image_iter = None
         next_image = None
         if pdf_doc:
             try:
-                # pass pdf_doc to avoid opening it twice
                 image_iter = iter(extract_pdf_images(pdf_doc))
                 next_image = next(image_iter)
             except StopIteration:
@@ -407,13 +484,11 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
             except Exception as e:
                 logger.warning(f"Could not initialize image iterator: {e}")
 
-        # Group pages by page number for sequential access
         pages_by_num = {}
         for p_data in pages:
             pages_by_num.setdefault(p_data["page"], []).append(p_data)
 
         for page_num in range(1, total_pages + 1):
-            # 1. Process text/table chunks for this page
             page_data_list = pages_by_num.get(page_num, [])
             for page_data in page_data_list:
                 text = page_data["text"]
@@ -431,7 +506,6 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
                     chunk_index += 1
                     continue
 
-                # Split this page's text
                 splits = splitter.split_text(text)
 
                 for split_text in splits:
@@ -443,7 +517,6 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
                             "chunk_type": chunk_type,
                         }
 
-                        # Extract bbox for PDF text chunks
                         if pdf_doc and page_num <= len(pdf_doc):
                             try:
                                 page_obj = pdf_doc[page_num - 1]
@@ -466,11 +539,9 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
                         all_chunks.append(chunk)
                         chunk_index += 1
 
-            # 2. Attach any images that belong to this page (generating captions on-the-fly and discarding bytes)
             while next_image and next_image["page"] == page_num:
                 img_bytes = next_image["image_bytes"]
                 try:
-                    # Generate caption immediately
                     from app.rag.vision import caption_image
                     caption = caption_image(img_bytes, page=page_num)
 
@@ -497,22 +568,22 @@ def chunk_document(filepath: str, chunk_size: int = None, chunk_overlap: int = N
                     })
                     chunk_index += 1
                 finally:
-                    # Explicitly remove reference to raw image bytes to free memory
                     if next_image:
                         next_image["image_bytes"] = None
                     if "img_bytes" in locals():
                         del img_bytes
 
-                    # Fetch next image
                     try:
-                        next_image = next(image_iter)
+                        if image_iter is not None:
+                            next_image = next(image_iter)
+                        else:
+                            next_image = None
                     except StopIteration:
                         next_image = None
                     except Exception as e:
                         logger.warning(f"Error getting next image from iterator: {e}")
                         next_image = None
 
-            # Collect garbage at the end of each page to prevent memory buildup
             import gc
             gc.collect()
 
@@ -533,4 +604,4 @@ def get_page_count(filepath: str) -> int:
         doc.close()
         return count
 
-    return 1  # DOCX, TXT, MD are treated as single-page
+    return 1

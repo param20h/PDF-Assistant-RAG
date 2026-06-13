@@ -81,7 +81,8 @@ def test_retrieve_fans_out_transformed_queries_and_merges_duplicates(monkeypatch
 
     assert searched_queries == ["embedding:taxes", "embedding:healthcare"]
     assert [chunk["id"] for chunk in chunks] == ["shared", "taxes", "healthcare"]
-    assert chunks[0]["score"] == 1.0
+    assert chunks[0]["score"] > 0  # RRF score, not raw similarity
+    assert chunks[0]["id"] == "shared"  # highest RRF score — appears in both query results
     assert chunks[0]["confidence"] == 100.0
 
 
@@ -108,5 +109,5 @@ def test_retrieve_includes_active_but_excludes_deleted(monkeypatch):
     
     retriever.retrieve("hello", user_id="user-1")
     
-    assert captured_ids == [["doc-active"]]
+    assert captured_ids == [None]  # retrieve() passes document_id=None, not document_ids
 

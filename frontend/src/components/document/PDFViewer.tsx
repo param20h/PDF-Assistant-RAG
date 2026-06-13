@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertCircle, RotateCw } from "lucide-react";
 import { API_BASE } from "@/lib/api";
+import { usePdfSearch } from "@/hooks/usePdfSearch";
+import { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 
 // Import styles for react-pdf layers
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -16,6 +18,13 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url
 ).toString();
+
+interface SearchRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
 
 export interface PdfHighlightRect {
   left: number;
@@ -61,6 +70,10 @@ export default function PDFViewer({
   const [pageInputError, setPageInputError] = useState(false);
   const [prevCurrentPage, setPrevCurrentPage] = useState(currentPage);
   const viewerRef = useRef<HTMLDivElement>(null);
+
+  // --- NEW: Search State ---
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
+  const { searchTerm, setSearchTerm, matches, currentIndex, setCurrentIndex, performSearch } = usePdfSearch();
 
   // Sync page input state with current page prop updates during render phase
   if (currentPage !== prevCurrentPage) {
@@ -138,6 +151,17 @@ export default function PDFViewer({
     });
   }, [highlightTarget, currentPage]);
 
+  // --- NEW: Search Highlights Logic ---
+  const searchHighlights = useMemo(() => {
+    if (!matches[currentIndex] || matches[currentIndex].page !== currentPage) return [];
+    return matches[currentIndex].rects.map((r: SearchRect) => ({
+      left: `${r.left}px`,
+      top: `${r.top}px`,
+      width: `${r.width}px`,
+      height: `${r.height}px`
+    }));
+  }, [matches, currentIndex, currentPage]);
+
   const handlePageJump = (value: string) => {
     const pageNumber = parseInt(value.trim(), 10);
     if (!Number.isNaN(pageNumber) && pageNumber >= 1 && pageNumber <= totalPages) {
@@ -170,6 +194,50 @@ export default function PDFViewer({
           >
             <ChevronLeft className="w-4 h-4" />
           </Button>
+
+          {/* --- NEW: Search Integration --- */}
+          <div className="flex items-center gap-2 border-l pl-2">
+            <Input
+              placeholder="Search..."
+              className="h-7 w-32 text-xs"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                performSearch(pdfDoc, e.target.value);
+              }}
+            />
+            {matches.length > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-muted-foreground">
+                  {currentIndex + 1}/{matches.length}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => {
+                    const prevIdx = Math.max(0, currentIndex - 1);
+                    setCurrentIndex(prevIdx);
+                    onPageChange(matches[prevIdx].page);
+                  }}
+                >
+                  <ChevronLeft className="w-3 h-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => {
+                    const nextIdx = Math.min(matches.length - 1, currentIndex + 1);
+                    setCurrentIndex(nextIdx);
+                    onPageChange(matches[nextIdx].page);
+                  }}
+                >
+                  <ChevronRight className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
+          </div>
 
           {/* Page jump input — Page X of Y */}
           <form
@@ -266,6 +334,7 @@ export default function PDFViewer({
       <div className="flex-1 overflow-auto bg-muted/30 flex justify-center items-start p-4 relative w-full">
         <Document
           file={fileConfig}
+          onLoadSuccess={(pdf) => setPdfDoc(pdf)} // NEW: Capture PDF Doc instance
           onLoadError={(err) => {
             console.error("PDF load error:", err);
           }}
@@ -278,17 +347,24 @@ export default function PDFViewer({
             <div className="flex flex-col items-center justify-center p-8 text-center bg-card border border-destructive/20 rounded-lg max-w-md mx-auto my-12 shadow-sm gap-3">
               <AlertCircle className="w-8 h-8 text-destructive animate-pulse" />
               <div>
-                <p className="font-semibold text-sm text-foreground mb-1">Failed to load PDF</p>
+                <p className="font-semibold text-sm text-foreground mb-1">
+                  Failed to load PDF
+                </p>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  We encountered an error loading this PDF document. Please verify the document is ready or try refreshing the page.
+                  We encountered an error loading this PDF document. Please
+                  verify the document is ready or try refreshing the page.
                 </p>
               </div>
             </div>
           }
           noData={
             <div className="flex flex-col items-center justify-center p-8 text-center bg-card border border-border rounded-lg max-w-md mx-auto my-12 shadow-sm gap-2">
-              <p className="font-semibold text-sm text-foreground">No PDF document selected</p>
-              <p className="text-xs text-muted-foreground">Select or upload a document to view it here.</p>
+              <p className="font-semibold text-sm text-foreground">
+                No PDF document selected
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Select or upload a document to view it here.
+              </p>
             </div>
           }
           className="shadow-md border border-border bg-card max-w-full"
@@ -306,11 +382,19 @@ export default function PDFViewer({
                 </div>
               }
             />
+            {/* Overlay Container (RAG + Search) */}
             <div className="absolute inset-0 pointer-events-none z-10">
               {overlayRects.map((style, index) => (
                 <div
-                  key={index}
+                  key={`rag-${index}`}
                   className="absolute bg-yellow-400/40 rounded-sm border border-yellow-300/50"
+                  style={style}
+                />
+              ))}
+              {searchHighlights.map((style, index) => (
+                <div
+                  key={`search-${index}`}
+                  className="absolute bg-blue-400/40 rounded-sm border border-blue-300/50"
                   style={style}
                 />
               ))}

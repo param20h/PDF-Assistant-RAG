@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -26,12 +26,18 @@ import {
   Briefcase,
   ChevronDown,
   Sun,
-  Moon
+  Moon,
+  Settings,
 } from "lucide-react";
+import { useTheme } from "next-themes";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
 import { api } from "@/lib/api";
-import { useTheme } from "next-themes";
-
 import { useSyncExternalStore } from "react";
 import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 
@@ -58,7 +64,19 @@ export default function Header({
   const { user, logout } = useAuth();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot); // ← replaces useState + useEffect
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [temperature, setTemperature] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("temperature");
+      return saved ? Number(saved) : 0.5;
+    }
+    return 0.5;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("temperature", temperature.toString());
+  }, [temperature]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const workspace = useWorkspaceStore((s) => s.workspace);
@@ -150,6 +168,16 @@ export default function Header({
             ) : (
               <PanelRightOpen className="w-4 h-4" />
             )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setSettingsOpen(true)}
+            title="LLM Settings"
+            aria-label="Open LLM settings"
+          >
+            <Settings className="w-4 h-4" />
           </Button>
 
           {mounted && (
@@ -249,7 +277,7 @@ export default function Header({
         ].join(" ")}
         aria-label="Mobile navigation"
         aria-hidden={!sheetOpen}
-        inert={!sheetOpen ? true : undefined}
+        {...(!sheetOpen ? { inert: true } : {})}
       >
         <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border flex-shrink-0">
           {/* MOBILE LOGO — clicking navigates to dashboard and closes the sheet */}
@@ -277,6 +305,37 @@ export default function Header({
 
         <div className="flex-1 overflow-hidden">{sheetOpen ? mobileSheetContent : null}</div>
       </aside>
+
+      <Dialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              LLM Settings
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <label className="text-sm">
+              Temperature: {temperature}
+            </label>
+
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={temperature}
+              onChange={(e) =>
+                setTemperature(Number(e.target.value))
+              }
+              className="w-full"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

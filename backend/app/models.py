@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     Boolean,
     Enum as SQLAlchemyEnum,
+    UniqueConstraint,
 )
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -66,44 +67,29 @@ class EncryptedString(TypeDecorator):
     A custom SQLAlchemy type that transparently encrypts strings
     in the database using Fernet (AES). This ensures sensitive tokens
     aren't stored in plain text while remaining easily accessible in code.
-
-    Key rotation is supported via a version prefix (``v1:``). When the
-    ``FIELD_ENCRYPTION_KEY_VERSION`` or the key itself is changed, existing
-    values are decrypted with the old key before re-encryption; new values
-    always use the active key.
     """
     impl = Text
     cache_ok = False
-    KEY_PREFIX = "v1:"
 
     def _get_cipher(self):
         from app.config import get_settings
         settings = get_settings()
-        raw_key = settings.FIELD_ENCRYPTION_KEY
-        if not raw_key:
-            raise ValueError(
-                "FIELD_ENCRYPTION_KEY is not configured. "
-                "Set it in your environment or .env file."
-            )
         key = base64.urlsafe_b64encode(
-            hashlib.sha256(raw_key.encode()).digest()
+            hashlib.sha256(settings.SECRET_KEY.encode()).digest()
         )
         return Fernet(key)
 
     def process_bind_param(self, value, dialect):
-        """Encrypt the value and prefix with the active key version."""
+        """Encrypt the value before saving to the database."""
         if value is None:
             return value
         cipher = self._get_cipher()
-        encrypted = cipher.encrypt(value.encode()).decode()
-        return f"{self.KEY_PREFIX}{encrypted}"
+        return cipher.encrypt(value.encode()).decode()
 
     def process_result_value(self, value, dialect):
-        """Strip version prefix and decrypt."""
+        """Decrypt the value after reading from the database."""
         if value is None:
             return value
-        if value.startswith(self.KEY_PREFIX):
-            value = value[len(self.KEY_PREFIX):]
         cipher = self._get_cipher()
         try:
             return cipher.decrypt(value.encode()).decode()
@@ -119,6 +105,12 @@ class UserRole(str, enum.Enum):
     """
     user = "user"
     admin = "admin"
+
+
+class WorkspaceRole(str, enum.Enum):
+    admin = "admin"
+    editor = "editor"
+    viewer = "viewer"
 
 
 class User(Base):
@@ -178,6 +170,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    workspace_memberships = relationship(
+        "WorkspaceMember",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApiKey(Base):
@@ -218,6 +215,88 @@ class WorkspaceInvitation(Base):
     accepted_at = Column(DateTime, nullable=True)
 
     inviter = relationship("User")
+
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+
+    name = Column(String(255), nullable=False)
+
+    created_by = Column(
+        GUID,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    creator = relationship("User")
+
+    members = relationship(
+        "WorkspaceMember",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+
+
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "user_id",
+            name="uq_workspace_member",
+        ),
+    )
+
+    id = Column(
+        GUID,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    workspace_id = Column(
+        GUID,
+        ForeignKey("workspaces.id"),
+        nullable=False,
+        index=True,
+    )
+
+    user_id = Column(
+        GUID,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+
+    role = Column(
+        SQLAlchemyEnum(WorkspaceRole),
+        nullable=False,
+        default=WorkspaceRole.viewer,
+        server_default="viewer",
+    )
+
+    joined_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    workspace = relationship(
+        "Workspace",
+        back_populates="members",
+    )
+
+    user = relationship(
+        "User",
+        back_populates="workspace_memberships",
+    )
 
 
 class ChatSession(Base):
@@ -276,7 +355,6 @@ class Document(Base):
     processing_started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     extracted_urls = Column(Text, nullable=True)
-    keywords = Column(Text, nullable=True)   # JSON-encoded list[str]
 
     # Relationships
     owner = relationship("User", back_populates="documents")
