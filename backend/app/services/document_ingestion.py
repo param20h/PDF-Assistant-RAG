@@ -171,5 +171,6 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
                 db.commit()
         except Exception:
             logger.exception("Failed to mark document %s as failed", document_id)
+        raise
     finally:
         db.close()

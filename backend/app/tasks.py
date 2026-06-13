@@ -41,7 +41,10 @@ def process_document(
             original_name=original_name,
             user_id=user_id,
         )
-        return {"document_id": document_id, "status": "completed"}
+        with get_db_session() as db:
+            doc = db.query(Document).filter(Document.id == document_id).first()
+            status = doc.status if doc else "unknown"
+        return {"document_id": document_id, "status": status}
     except Exception as exc:
         logger.error("Document %s processing failed (attempt %s): %s", document_id, self.request.retries + 1, exc)
         with get_db_session() as db:
