@@ -58,6 +58,7 @@ jobs:
           DATABASE_URL: sqlite:///./ci_test.db
           DEBUG: "false"
           HF_TOKEN: ci-dummy-token
+          GOOGLE_API_KEY: ci-dummy-key
           UPLOAD_DIR: /tmp/uploads
           CHROMA_PERSIST_DIR: /tmp/chroma
         run: |
@@ -72,6 +73,7 @@ jobs:
           DATABASE_URL: sqlite:///./ci_test.db
           DEBUG: "false"
           HF_TOKEN: ci-dummy-token
+          GOOGLE_API_KEY: ci-dummy-key
           UPLOAD_DIR: /tmp/uploads
           CHROMA_PERSIST_DIR: /tmp/chroma
         run: |
