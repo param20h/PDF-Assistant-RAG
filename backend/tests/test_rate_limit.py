@@ -54,10 +54,16 @@ def test_rate_limit_handler_returns_429(client: TestClient):
     correctly triggers the global handler, returning a 429 status code and the
     exact JSON error layout specified in app/main.py.
     """
-    # Temporarily mount a mock endpoint on the app to force a rate limit breach
-    @app.get("/api/v1/test-rate-limiting-trigger-429")
+    from fastapi import APIRouter
+    test_router = APIRouter()
+    @test_router.get("/api/v1/test-rate-limiting-trigger-429")
     def trigger_rate_limit():
         raise RateLimitExceeded("Too Many Requests")
+    
+    app.include_router(test_router)
+    # Move the newly added route to the top so it takes precedence over the SPA catch-all
+    new_route = app.router.routes.pop()
+    app.router.routes.insert(0, new_route)
 
     response = client.get("/api/v1/test-rate-limiting-trigger-429")
     

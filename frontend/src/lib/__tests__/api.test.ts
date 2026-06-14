@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { api, API_BASE, CONNECTION_ERROR_MESSAGE } from '../api';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { api, API_BASE, CONNECTION_ERROR_MESSAGE } from "../api";
 
-describe('ApiClient', () => {
+describe("ApiClient", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   let localStorageStore: Record<string, string> = {};
 
@@ -22,11 +22,15 @@ describe('ApiClient', () => {
         localStorageStore = {};
       }),
     };
-    Object.defineProperty(global, 'window', {
-      value: { localStorage: mockLocalStorage, dispatchEvent: vi.fn(), CustomEvent: class {} },
+    Object.defineProperty(global, "window", {
+      value: {
+        localStorage: mockLocalStorage,
+        dispatchEvent: vi.fn(),
+        CustomEvent: class {},
+      },
       writable: true,
     });
-    Object.defineProperty(global, 'localStorage', {
+    Object.defineProperty(global, "localStorage", {
       value: mockLocalStorage,
       writable: true,
     });
@@ -36,118 +40,136 @@ describe('ApiClient', () => {
     vi.restoreAllMocks();
   });
 
-  describe('Headers & Auth', () => {
-    it('should include Authorization header if token exists in localStorage', async () => {
-      localStorageStore['token'] = 'dummy_auth_token_string';
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
-      
-      await api.get('/test');
-      
+  describe("Headers & Auth", () => {
+    it("should include Authorization header if token exists in localStorage", async () => {
+      localStorageStore["token"] = "dummy_auth_token_string";
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true })),
+      );
+
+      await api.get("/test");
+
       expect(fetchMock).toHaveBeenCalledWith(
         `${API_BASE}/test`,
         expect.objectContaining({
-          method: 'GET',
+          method: "GET",
           headers: expect.objectContaining({
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer dummy_auth_token_string',
-          })
-        })
+            "Content-Type": "application/json",
+            Authorization: "Bearer dummy_auth_token_string",
+          }),
+        }),
       );
     });
 
-    it('should NOT include Authorization header if token is missing', async () => {
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
-      
-      await api.get('/test');
-      
+    it("should NOT include Authorization header if token is missing", async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true })),
+      );
+
+      await api.get("/test");
+
       const calls = fetchMock.mock.calls;
       const headers = calls[0][1].headers;
-      expect(headers).not.toHaveProperty('Authorization');
+      expect(headers).not.toHaveProperty("Authorization");
     });
   });
 
-  describe('Parameter Handling', () => {
-    it('should stringify JSON bodies correctly in POST requests', async () => {
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: true })));
-      const body = { document_id: '123', query: 'hello' };
-      
-      await api.post('/message', body);
-      
+  describe("Parameter Handling", () => {
+    it("should stringify JSON bodies correctly in POST requests", async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: true })),
+      );
+      const body = { document_id: "123", query: "hello" };
+
+      await api.post("/message", body);
+
       expect(fetchMock).toHaveBeenCalledWith(
         `${API_BASE}/message`,
         expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify(body)
-        })
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
       );
     });
 
-    it('should handle FormData correctly in postForm without overriding Content-Type', async () => {
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: true })));
+    it("should handle FormData correctly in postForm without overriding Content-Type", async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: true })),
+      );
       const formData = new FormData();
-      formData.append('file', new Blob(['test'], { type: 'text/plain' }), 'test.txt');
-      
-      await api.postForm('/upload', formData);
-      
+      formData.append(
+        "file",
+        new Blob(["test"], { type: "text/plain" }),
+        "test.txt",
+      );
+
+      await api.postForm("/upload", formData);
+
       const callArgs = fetchMock.mock.calls[0];
       const reqInit = callArgs[1];
-      
-      expect(reqInit.method).toBe('POST');
+
+      expect(reqInit.method).toBe("POST");
       expect(reqInit.body).toBe(formData);
-      expect(reqInit.headers).not.toHaveProperty('Content-Type');
+      expect(reqInit.headers).not.toHaveProperty("Content-Type");
     });
   });
 
-  describe('Error Handling', () => {
-    it('should throw connection error message if fetch throws TypeError', async () => {
-      fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
-      
-      await expect(api.get('/test')).rejects.toThrow(CONNECTION_ERROR_MESSAGE);
+  describe("Error Handling", () => {
+    it("should throw connection error message if fetch throws TypeError", async () => {
+      fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+      await expect(api.get("/test")).rejects.toThrow(CONNECTION_ERROR_MESSAGE);
     });
 
-    it('should throw parsed error message if response is not ok', async () => {
+    it("should throw parsed error message if response is not ok", async () => {
       fetchMock.mockResolvedValueOnce(
-        new Response(JSON.stringify({ detail: 'Invalid document ID' }), {
+        new Response(JSON.stringify({ detail: "Invalid document ID" }), {
           status: 400,
-          statusText: 'Bad Request'
-        })
+          statusText: "Bad Request",
+        }),
       );
-      
-      await expect(api.get('/test')).rejects.toThrow('Invalid document ID');
+
+      await expect(api.get("/test")).rejects.toThrow("Invalid document ID");
     });
 
-    it('should fallback to statusText if response has no JSON body', async () => {
+    it("should fallback to statusText if response has no JSON body", async () => {
       fetchMock.mockResolvedValueOnce(
         new Response(null, {
           status: 500,
-          statusText: 'Internal Server Error'
-        })
+          statusText: "Internal Server Error",
+        }),
       );
-      
-      await expect(api.get('/test')).rejects.toThrow('Internal Server Error');
+
+      await expect(api.get("/test")).rejects.toThrow("Internal Server Error");
     });
   });
 
-  describe('Token Refresh', () => {
-    it('should auto-refresh token on 401 response', async () => {
-      localStorageStore['token'] = 'old_dummy_token';
-      localStorageStore['refresh_token'] = 'dummy_refresh_string';
-      
+  describe("Token Refresh", () => {
+    it("should auto-refresh token on 401 response", async () => {
+      localStorageStore["token"] = "old_dummy_token";
+      localStorageStore["refresh_token"] = "dummy_refresh_string";
+
       // 1st request -> 401
       fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
-      
+
       // Refresh request -> 200
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
-        access_token: 'new_dummy_token'
-      })));
-      
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "new_dummy_token",
+          }),
+        ),
+      );
+
       // Retry original request -> 200
-      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ data: 'success' })));
-      
-      const res = await api.get('/protected');
-      
-      expect(res).toEqual({ data: 'success' });
-      expect(localStorageStore['token']).toBe('new_dummy_token');
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: "success" })),
+      );
+
+      const res = await api.get("/protected");
+
+      expect(res).toEqual({ data: "success" });
+      expect(localStorageStore["token"]).toBe("new_dummy_token");
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
   });

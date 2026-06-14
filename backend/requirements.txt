@@ -74,3 +74,5 @@ reportlab
 ddgs
 loguru
 redis>=4.6.0
+pymupdf4llm
+google-genai
