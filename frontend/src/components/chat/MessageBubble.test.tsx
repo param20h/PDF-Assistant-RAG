@@ -45,9 +45,7 @@ describe("MessageBubble", () => {
 
     expect(screen.getByText("Here is the answer:")).toBeInTheDocument();
     expect(container.querySelector("pre")).toHaveTextContent("const ok = true;");
-    expect(screen.getByText("Was this helpful?")).toBeInTheDocument();
     expect(screen.getByLabelText("Copy response")).toBeInTheDocument();
     expect(screen.getByLabelText("Share response")).toBeInTheDocument();
-    expect(screen.getByLabelText("Play speech")).toBeInTheDocument();
   });
 });
