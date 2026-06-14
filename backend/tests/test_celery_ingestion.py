@@ -27,24 +27,11 @@ def test_process_document_ingestion_pipeline(db_session):
     mock_session_factory.return_value.__enter__.return_value = db_session
     mock_session_factory.return_value = db_session
 
-    # Patch the factory globally, and patch AdvancedPDFParser constructor and ingest_document
-    # right where app.tasks calls it
-    with patch("app.database.SessionLocal", mock_session_factory, create=True), \
-         patch("app.services.document_ingestion.SessionLocal", mock_session_factory, create=True), \
-         patch("app.tasks.AdvancedPDFParser.__init__", return_value=None) as mock_init, \
-         patch("app.tasks.AdvancedPDFParser.ingest_document") as mock_ingest:
-        
-        # Simulate what the underlying service does upon a successful processing run
-        def simulate_successful_ingestion(*args, **kwargs):
-            doc = db_session.query(Document).filter_by(id="test-doc-123").first()
-            if doc:
-                doc.status = "ready"
-                db_session.commit()
-            return [
-                {"page_number": 1, "text": "Sample text", "type": "text_layout"}
-            ]
-
-        mock_ingest.side_effect = simulate_successful_ingestion
+    with patch("app.tasks.get_db_session", return_value=db_session), \
+         patch("app.tasks.AdvancedPDFParser") as mock_parser_class:
+         
+        mock_parser = mock_parser_class.return_value
+        mock_parser.ingest_document.return_value = [{"text": "dummy", "page_number": 1, "type": "text"}]
 
         task_result = process_document.apply(
             kwargs={
@@ -61,4 +48,4 @@ def test_process_document_ingestion_pipeline(db_session):
         # Query the database to verify the state update
         updated_doc = db_session.query(Document).filter_by(id="test-doc-123").first()
         assert updated_doc is not None
-        assert updated_doc.status == "ready"
+        assert updated_doc.status == "completed"

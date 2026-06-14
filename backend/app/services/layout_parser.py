@@ -3,7 +3,12 @@ from typing import Any, Dict, List
 
 import fitz  # PyMuPDF
 import pymupdf4llm
+from google import (
+    genai,  # Since the repo uses Gemini, we'll swap to Gemini 2.5 Flash for vision tasks!
+)
 
+# Initialize Gemini Client
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", "dummy_key"))
 
 class AdvancedPDFParser:
     def __init__(self, pdf_path: str):
