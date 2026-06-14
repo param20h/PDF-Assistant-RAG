@@ -8,8 +8,7 @@ from google import (
 )
 
 # Initialize Gemini Client
-client = genai.Client()
-
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", "dummy_key"))
 
 class AdvancedPDFParser:
     def __init__(self, pdf_path: str):
