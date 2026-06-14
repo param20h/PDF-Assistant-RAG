@@ -9,7 +9,33 @@ except ImportError:  # pragma: no cover - resource is unavailable on some platfo
 
 from fastapi import FastAPI
 from prometheus_client import Gauge
-from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import Instrumentator, routing
+from starlette.routing import Match
+
+# ── Workaround for FastAPI 0.135+ and prometheus-fastapi-instrumentator 8.0.0 ──
+# Newer FastAPI versions include _IncludedRouter objects in app.routes which
+# lack a '.path' attribute, causing AttributeErrors during instrumentation.
+def _patched_get_route_name(scope, routes, route_name=None):
+    """Safe version of _get_route_name that handles routes without a .path attribute."""
+    for route in routes:
+        try:
+            match, child_scope = route.matches(scope)
+        except Exception:
+            continue
+
+        if match == Match.FULL:
+            # If we have a full match and the route has a path, use it and return early.
+            # This matches Starlette's behavior where the first matching route wins.
+            if hasattr(route, "path"):
+                return route.path
+        elif match == Match.PARTIAL and hasattr(route, "routes"):
+            # Recursive call for nested routes (e.g. Mounts)
+            route_name = _patched_get_route_name(child_scope, route.routes, route_name)
+            if route_name:
+                return route_name
+    return route_name
+
+routing._get_route_name = _patched_get_route_name
 
 APP_PROCESS_RSS_BYTES = Gauge(
     "app_process_resident_memory_bytes",
