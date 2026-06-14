@@ -93,6 +93,16 @@ class UpdatePasswordResponse(BaseModel):
     email: EmailStr
     password_changed: bool = True
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        validate_password(value)
+        return value    
+
 
 class WorkspaceInviteRequest(BaseModel):
     email: EmailStr
@@ -307,9 +317,16 @@ class ChatHistoryResponse(BaseModel):
 
 # Chunk settings schema for optional chunk size and overlap parameters in document processing
 class ChunkSettings(BaseModel):
-    chunk_size: int | None
-    chunk_overlap: int | None
-      
+    chunk_size: int = Field(default=1000, ge=100, le=2000)
+    chunk_overlap: int = Field(default=200, ge=0)
+
+    @field_validator("chunk_overlap")
+    @classmethod
+    def validate_overlap(cls, v: int, info: Any) -> int:
+        if "chunk_size" in info.data and v >= info.data["chunk_size"]:
+            raise ValueError("chunk_overlap must be less than chunk_size")
+        return v
+
 class UploadUrl(BaseModel):
     url: str
 
