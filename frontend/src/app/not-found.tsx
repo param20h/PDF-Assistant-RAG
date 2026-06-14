@@ -12,10 +12,11 @@ export default function NotFound() {
       </p>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <Button asChild>
-          <Link href="/">Return to Home</Link>
-        </Button>
-        
+        <Link href="/">
+          <Button>Return to Home</Button>
+        </Link>
+        <Link href="/dashboard">
+        </Link>
         <GoBackButton />
       </div>
     </div>
