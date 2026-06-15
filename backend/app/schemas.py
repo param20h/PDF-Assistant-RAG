@@ -247,6 +247,7 @@ class DocumentListResponse(BaseModel):
     pages: int
     total_pages: int
     limit: int
+    query: Optional[str] = None
 
 
 # Admin
