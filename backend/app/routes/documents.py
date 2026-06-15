@@ -16,9 +16,10 @@ import socket
 import ipaddress
 import tempfile
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, BackgroundTasks, Request, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import select, func
 
 from app.database import get_db
 from app.exceptions import (
@@ -42,6 +43,7 @@ from app.auth import get_current_user
 from app.config import get_settings
 from app.tasks import process_document
 from app.services.document_ingestion import ingest_document
+from app.services.layout_parser import AdvancedPDFParser
 
 try:
     from crawl4ai import AsyncWebCrawler
@@ -192,41 +194,21 @@ def _crawl_in_new_loop(url: str) -> str:
 async def upload_document(
     request: Request = None,
     file: UploadFile = File(...),
+    chunk_size: int = Form(1000),
+    chunk_overlap: int = Form(200),
     background_tasks: BackgroundTasks = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Upload a document and enqueue RAG processing.
-    
-    Validates the uploaded file (extension, size, MIME type, integrity),
-    saves it to the user's directory, creates a database record with status
-    'pending', queues a Celery task for chunking and embedding, and returns
-    202 Accepted immediately so large documents do not block the API request
-    while embeddings are generated.
-
-    Args:
-        request: The FastAPI request object.
-        file: The uploaded file, provided as a multipart/form-data field in the request.
-        background_tasks: FastAPI BackgroundTasks instance for in-process fallback execution.
-        user: The currently authenticated user, injected by the `get_current_user` dependency.
-        db: Database session, injected by the `get_db` dependency.
-
-    Returns:
-        DocumentResponse: The created document record, validated against the
-        response model (includes id, filename, original_name, file_size, status, etc.).
-
-    Raises:
-        HTTPException: With status code 400 if:
-            - No filename is provided.
-            - The file extension is not allowed. (only .pdf or .docx)
-            - The file fails validation checks (size, MIME type, integrity).
-        HTTPException: With status code 500 if:
-            - The server lacks the 'python-magic' dependency. 
-    """
     # ── Validate file type ───────────────────────────
     if not file.filename:
         raise ValidationException("No filename provided")
+
+    # ── Validate chunking params ─────────────────────
+    if chunk_size < 100 or chunk_size > 2000:
+        raise ValidationException("Chunk size must be between 100 and 2000")
+    if chunk_overlap < 0 or chunk_overlap >= chunk_size:
+        raise ValidationException("Chunk overlap must be non-negative and less than chunk_size")
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in settings.ALLOWED_EXTENSIONS:
@@ -243,19 +225,8 @@ async def upload_document(
     stored_filename = f"{uuid.uuid4().hex}.{ext}"
     filepath = os.path.join(user_dir, stored_filename)
 
-    # Move temp file to final destination
     shutil.move(temp_path, filepath)
-
     file_size = Path(filepath).stat().st_size
-
-    # Bind upload metadata to request state and context variables
-    if request is not None:
-        request.state.filename = file.filename
-        request.state.filesize = file_size
-    from app.observability import upload_filename_var, upload_filesize_var
-    upload_filename_var.set(file.filename)
-    upload_filesize_var.set(file_size)
-    logger.info(f"File upload completed locally, starting ingestion: {file.filename} ({file_size} bytes)")
 
     # ── Create database record ───────────────────────
     document = Document(
@@ -264,6 +235,8 @@ async def upload_document(
         original_name=file.filename,
         file_size=file_size,
         status="pending",
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap
     )
     db.add(document)
     db.commit()
@@ -471,57 +444,73 @@ def list_trash(
 
 @router.get("/", response_model=DocumentListResponse)
 def list_documents(
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    per_page: int = Query(20, ge=1, le=100, description="Results per page"),
+    limit: int = Query(None, ge=1, le=100, description="Alias for per_page"),
+    q: Optional[str] = Query(None, description="Filter by document name (case-insensitive)"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    List all documents for the authenticated user with pagination.
+    List documents for the authenticated user with pagination and name search.
 
-    Returns a paginated list of documents belonging to the current user,
-    ordered by upload date (newest first).
+    Supports offset pagination via `page` / `per_page` (or `limit` alias)
+    and optional keyword filtering on the original document name.
 
     Args:
-        page: The page number to retrieve (1: indexed). Defaults to 1.
-        per_page: The number of documents to return per page. Defaults to 20.
-        user: The currently authenticated user, injected by the `get_current_user` dependency.
-        db: Database session, injected by the `get_db` dependency.
-        
+        page:     Page number to retrieve (1-indexed). Defaults to 1.
+        per_page: Number of documents per page. Defaults to 20, max 100.
+        limit:    Alias for per_page — whichever is supplied takes effect.
+        q:        Case-insensitive substring filter on original_name.
+        user:     Authenticated user injected by get_current_user.
+        db:       Database session injected by get_db.
+
     Returns:
-        DocumentListResponse: A response model containing:
-            - items: A list of DocumentResponse objects for the current page.
-            - total: The total number of documents for the user.
-            - page: The current page number.
-            - pages: The total number of pages available.
+        DocumentListResponse with items, total, page, pages, total_pages,
+        and limit fields.
     """
+    # Allow `limit` as an alias for `per_page`
+    effective_limit = limit if limit is not None else per_page
+    skip = (page - 1) * effective_limit
 
-    """Number of rows to skip"""
-    skip: int = (page - 1) * per_page
-
-    """Total Pages"""
-    totalDocuments = (
-        db.query(Document)
-        .filter(Document.user_id == user.id, Document.is_deleted.is_(False))
-        .count()
+    # ── Base query ────────────────────────────────────────────────────────────
+    base_query = (
+        select(Document)
+        .where(
+            Document.user_id == user.id,
+            Document.is_deleted.is_(False),
+        )
     )
-    """Total Pages"""
-    pages = (totalDocuments + per_page - 1) // per_page
-    
-    """List all documents for the authenticated user in Paginated form"""
-    docs = ((
-            db.execute(select(Document)
-            .where(Document.user_id == user.id, Document.is_deleted.is_(False))
-            .order_by(Document.uploaded_at.desc())
-            .limit(per_page).offset(skip))
-            )
-            .scalars().all())
+
+    # ── Keyword filter on document name ───────────────────────────────────────
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        base_query = base_query.where(
+            Document.original_name.ilike(pattern)
+        )
+
+    # ── Total count (before pagination) ──────────────────────────────────────
+    total = db.execute(
+        select(func.count()).select_from(base_query.subquery())
+    ).scalar_one()
+
+    # ── Paginated results ─────────────────────────────────────────────────────
+    docs = db.execute(
+        base_query
+        .order_by(Document.uploaded_at.desc())
+        .limit(effective_limit)
+        .offset(skip)
+    ).scalars().all()
+
+    total_pages = max(1, (total + effective_limit - 1) // effective_limit)
 
     return DocumentListResponse(
         items=[_deserialize_doc(d) for d in docs],
-        total=totalDocuments,
+        total=total,
         page=page,
-        pages=pages
+        pages=total_pages,
+        total_pages=total_pages,
+        limit=effective_limit,
     )
 
 

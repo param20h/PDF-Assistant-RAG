@@ -18,6 +18,11 @@ from app.models import User, UserRole
 settings = get_settings()
 security = HTTPBearer(auto_error=False)
 
+# Whitelist of allowed JWT signing algorithms.
+# Only HMAC-SHA256 is permitted; asymmetric / experimental algorithms are
+# explicitly excluded to reduce the attack surface.
+ALLOWED_JWT_ALGORITHMS: set[str] = {"HS256"}
+
 
 # ── Password Hashing ─────────────────────────────────
 
@@ -55,6 +60,8 @@ def create_refresh_token(user_id) -> str:
 
 def decode_token(token: str, token_type: str = "access") -> Optional[str]:
     """Decode JWT and return user_id, or None if invalid."""
+    if settings.JWT_ALGORITHM not in ALLOWED_JWT_ALGORITHMS:
+        raise ValueError(f"JWT algorithm {settings.JWT_ALGORITHM} is not in the allowed whitelist")
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         if payload.get("type") != token_type:
@@ -81,6 +88,8 @@ def create_invite_token(inviter_id: str, email: str, workspace_name: str) -> str
 
 def decode_invite_token(token: str) -> Optional[dict[str, Any]]:
     """Decode a workspace invite JWT and return its payload if valid."""
+    if settings.JWT_ALGORITHM not in ALLOWED_JWT_ALGORITHMS:
+        raise ValueError(f"JWT algorithm {settings.JWT_ALGORITHM} is not in the allowed whitelist")
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         if payload.get("type") != "invite":

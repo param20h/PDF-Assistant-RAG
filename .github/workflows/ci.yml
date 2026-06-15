@@ -90,6 +90,14 @@ jobs:
             htmlcov/
           retention-days: 7
 
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Coverage summary comment (PR only)
         if: github.event_name == 'pull_request'
         uses: py-cov-action/python-coverage-comment-action@v3

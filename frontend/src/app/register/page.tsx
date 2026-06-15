@@ -6,7 +6,13 @@ import { useAuth } from "@/lib/auth";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Brain } from "lucide-react";
 import Link from "next/link";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
@@ -51,7 +57,8 @@ export default function RegisterPage() {
       setSuccess(result.message);
       setVerificationUrl(result.verification_url ?? "");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : t("register.fallbackError");
+      const message =
+        err instanceof Error ? err.message : t("register.fallbackError");
       setError(message);
     } finally {
       setLoading(false);
@@ -69,7 +76,9 @@ export default function RegisterPage() {
               <Brain className="w-6 h-6 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">{t("register.title")}</CardTitle>
+          <CardTitle className="text-2xl font-bold">
+            {t("register.title")}
+          </CardTitle>
           <CardDescription>{t("register.description")}</CardDescription>
         </CardHeader>
 
@@ -98,7 +107,10 @@ export default function RegisterPage() {
                   {t("register.verifyMessage", { email: registeredEmail })}
                 </p>
                 {verificationUrl && (
-                  <Link href={verificationUrl} className="inline-flex mt-3 font-medium underline">
+                  <Link
+                    href={verificationUrl}
+                    className="inline-flex mt-3 font-medium underline"
+                  >
                     {t("register.openVerification")}
                   </Link>
                 )}
@@ -146,7 +158,11 @@ export default function RegisterPage() {
               disabled={Boolean(success)}
             />
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={loading || Boolean(success)}>
+            <Button
+              type="submit"
+              className="w-full h-11 text-base"
+              disabled={loading || Boolean(success)}
+            >
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
@@ -160,7 +176,10 @@ export default function RegisterPage() {
 
           <p className="text-center text-sm text-muted-foreground mt-6">
             {t("register.hasAccount")}{" "}
-            <Link href="/login" className="text-primary hover:underline font-medium">
+            <Link
+              href="/login"
+              className="text-primary hover:underline font-medium"
+            >
               {t("register.signIn")}
             </Link>
           </p>

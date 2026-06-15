@@ -1,0 +1,41 @@
+name: Prettier Formatting Check
+
+on:
+  pull_request:
+    branches: [ "dev" ]
+
+permissions:
+  contents: read
+
+jobs:
+  prettier-validation:
+    name: Validate Frontend Formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run Prettier on Changed Files Only
+        run: |
+          git fetch origin dev
+          CHANGED_FILES=$(git diff --name-only origin/dev...HEAD | grep -E '^frontend/.*\.(ts|tsx|css|md)$' || true)
+          
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No frontend files were modified in this PR. Skipping formatting check."
+          else
+            echo "Inspecting the following modified files:"
+            echo "$CHANGED_FILES"
+            npx prettier --check $CHANGED_FILES
+          fi

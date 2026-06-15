@@ -11,23 +11,24 @@ import {
   type SourceBoundingBox,
   type SourceChunk,
 } from "@/store/chat-store";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import {
-  Send,
-  Loader2,
-  Trash2,
-  MessageSquare,
-  Download,
-  Mic,
-  MicOff,
-  HelpCircle,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-
+      Send,
+      Loader2,
+      Trash2,
+      MessageSquare,
+      Download,
+      Mic,
+      MicOff,
+      HelpCircle,
+      ChevronDown,
+    } from "lucide-react";
+    import { cn } from "@/lib/utils";
 interface ISpeechRecognitionEvent {
   resultIndex: number;
   results: {
@@ -96,11 +97,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
   // New State for Keyboard Shortcuts Help Modal
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const initialInputRef = useRef<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -125,8 +128,27 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
   // Auto-scroll to bottom whenever messages change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (containerRef.current) {
+      const { scrollHeight, scrollTop, clientHeight } = containerRef.current;
+      if (scrollHeight - scrollTop - clientHeight < 150) {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
+
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    setShowScrollButton(scrollTop < scrollHeight - clientHeight - 100);
+  };
+
+  const scrollToBottom = () => {
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -184,9 +206,16 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       cancelled = true;
     };
   }, [activeSessionId, activeDoc, fetchSessionHistory, setMessages]);
+  
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
+    setStreaming(false);
+    setIsTyping(false);
+  };
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
+
 
     const question = input.trim();
     setInput("");
@@ -218,7 +247,19 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       const ws = new WebSocket(wsUrl);
 
+      let onAbort: (() => void) | null = null;
+
       const wsDone = new Promise<void>((resolve, reject) => {
+        onAbort = () => {
+          try {
+            ws.close();
+          } catch {
+            // ignore
+          }
+          reject(new DOMException("The user aborted a request.", "AbortError"));
+        };
+        abortController.signal.addEventListener("abort", onAbort);
+
         ws.onopen = () => {
           // Send initial payload
           ws.send(JSON.stringify({ question, document_id: activeDoc?.id || null, session_id: activeSessionId }));
@@ -292,13 +333,28 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       await wsDone;
     } catch {
+      try {
+        await wsDone;
+      } finally {
+        if (onAbort) {
+          abortController.signal.removeEventListener("abort", onAbort);
+        }
+      }
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        (err.name === "AbortError" || err.message === "The user aborted a request.")
+      ) {
+        return;
+      }
+
       // Fallback to existing SSE stream if WebSocket fails
       try {
         const stream = api.streamPost("/api/v1/chat/ask/stream", {
           question,
           document_id: activeDoc?.id || null,
           session_id: activeSessionId,
-        });
+        }, abortController.signal);
 
         for await (const event of stream) {
           if (event.type === "token") {
@@ -331,6 +387,17 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         }
       } catch (err2) {
         setIsTyping(false);
+        if (
+          err2 instanceof Error &&
+          (err2.name === "AbortError" || err2.message === "The user aborted a request.")
+        ) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, isStreaming: false } : m
+            )
+          );
+          return;
+        }
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
@@ -538,11 +605,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
       // Shortcut 2: Escape → Abort SSE stream OR clear input OR close modal
       if (e.key === "Escape") {
-        if (streaming && abortControllerRef.current) {
+        if (streaming) {
           e.preventDefault();
-          abortControllerRef.current.abort();
-          setStreaming(false);
-          setIsTyping(false);
+          handleStop();
           toast.info("Response cancelled");
         } else if (document.activeElement === textareaRef.current) {
           e.preventDefault();
@@ -593,13 +658,16 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, streaming, showHelpModal, showExportMenu, messages]); // Dependencies updated to capture fresh state data
 
   return (
     <div className="h-full flex flex-col relative">
       {/* ── Chat Messages ──────────────────────────── */}
-      <div
-        className="flex-1 px-4 overflow-y-auto custom-scrollbar"
+        <div 
+            ref={containerRef}
+            onScroll={handleScroll}
+            className="flex-1 px-4 overflow-y-auto custom-scrollbar" 
         aria-busy={historyLoading}
       >
         {historyLoading ? (
@@ -674,8 +742,21 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         <div ref={bottomRef} className="h-4" />
       </div>
 
+      {/* Scroll to bottom button */}
+      <button
+        type="button"
+        onClick={scrollToBottom}
+        aria-label="Scroll to bottom"
+        className={cn(
+          "absolute right-4 bottom-20 z-50 rounded-full p-2 bg-primary text-primary-foreground shadow-lg transition-all duration-200",
+          showScrollButton ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+        )}
+      >
+        <ChevronDown className="h-5 w-5" />
+      </button>
+
       {/* ── Input Area ─────────────────────────────── */}
-      <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm relative">
+      <div className="border-t border-border/50 p-4 pl-16 sm:pl-4 bg-card/30 backdrop-blur-sm relative">
         <div className="max-w-3xl mx-auto relative">
           {/* Status / Error Message Area */}
           {(isRecording || speechError) && (
@@ -742,101 +823,117 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               />
 
               {/* Mic Button */}
-              <Button
-                id="mic-btn"
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={streaming}
-                onClick={toggleRecording}
-                className={cn(
-                  "absolute right-10 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
-                  isRecording
-                    ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
-                    : "hover:text-primary hover:bg-accent",
-                )}
-                title={
-                  isRecording
+              <Tooltip>
+                <TooltipTrigger
+                  id="mic-btn"
+                  type="button"
+                  disabled={streaming}
+                  onClick={toggleRecording}
+                  className={cn(
+                    buttonVariants({ variant: "ghost", size: "icon" }),
+                    "absolute right-10 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
+                    isRecording
+                      ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
+                      : "hover:text-primary hover:bg-accent",
+                  )}
+                  aria-label={
+                    isRecording
+                      ? t("chat.stopRecording", {
+                          defaultValue: "Stop recording",
+                        })
+                      : t("chat.startRecording", {
+                          defaultValue: "Start recording",
+                        })
+                  }
+                  aria-pressed={isRecording}
+                >
+                  {isRecording ? (
+                    <MicOff className="h-4 w-4" />
+                  ) : (
+                    <Mic className="h-4 w-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isRecording
                     ? t("chat.stopRecording", {
                         defaultValue: "Stop recording",
                       })
                     : t("chat.startRecording", {
                         defaultValue: "Start recording",
-                      })
-                }
-                aria-label={
-                  isRecording
-                    ? t("chat.stopRecording", {
-                        defaultValue: "Stop recording",
-                      })
-                    : t("chat.startRecording", {
-                        defaultValue: "Start recording",
-                      })
-                }
-                aria-pressed={isRecording}
-              >
-                {isRecording ? (
-                  <MicOff className="h-4 w-4" />
-                ) : (
-                  <Mic className="h-4 w-4" />
-                )}
-              </Button>
+                      })}
+                </TooltipContent>
+              </Tooltip>
 
               {/* NEW Keyboard Shortcuts Info Button */}
-              <Button
-                id="shortcut-help-btn"
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowHelpModal(true)}
-                className="absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-all duration-200"
-                title="Keyboard Shortcuts"
-                aria-label="View Keyboard Shortcuts"
-              >
-                <HelpCircle className="h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  id="shortcut-help-btn"
+                  type="button"
+                  onClick={() => setShowHelpModal(true)}
+                  className={cn(
+                    buttonVariants({ variant: "ghost", size: "icon" }),
+                    "absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-all duration-200",
+                  )}
+                  aria-label="View Keyboard Shortcuts"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                </TooltipTrigger>
+                <TooltipContent>Keyboard shortcuts</TooltipContent>
+              </Tooltip>
             </div>
 
             <div className="flex gap-1.5 shrink-0">
-              <Button
-                id="send-btn"
-                size="icon"
-                onClick={handleSend}
-                disabled={!input.trim() || streaming}
-                className="h-[44px] w-[44px]"
-                aria-label={streaming ? "Sending message" : "Send message"}
-              >
-                {streaming ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  id="send-btn"
+                  type="button"
+                  onClick={streaming ? handleStop : handleSend}
+                  disabled={!streaming && !input.trim()}
+                  className={cn(
+                    buttonVariants({ size: "icon" }),
+                    "h-10 w-10 sm:h-[44px] sm:w-[44px]",
+                  )}
+                  aria-label={streaming ? "Stop generating" : "Send message"}
+                >
+                  {streaming ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {streaming ? "Stop generating" : "Send message"}
+                </TooltipContent>
+              </Tooltip>
               {messages.length > 0 && (
                 <>
                   {/* Export dropdown */}
                   <div className="relative" ref={exportMenuRef}>
-                    <Button
-                      id="export-chat-btn"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setShowExportMenu((v) => !v)}
-                      className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
-                      title={t("chat.exportTitle")}
-                      aria-label={t("chat.exportTitle")}
-                      aria-expanded={showExportMenu}
-                      aria-controls="chat-export-menu"
-                      aria-haspopup="menu"
-                    >
-                      <Download className="w-4 h-4" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        id="export-chat-btn"
+                        type="button"
+                        onClick={() => setShowExportMenu((v) => !v)}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "icon" }),
+                          "h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-primary",
+                        )}
+                        aria-label={t("chat.exportTitle")}
+                        aria-expanded={showExportMenu}
+                        aria-controls="chat-export-menu"
+                        aria-haspopup="menu"
+                      >
+                        <Download className="w-4 h-4" />
+                      </TooltipTrigger>
+                      <TooltipContent>{t("chat.exportTitle")}</TooltipContent>
+                    </Tooltip>
                     {showExportMenu && (
                       <div
                         id="chat-export-menu"
                         role="menu"
                         aria-label="Export chat"
                         onKeyDown={handleExportMenuKeyDown}
-                        className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
+                        className="absolute bottom-full mb-2 right-0 min-w-[160px] max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
                       >
                         <button
                           id="export-md-btn"
@@ -872,15 +969,20 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                     )}
                   </div>
                   {/* Clear history */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleClear}
-                    className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
-                    aria-label="Clear chat history"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      type="button"
+                      onClick={handleClear}
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "icon" }),
+                        "h-10 w-10 sm:h-[44px] sm:w-[44px] text-muted-foreground hover:text-destructive",
+                      )}
+                      aria-label="Clear chat history"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </TooltipTrigger>
+                    <TooltipContent>Clear chat history</TooltipContent>
+                  </Tooltip>
                 </>
               )}
             </div>
