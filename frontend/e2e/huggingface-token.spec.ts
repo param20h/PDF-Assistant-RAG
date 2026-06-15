@@ -17,13 +17,6 @@ const userWithToken = {
   hf_token: "hf_existingToken1234567890",
 };
 
-const tokenResponse = {
-  access_token: "access-token",
-  refresh_token: "refresh-token",
-  token_type: "bearer",
-  user,
-};
-
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 /** Seed localStorage so the app boots as logged-in */
