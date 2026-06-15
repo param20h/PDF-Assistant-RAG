@@ -34,25 +34,33 @@ async function seedAuth(page: Page, withHfToken = false) {
       localStorage.setItem("refresh_token", "refresh-token");
       if (withHfToken) {
         // Simulate a session where the user already has a token stored
-        (window as unknown as Record<string, unknown>).__hf_token_preset__ = true;
+        (window as unknown as Record<string, unknown>).__hf_token_preset__ =
+          true;
       }
     },
-    { withHfToken }
+    { withHfToken },
   );
 }
 
 /** Mock all APIs needed for the dashboard + settings page to load */
 async function mockBaseApis(page: Page, currentUser = user) {
   await page.route("**/api/v1/auth/me", (route) =>
-    route.fulfill({ json: currentUser })
+    route.fulfill({ json: currentUser }),
   );
   await page.route("**/api/v1/documents/", (route) =>
     route.fulfill({
-      json: { items: [], total: 0, page: 1, pages: 0, total_pages: 0, limit: 20 },
-    })
+      json: {
+        items: [],
+        total: 0,
+        page: 1,
+        pages: 0,
+        total_pages: 0,
+        limit: 20,
+      },
+    }),
   );
   await page.route("**/api/v1/chat/sessions", (route) =>
-    route.fulfill({ json: [] })
+    route.fulfill({ json: [] }),
   );
 }
 
@@ -66,8 +74,9 @@ async function openHfModal(page: Page) {
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 test.describe("HuggingFace Token Flow", () => {
-
-  test("saves a valid token and stores it encrypted via the API", async ({ page }) => {
+  test("saves a valid token and stores it encrypted via the API", async ({
+    page,
+  }) => {
     let capturedBody: Record<string, string> | null = null;
 
     await seedAuth(page);
@@ -86,20 +95,22 @@ test.describe("HuggingFace Token Flow", () => {
     await openHfModal(page);
 
     // Fill a valid token
-    await page.getByLabel("HuggingFace API Token").fill("hf_validTokenForTesting1234");
+    await page
+      .getByLabel("HuggingFace API Token")
+      .fill("hf_validTokenForTesting1234");
     await page.getByRole("button", { name: "Save Token" }).click();
 
     // Success banner visible
-    await expect(
-      page.getByText("Token saved successfully")
-    ).toBeVisible();
+    await expect(page.getByText("Token saved successfully")).toBeVisible();
 
     // API was called with the correct field name and token value
     expect(capturedBody).not.toBeNull();
     expect(capturedBody!.hf_token).toBe("hf_validTokenForTesting1234");
   });
 
-  test("shows a validation error for a token that does not start with hf_", async ({ page }) => {
+  test("shows a validation error for a token that does not start with hf_", async ({
+    page,
+  }) => {
     await seedAuth(page);
     await mockBaseApis(page);
 
@@ -109,14 +120,14 @@ test.describe("HuggingFace Token Flow", () => {
     await page.getByLabel("HuggingFace API Token").fill("sk-invalidToken12345");
     await page.getByRole("button", { name: "Save Token" }).click();
 
-    await expect(
-      page.getByText("Token must start with 'hf_'")
-    ).toBeVisible();
+    await expect(page.getByText("Token must start with 'hf_'")).toBeVisible();
     // Dialog stays open — no API call was made
     await expect(page.getByRole("dialog")).toBeVisible();
   });
 
-  test("shows a validation error for a token that is too short", async ({ page }) => {
+  test("shows a validation error for a token that is too short", async ({
+    page,
+  }) => {
     await seedAuth(page);
     await mockBaseApis(page);
 
@@ -126,9 +137,7 @@ test.describe("HuggingFace Token Flow", () => {
     await page.getByLabel("HuggingFace API Token").fill("hf_short");
     await page.getByRole("button", { name: "Save Token" }).click();
 
-    await expect(
-      page.getByText(/too short/i)
-    ).toBeVisible();
+    await expect(page.getByText(/too short/i)).toBeVisible();
     await expect(page.getByRole("dialog")).toBeVisible();
   });
 
@@ -141,11 +150,13 @@ test.describe("HuggingFace Token Flow", () => {
 
     // Save button must be disabled when input is empty
     await expect(
-      page.getByRole("button", { name: "Save Token" })
+      page.getByRole("button", { name: "Save Token" }),
     ).toBeDisabled();
   });
 
-  test("shows an API error when the backend rejects the token", async ({ page }) => {
+  test("shows an API error when the backend rejects the token", async ({
+    page,
+  }) => {
     await seedAuth(page);
     await mockBaseApis(page);
 
@@ -159,17 +170,19 @@ test.describe("HuggingFace Token Flow", () => {
     await page.goto("/dashboard");
     await openHfModal(page);
 
-    await page.getByLabel("HuggingFace API Token").fill("hf_validLengthButRejected1234");
+    await page
+      .getByLabel("HuggingFace API Token")
+      .fill("hf_validLengthButRejected1234");
     await page.getByRole("button", { name: "Save Token" }).click();
 
-    await expect(
-      page.getByText("Invalid HuggingFace token")
-    ).toBeVisible();
+    await expect(page.getByText("Invalid HuggingFace token")).toBeVisible();
     // Dialog stays open so the user can correct the token
     await expect(page.getByRole("dialog")).toBeVisible();
   });
 
-  test("toggles token visibility with the show/hide button", async ({ page }) => {
+  test("toggles token visibility with the show/hide button", async ({
+    page,
+  }) => {
     await seedAuth(page);
     await mockBaseApis(page);
 
@@ -191,7 +204,9 @@ test.describe("HuggingFace Token Flow", () => {
     await expect(input).toHaveAttribute("type", "password");
   });
 
-  test("displays existing token preview when user already has a token", async ({ page }) => {
+  test("displays existing token preview when user already has a token", async ({
+    page,
+  }) => {
     await seedAuth(page, true);
     // Return the user with a pre-existing token
     await mockBaseApis(page, userWithToken);
@@ -202,10 +217,12 @@ test.describe("HuggingFace Token Flow", () => {
     // Modal shows the "Token configured" badge
     await expect(page.getByText("Token configured")).toBeVisible();
     // Shows the masked preview: first 7 chars + **** + last 4
-    await expect(page.getByText(/hf_exis\*{4}\d{4}|hf_exis\*{4}7890/)).toBeVisible();
+    await expect(
+      page.getByText(/hf_exis\*{4}\d{4}|hf_exis\*{4}7890/),
+    ).toBeVisible();
     // Save button says "Update Token" for existing tokens
     await expect(
-      page.getByRole("button", { name: "Update Token" })
+      page.getByRole("button", { name: "Update Token" }),
     ).toBeVisible();
   });
 
@@ -230,14 +247,14 @@ test.describe("HuggingFace Token Flow", () => {
 
     await page.getByRole("button", { name: /remove/i }).click();
 
-    await expect(
-      page.getByText("Token removed successfully")
-    ).toBeVisible();
+    await expect(page.getByText("Token removed successfully")).toBeVisible();
 
     expect(removeCalled).toBe(true);
   });
 
-  test("cancel button closes the modal without making any API call", async ({ page }) => {
+  test("cancel button closes the modal without making any API call", async ({
+    page,
+  }) => {
     let apiCalled = false;
 
     await seedAuth(page);
@@ -251,7 +268,9 @@ test.describe("HuggingFace Token Flow", () => {
     await page.goto("/dashboard");
     await openHfModal(page);
 
-    await page.getByLabel("HuggingFace API Token").fill("hf_someToken1234567890");
+    await page
+      .getByLabel("HuggingFace API Token")
+      .fill("hf_someToken1234567890");
     await page.getByRole("button", { name: "Cancel" }).click();
 
     await expect(page.getByRole("dialog")).not.toBeVisible();
@@ -275,11 +294,12 @@ test.describe("HuggingFace Token Flow", () => {
     await openHfModal(page);
 
     // Clear and type a new token
-    await page.getByLabel("HuggingFace API Token").fill("hf_newReplacementToken12345");
+    await page
+      .getByLabel("HuggingFace API Token")
+      .fill("hf_newReplacementToken12345");
     await page.getByRole("button", { name: "Update Token" }).click();
 
     await expect(page.getByText("Token saved successfully")).toBeVisible();
     expect(capturedBody!.hf_token).toBe("hf_newReplacementToken12345");
   });
-
 });
