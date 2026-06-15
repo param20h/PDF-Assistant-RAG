@@ -90,36 +90,54 @@ def transform_query(query: str) -> List[str]:
 
 
 def _generate_query_variants(query: str) -> List[str]:
-    """Use the configured LLM to split/rewrite a user query for semantic search."""
+    """Use the configured LLM to rewrite a user query into 3 semantic variations.
+
+    Each variation rephrases the original from a different angle so that
+    BM25 and ChromaDB retrieve a broader, complementary set of chunks.
+    The original query is always prepended by the caller (transform_query),
+    so we ask for exactly 3 *additional* variants here.
+    """
     if not settings.HF_TOKEN:
         return []
 
     from huggingface_hub import InferenceClient
 
     client = InferenceClient(token=settings.HF_TOKEN)
+
     prompt = (
-        "Rewrite the user question into concise semantic search queries for document retrieval. "
-        "Split independent topics into separate queries. Return a JSON array of strings only. "
-        f"User question: {query}"
+        "Generate exactly 3 semantic variations of the user question below. "
+        "Each variation must preserve the original meaning but use different "
+        "vocabulary, phrasing, or sentence structure to improve document retrieval coverage. "
+        "Do NOT add new topics or change the intent. "
+        "Return ONLY a JSON array of 3 strings, with no extra text, markdown, or explanation.\n\n"
+        f"User question: {query}\n\n"
+        'Example output: ["variation one", "variation two", "variation three"]'
     )
+
     response = client.chat_completion(
         messages=[
             {
                 "role": "system",
-                "content": "You create optimized search queries for a RAG retriever.",
+                "content": (
+                    "You are a query rewriter for a RAG retrieval system. "
+                    "You output only valid JSON arrays of strings, nothing else."
+                ),
             },
             {"role": "user", "content": prompt},
         ],
         model=settings.LLM_MODEL,
         max_tokens=256,
-        temperature=0.2,
+        temperature=0.3,
     )
 
     if not response.choices:
         return []
 
     content = response.choices[0].message.content or ""
-    return _parse_query_variants(content)
+    variants = _parse_query_variants(content)
+
+    # Cap at 3 variants as requested — the original is added by transform_query
+    return variants[:3]
 
 
 def _parse_query_variants(content: str) -> List[str]:
