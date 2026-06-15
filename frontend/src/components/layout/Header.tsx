@@ -442,7 +442,9 @@ export default function Header({
                       await api.put("/api/v1/auth/hf-token", { hf_token: "" });
                       setHfSuccess("Token removed successfully");
                     } catch (e: unknown) {
-                      setHfError(e instanceof Error ? e.message : "Failed to save token");
+                      setHfError(
+                        e instanceof Error ? e.message : "Failed to save token",
+                      );
                     } finally {
                       setHfLoading(false);
                     }
@@ -478,7 +480,9 @@ export default function Header({
                       });
                       setHfSuccess("Token saved successfully");
                     } catch (e: unknown) {
-                      setHfError(e instanceof Error ? e.message : "Failed to save token");
+                      setHfError(
+                        e instanceof Error ? e.message : "Failed to save token",
+                      );
                     } finally {
                       setHfLoading(false);
                     }
