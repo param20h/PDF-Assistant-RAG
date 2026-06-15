@@ -28,7 +28,10 @@ import {
   Sun,
   Moon,
   Settings,
+  Eye,
+  EyeOff,
 } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
   Dialog,
@@ -81,6 +84,12 @@ export default function Header({
     }
     return 0.5;
   });
+  const [hfModalOpen, setHfModalOpen] = useState(false);
+  const [hfToken, setHfToken] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [hfError, setHfError] = useState("");
+  const [hfSuccess, setHfSuccess] = useState("");
+  const [hfLoading, setHfLoading] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("temperature", temperature.toString());
@@ -275,6 +284,18 @@ export default function Header({
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  setHfToken(user?.hf_token ? "" : "");
+                  setHfError("");
+                  setHfSuccess("");
+                  setHfModalOpen(true);
+                }}
+              >
+                <KeyRound className="w-4 h-4 mr-2" />
+                HuggingFace Token
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 className="text-destructive cursor-pointer"
                 onClick={handleLogout}
               >
@@ -354,6 +375,123 @@ export default function Header({
               onChange={(e) => setTemperature(Number(e.target.value))}
               className="w-full"
             />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={hfModalOpen} onOpenChange={setHfModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>HuggingFace Token</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {user?.hf_token && (
+              <div className="text-sm">
+                <span className="font-medium">Token configured: </span>
+                <span>
+                  {user.hf_token.slice(0, 7)}
+                  {"****"}
+                  {user.hf_token.slice(-4)}
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label htmlFor="hf-token-input" className="text-sm font-medium">
+                HuggingFace API Token
+              </label>
+              <div className="relative">
+                <input
+                  id="hf-token-input"
+                  type={showToken ? "text" : "password"}
+                  value={hfToken}
+                  onChange={(e) => setHfToken(e.target.value)}
+                  placeholder="hf_..."
+                  className="w-full border rounded-md px-3 py-2 pr-10 text-sm bg-background"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  aria-label={showToken ? "Hide token" : "Show token"}
+                  onClick={() => setShowToken((s) => !s)}
+                >
+                  {showToken ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {hfError && <p className="text-sm text-destructive">{hfError}</p>}
+            {hfSuccess && <p className="text-sm text-green-600">{hfSuccess}</p>}
+
+            <div className="flex justify-between gap-2">
+              {user?.hf_token && (
+                <Button
+                  variant="outline"
+                  className="text-destructive"
+                  disabled={hfLoading}
+                  onClick={async () => {
+                    setHfError("");
+                    setHfSuccess("");
+                    setHfLoading(true);
+                    try {
+                      await api.put("/api/v1/auth/hf-token", { hf_token: "" });
+                      setHfSuccess("Token removed successfully");
+                    } catch (e: unknown) {
+                      setHfError(
+                        e instanceof Error ? e.message : "Failed to save token",
+                      );
+                    } finally {
+                      setHfLoading(false);
+                    }
+                  }}
+                >
+                  Remove
+                </Button>
+              )}
+
+              <div className="flex gap-2 ml-auto">
+                <Button variant="ghost" onClick={() => setHfModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!hfToken || hfLoading}
+                  onClick={async () => {
+                    setHfError("");
+                    setHfSuccess("");
+
+                    if (!hfToken.startsWith("hf_")) {
+                      setHfError("Token must start with 'hf_'");
+                      return;
+                    }
+                    if (hfToken.length < 10) {
+                      setHfError("Token is too short");
+                      return;
+                    }
+
+                    setHfLoading(true);
+                    try {
+                      await api.put("/api/v1/auth/hf-token", {
+                        hf_token: hfToken,
+                      });
+                      setHfSuccess("Token saved successfully");
+                    } catch (e: unknown) {
+                      setHfError(
+                        e instanceof Error ? e.message : "Failed to save token",
+                      );
+                    } finally {
+                      setHfLoading(false);
+                    }
+                  }}
+                >
+                  {user?.hf_token ? "Update Token" : "Save Token"}
+                </Button>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
