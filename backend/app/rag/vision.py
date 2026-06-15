@@ -182,8 +182,13 @@ def _openai_caption(image_bytes: bytes) -> str:
         )
         return response.choices[0].message.content.strip()
 
-    except Exception as exc:
-        logger.debug("OpenAI vision caption failed: %s", exc)
+   except Exception as exc:
+        logger.warning(
+            "OpenAI vision caption failed — falling back to OCR/placeholder. "
+            "This may be a transient API error (rate-limit, timeout). Error: %s",
+            exc,
+            exc_info=True,
+        )
         return ""
 
 
@@ -227,7 +232,6 @@ def caption_image(
         dims = "unknown size"
 
     return f"Figure on page {page} ({dims})." if page else f"Figure ({dims})."
-    
     # Placeholder for provider-based captioning (e.g., OpenAI / LLaVA hooks)
     provider = getattr(settings, "VISION_PROVIDER", None)
 
@@ -273,9 +277,18 @@ def generate_captions_for_chunks(chunks: List[Dict[str, Any]]) -> None:
             chunk["is_image"] = True
             chunk["image_caption"] = caption
         except Exception as exc:
-            logger.debug("Failed to caption image chunk: %s", exc)
+            page = chunk.get("page", "?")
+            logger.warning(
+                "Caption generation failed for image on page %s — image_bytes will be "
+                "permanently discarded. This may indicate a transient network error "
+                "(e.g. API rate-limit or timeout). If this repeats, check your VLM "
+                "provider configuration. Error: %s",
+                page,
+                exc,
+                exc_info=True,
+            )
             chunk["is_image"] = True
-            fallback = f"Image on page {chunk.get('page', '?')}"
+            fallback = f"Image on page {page}"
             chunk.setdefault("text", fallback)
             chunk["image_caption"] = chunk["text"]
         finally:
