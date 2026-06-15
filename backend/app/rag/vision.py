@@ -182,7 +182,7 @@ def _openai_caption(image_bytes: bytes) -> str:
         )
         return response.choices[0].message.content.strip()
 
-   except Exception as exc:
+    except Exception as exc:
         logger.warning(
             "OpenAI vision caption failed — falling back to OCR/placeholder. "
             "This may be a transient API error (rate-limit, timeout). Error: %s",
@@ -225,26 +225,6 @@ def caption_image(
         return ocr
 
     # Fallback 2: placeholder
-    try:
-        pix = fitz.Pixmap(image_bytes)
-        dims = f"{pix.width}x{pix.height} px"
-    except Exception:
-        dims = "unknown size"
-
-    return f"Figure on page {page} ({dims})." if page else f"Figure ({dims})."
-    # Placeholder for provider-based captioning (e.g., OpenAI / LLaVA hooks)
-    provider = getattr(settings, "VISION_PROVIDER", None)
-
-    if provider == "openai":
-        caption = _openai_caption(image_bytes)
-        if caption:
-            return caption
-
-    ocr = _ocr_caption(image_bytes)
-    if ocr:
-        return ocr
-
-    # Derive dimensions for the placeholder
     try:
         pix = fitz.Pixmap(image_bytes)
         dims = f"{pix.width}x{pix.height} px"
