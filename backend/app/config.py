@@ -139,9 +139,15 @@ class Settings(BaseSettings):
     # ── Reranker ─────────────────────────────────────────
     RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3" # Lightweight 384-dim model fine-tuned for relevance ranking
     # ── Vision / Image captioning ─────────────────────
-    VISION_PROVIDER: str | None = None  # e.g. 'openai'
-    VISION_MODEL: str | None = None
+    # Set to: openai | anthropic | gemini | ollama (or leave None)
+    VISION_PROVIDER: str | None = None
+    VISION_MODEL: str | None = None  # overrides provider default model
+
+    # Provider API keys — only the active provider's key is required
     OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+    GOOGLE_API_KEY: str = ""
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
 
     # ── Workspace Invitation ─────────────────────────
     APP_URL: str = "http://localhost:3000"

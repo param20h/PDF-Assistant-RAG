@@ -11,6 +11,8 @@ VISION_PROVIDER=openai and OPENAI_API_KEY in settings.
 """
 import base64
 import logging
+import app.vision.providers  # noqa: F401 — triggers self-registration
+from app.vision.registry import get_vision_provider
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 
@@ -187,24 +189,45 @@ def _openai_caption(image_bytes: bytes) -> str:
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
-def caption_image(image_bytes: bytes, page: Optional[int] = None) -> str:
-    """Generate a caption for a single image (bytes).
-
-    Resolution order: OpenAI (if configured) → OCR → placeholder.
-    """
-def caption_image(image_bytes: bytes | List[bytes], page: int | List[int] | None = None) -> str | List[str]:
+def caption_image(
+    image_bytes: "bytes | List[bytes]",
+    page: "int | List[int] | None" = None,
+) -> "str | List[str]":
     """Generate a caption for a single image or a batch of images.
 
-    Order of operations:
-    - If a list of image bytes is passed, returns a list of captions.
-    - If an external VLM provider is configured, attempt to call it.
-    - Fall back to local OCR (pytesseract) if available.
-    - Otherwise return a simple placeholder caption including the page number.
+    Resolution order:
+      1. Configured VLM provider (set VISION_PROVIDER in .env)
+      2. Local OCR via pytesseract
+      3. Placeholder string with page number and dimensions
     """
     if isinstance(image_bytes, list):
-        pages = page if isinstance(page, list) else ([page] * len(image_bytes) if page is not None else [None] * len(image_bytes))
+        pages = (
+            page if isinstance(page, list)
+            else ([page] * len(image_bytes) if page is not None else [None] * len(image_bytes))
+        )
         return [caption_image(img, pg) for img, pg in zip(image_bytes, pages)]
 
+    # Strategy: try the configured VLM provider
+    provider = get_vision_provider(getattr(settings, "VISION_PROVIDER", None))
+    if provider is not None:
+        result = provider.caption(image_bytes)
+        if result:
+            return result
+
+    # Fallback 1: local OCR
+    ocr = _ocr_caption(image_bytes)
+    if ocr:
+        return ocr
+
+    # Fallback 2: placeholder
+    try:
+        pix = fitz.Pixmap(image_bytes)
+        dims = f"{pix.width}x{pix.height} px"
+    except Exception:
+        dims = "unknown size"
+
+    return f"Figure on page {page} ({dims})." if page else f"Figure ({dims})."
+    
     # Placeholder for provider-based captioning (e.g., OpenAI / LLaVA hooks)
     provider = getattr(settings, "VISION_PROVIDER", None)
 
