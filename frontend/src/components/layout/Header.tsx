@@ -36,8 +36,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
+import {
+  useWorkspaceStore,
+  WORKSPACES,
+  type WorkspaceId,
+} from "@/store/workspace-store";
 import { api } from "@/lib/api";
+
+import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -62,7 +68,11 @@ export default function Header({
   const { user, logout } = useAuth();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot); // ← replaces useState + useEffect
+  const mounted = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  ); // ← replaces useState + useEffect
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [temperature, setTemperature] = useState(() => {
     if (typeof window !== "undefined") {
@@ -80,7 +90,8 @@ export default function Header({
   const workspace = useWorkspaceStore((s) => s.workspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
 
-  const currentWorkspaceLabel = WORKSPACES.find((w) => w.id === workspace)?.label ?? workspace;
+  const currentWorkspaceLabel =
+    WORKSPACES.find((w) => w.id === workspace)?.label ?? workspace;
   const isDark = theme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
@@ -92,7 +103,9 @@ export default function Header({
   const fetchDocumentsForWorkspace = async (id: string) => {
     setWorkspaceLoading(true);
     try {
-      const res = await api.get(`/api/v1/documents?workspace=${encodeURIComponent(id)}`).catch(() => null);
+      const res = await api
+        .get(`/api/v1/documents?workspace=${encodeURIComponent(id)}`)
+        .catch(() => null);
       console.log("workspace change, fetched documents:", res);
     } catch (err) {
       console.warn("Failed to fetch documents for workspace", id, err);
@@ -127,7 +140,9 @@ export default function Header({
             className="h-8 w-8 hidden md:inline-flex"
             onClick={onToggleSidebar}
             title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-            aria-label={sidebarOpen ? "Close document sidebar" : "Open document sidebar"}
+            aria-label={
+              sidebarOpen ? "Close document sidebar" : "Open document sidebar"
+            }
             aria-pressed={sidebarOpen}
           >
             {sidebarOpen ? (
@@ -146,7 +161,9 @@ export default function Header({
             <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
               <Brain className="w-4 h-4 text-primary" />
             </div>
-            <span className="font-semibold text-sm hidden sm:inline">Document AI Analyst</span>
+            <span className="font-semibold text-sm hidden sm:inline">
+              Document AI Analyst
+            </span>
           </Link>
         </div>
 
@@ -185,11 +202,19 @@ export default function Header({
               className="h-8 w-8"
               onClick={toggleTheme}
               title={isDark ? "Light mode" : "Dark mode"}
-              aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label={
+                isDark ? "Switch to light mode" : "Switch to dark mode"
+              }
             >
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {isDark ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
             </Button>
           )}
+
+          <KeyboardShortcutsModal />
 
           {/* Workspace switcher */}
           <DropdownMenu>
@@ -206,7 +231,9 @@ export default function Header({
               ) : (
                 <>
                   <Briefcase className="w-4 h-4" />
-                  <span className="text-sm hidden sm:inline">{currentWorkspaceLabel}</span>
+                  <span className="text-sm hidden sm:inline">
+                    {currentWorkspaceLabel}
+                  </span>
                   <ChevronDown className="w-3 h-3" />
                 </>
               )}
@@ -242,10 +269,15 @@ export default function Header({
             <DropdownMenuContent align="end" className="w-48">
               <div className="px-3 py-2">
                 <p className="text-sm font-medium">{user?.username}</p>
-                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {user?.email}
+                </p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
+              <DropdownMenuItem
+                className="text-destructive cursor-pointer"
+                onClick={handleLogout}
+              >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign out
               </DropdownMenuItem>
@@ -299,24 +331,19 @@ export default function Header({
           </Button>
         </div>
 
-        <div className="flex-1 overflow-hidden">{sheetOpen ? mobileSheetContent : null}</div>
+        <div className="flex-1 overflow-hidden">
+          {sheetOpen ? mobileSheetContent : null}
+        </div>
       </aside>
 
-      <Dialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-      >
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              LLM Settings
-            </DialogTitle>
+            <DialogTitle>LLM Settings</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
-            <label className="text-sm">
-              Temperature: {temperature}
-            </label>
+            <label className="text-sm">Temperature: {temperature}</label>
 
             <input
               type="range"
@@ -324,9 +351,7 @@ export default function Header({
               max="1"
               step="0.1"
               value={temperature}
-              onChange={(e) =>
-                setTemperature(Number(e.target.value))
-              }
+              onChange={(e) => setTemperature(Number(e.target.value))}
               className="w-full"
             />
           </div>

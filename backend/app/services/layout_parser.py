@@ -48,6 +48,13 @@ class AdvancedPDFParser:
         image_descriptions = []
         image_list = page_obj.get_images(full=True)
 
+        try:
+            from google import genai
+            client = genai.Client()
+        except Exception as e:
+            print(f"Gemini client init failed, skipping vision: {e}")
+            return image_descriptions
+
         for img_index, img in enumerate(image_list):
             xref = img[0]
             base_image = self.doc.extract_image(xref)
