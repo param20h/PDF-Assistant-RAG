@@ -5,7 +5,7 @@ import json
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime
-from app.models import UserRole
+from app.models import UserRole, WorkspaceRole
 from app.password_validation import validate_password
 
 
@@ -363,6 +363,54 @@ class ChatSessionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Workspaces ────────────────────────────────────────
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class WorkspaceMemberResponse(BaseModel):
+    id: str
+    workspace_id: str
+    user_id: str
+    role: WorkspaceRole
+    joined_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceResponse(BaseModel):
+    id: str
+    name: str
+    created_by: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceDetailResponse(BaseModel):
+    """Workspace detail including the full member list."""
+    id: str
+    name: str
+    created_by: str
+    created_at: datetime
+    members: List[WorkspaceMemberResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceMemberAdd(BaseModel):
+    user_id: str = Field(..., min_length=1)
+    role: WorkspaceRole = WorkspaceRole.viewer
+
+
+class WorkspaceMemberRoleUpdate(BaseModel):
+    role: WorkspaceRole
 
 
 # Rebuild models for forward references
