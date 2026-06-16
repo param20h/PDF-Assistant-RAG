@@ -198,8 +198,8 @@ def _crawl_in_new_loop(url: str) -> str:
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    background_tasks: Optional[BackgroundTasks] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -296,8 +296,8 @@ async def upload_document(
 
 @router.post("/urlupload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document_url(
+        background_tasks: BackgroundTasks,
         payload: UploadUrl,
-        background_tasks: Optional[BackgroundTasks] = None,
         user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
 ):
@@ -676,7 +676,7 @@ def delete_document(
 def update_chunk_settings(
     document_id: str,
     settings_update: ChunkSettings,
-    background_tasks: Optional[BackgroundTasks] = None,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -763,7 +763,7 @@ def update_chunk_settings(
 @router.post("/{document_id}/retry", response_model=DocumentResponse)
 def retry_document_processing(
     document_id: str,
-    background_tasks: Optional[BackgroundTasks] = None,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
