@@ -77,6 +77,110 @@ def test_rename_document_returns_404_for_missing_document(client, auth_headers):
     assert response.status_code == 404
 
 
+def test_update_document_preserves_existing_rename_behavior(client, auth_headers, ready_document, db_session):
+    """The new DocumentUpdate schema should still accept 'name' the same way
+    the old DocumentRename schema did — backward compatibility."""
+    response = client.patch(
+        f"/api/v1/documents/{ready_document.id}",
+        headers=auth_headers,
+        json={"name": " renamed-report.pdf "},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == ready_document.id
+    assert payload["original_name"] == "renamed-report.pdf"
+
+    db_session.refresh(ready_document)
+    assert ready_document.original_name == "renamed-report.pdf"
+    assert ready_document.filename == "ready.txt"
+
+
+def test_update_document_sets_summary(client, auth_headers, ready_document, db_session):
+    response = client.patch(
+        f"/api/v1/documents/{ready_document.id}",
+        headers=auth_headers,
+        json={"summary": "This is a test document for RAG evaluation."},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == ready_document.id
+    assert payload["summary"] == "This is a test document for RAG evaluation."
+
+    db_session.refresh(ready_document)
+    assert ready_document.summary == "This is a test document for RAG evaluation."
+
+
+def test_update_document_sets_both_name_and_summary(client, auth_headers, ready_document, db_session):
+    response = client.patch(
+        f"/api/v1/documents/{ready_document.id}",
+        headers=auth_headers,
+        json={"name": "full-update.txt", "summary": "Both fields updated."},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["original_name"] == "full-update.txt"
+    assert payload["summary"] == "Both fields updated."
+
+    db_session.refresh(ready_document)
+    assert ready_document.original_name == "full-update.txt"
+    assert ready_document.summary == "Both fields updated."
+
+
+def test_update_document_clears_summary_with_empty_string(client, auth_headers, ready_document, db_session):
+    # First set a summary
+    ready_document.summary = "Existing summary"
+    db_session.commit()
+
+    # Then clear it with empty string
+    response = client.patch(
+        f"/api/v1/documents/{ready_document.id}",
+        headers=auth_headers,
+        json={"summary": ""},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"] is None
+
+    db_session.refresh(ready_document)
+    assert ready_document.summary is None
+
+
+def test_update_document_clears_summary_with_whitespace(client, auth_headers, ready_document, db_session):
+    ready_document.summary = "Existing summary"
+    db_session.commit()
+
+    response = client.patch(
+        f"/api/v1/documents/{ready_document.id}",
+        headers=auth_headers,
+        json={"summary": "   \t  "},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"] is None
+
+    db_session.refresh(ready_document)
+    assert ready_document.summary is None
+
+
+def test_update_document_no_fields_does_nothing(client, auth_headers, ready_document, db_session):
+    """Sending an empty body (or body with no known fields) is a no-op."""
+    response = client.patch(
+        f"/api/v1/documents/{ready_document.id}",
+        headers=auth_headers,
+        json={},
+    )
+
+    assert response.status_code == 200
+    db_session.refresh(ready_document)
+    assert ready_document.original_name == "ready.txt"
+    assert ready_document.summary is None
+
+
 def test_rename_document_returns_403_for_other_users_document(client, auth_headers, db_session, other_user):
     other_document = Document(
         user_id=other_user.id,
