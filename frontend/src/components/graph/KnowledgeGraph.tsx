@@ -62,16 +62,19 @@ interface GraphData {
 // Deliberately constrained: enough to distinguish entity types at a glance,
 // chosen for legibility on both light and dark backgrounds.
 
-const LABEL_COLOURS: Record<string, { bg: string; border: string; text: string }> = {
-  PERSON:  { bg: "#dbeafe", border: "#3b82f6", text: "#1e3a8a" },
-  ORG:     { bg: "#dcfce7", border: "#22c55e", text: "#14532d" },
-  GPE:     { bg: "#fef9c3", border: "#eab308", text: "#713f12" },
-  LOC:     { bg: "#ffedd5", border: "#f97316", text: "#7c2d12" },
-  DATE:    { bg: "#f3e8ff", border: "#a855f7", text: "#4a1d96" },
-  MONEY:   { bg: "#fce7f3", border: "#ec4899", text: "#831843" },
+const LABEL_COLOURS: Record<
+  string,
+  { bg: string; border: string; text: string }
+> = {
+  PERSON: { bg: "#dbeafe", border: "#3b82f6", text: "#1e3a8a" },
+  ORG: { bg: "#dcfce7", border: "#22c55e", text: "#14532d" },
+  GPE: { bg: "#fef9c3", border: "#eab308", text: "#713f12" },
+  LOC: { bg: "#ffedd5", border: "#f97316", text: "#7c2d12" },
+  DATE: { bg: "#f3e8ff", border: "#a855f7", text: "#4a1d96" },
+  MONEY: { bg: "#fce7f3", border: "#ec4899", text: "#831843" },
   PRODUCT: { bg: "#e0f2fe", border: "#0ea5e9", text: "#0c4a6e" },
-  EVENT:   { bg: "#fff7ed", border: "#fb923c", text: "#7c2d12" },
-  LAW:     { bg: "#f1f5f9", border: "#64748b", text: "#0f172a" },
+  EVENT: { bg: "#fff7ed", border: "#fb923c", text: "#7c2d12" },
+  LAW: { bg: "#f1f5f9", border: "#64748b", text: "#0f172a" },
   UNKNOWN: { bg: "#f8fafc", border: "#94a3b8", text: "#334155" },
 };
 
@@ -115,10 +118,16 @@ function NodeDetail({ node, connectedNames, onClose }: NodeDetailProps) {
         style={{ backgroundColor: colour.bg }}
       >
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: colour.border }}>
+          <p
+            className="text-xs font-semibold uppercase tracking-widest"
+            style={{ color: colour.border }}
+          >
             {node.label}
           </p>
-          <p className="text-sm font-bold leading-tight mt-0.5 truncate" style={{ color: colour.text }}>
+          <p
+            className="text-sm font-bold leading-tight mt-0.5 truncate"
+            style={{ color: colour.text }}
+          >
             {node.name}
           </p>
         </div>
@@ -136,12 +145,17 @@ function NodeDetail({ node, connectedNames, onClose }: NodeDetailProps) {
       <div className="px-3 py-2 space-y-2 text-xs text-zinc-600 dark:text-zinc-400">
         <div className="flex justify-between">
           <span>Mentions</span>
-          <span className="font-semibold text-zinc-900 dark:text-zinc-100">{node.mentions}</span>
+          <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+            {node.mentions}
+          </span>
         </div>
         <div className="flex justify-between">
           <span>Pages</span>
           <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-            {node.pages.length > 0 ? node.pages.slice(0, 6).join(", ") + (node.pages.length > 6 ? "…" : "") : "—"}
+            {node.pages.length > 0
+              ? node.pages.slice(0, 6).join(", ") +
+                (node.pages.length > 6 ? "…" : "")
+              : "—"}
           </span>
         </div>
         {connectedNames.length > 0 && (
@@ -149,12 +163,17 @@ function NodeDetail({ node, connectedNames, onClose }: NodeDetailProps) {
             <p className="mb-1">Connected to</p>
             <ul className="space-y-0.5">
               {connectedNames.slice(0, 5).map((name) => (
-                <li key={name} className="truncate font-medium text-zinc-800 dark:text-zinc-200">
+                <li
+                  key={name}
+                  className="truncate font-medium text-zinc-800 dark:text-zinc-200"
+                >
                   · {name}
                 </li>
               ))}
               {connectedNames.length > 5 && (
-                <li className="text-zinc-400">+{connectedNames.length - 5} more</li>
+                <li className="text-zinc-400">
+                  +{connectedNames.length - 5} more
+                </li>
               )}
             </ul>
           </div>
@@ -176,7 +195,11 @@ function Legend({ labels }: { labels: string[] }) {
           <span
             key={label}
             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border"
-            style={{ backgroundColor: c.bg, borderColor: c.border, color: c.text }}
+            style={{
+              backgroundColor: c.bg,
+              borderColor: c.border,
+              color: c.text,
+            }}
           >
             {label}
           </span>
@@ -193,7 +216,10 @@ interface KnowledgeGraphProps {
   onClose: () => void;
 }
 
-export default function KnowledgeGraph({ documentId, onClose }: KnowledgeGraphProps) {
+export default function KnowledgeGraph({
+  documentId,
+  onClose,
+}: KnowledgeGraphProps) {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -228,7 +254,10 @@ export default function KnowledgeGraph({ documentId, onClose }: KnowledgeGraphPr
             label: (
               <div
                 className="flex items-center justify-center text-center font-semibold leading-tight px-1"
-                style={{ fontSize: Math.max(9, size * 0.22), color: colour.text }}
+                style={{
+                  fontSize: Math.max(9, size * 0.22),
+                  color: colour.text,
+                }}
                 title={n.name}
               >
                 {n.name.length > 14 ? n.name.slice(0, 13) + "…" : n.name}
@@ -275,7 +304,8 @@ export default function KnowledgeGraph({ documentId, onClose }: KnowledgeGraphPr
       setNodes(rfNodes);
       setEdges(rfEdges);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load knowledge graph";
+      const msg =
+        err instanceof Error ? err.message : "Failed to load knowledge graph";
       setError(msg);
     } finally {
       setLoading(false);
@@ -288,20 +318,21 @@ export default function KnowledgeGraph({ documentId, onClose }: KnowledgeGraphPr
 
   // ── Node click → show detail panel ─────────────────────────────────────────
 
-  const onNodeClick = useCallback<NodeMouseHandler>(
-    (_event, node) => {
-      const raw = (node.data as { _raw?: GraphNode })._raw;
-      if (raw) setSelectedNode(raw);
-    },
-    [],
-  );
+  const onNodeClick = useCallback<NodeMouseHandler>((_event, node) => {
+    const raw = (node.data as { _raw?: GraphNode })._raw;
+    if (raw) setSelectedNode(raw);
+  }, []);
 
   // Names of nodes connected to the selected node
   const connectedNames = useMemo(() => {
     if (!selectedNode || !graphData) return [];
-    const nodeMap = Object.fromEntries(graphData.nodes.map((n) => [n.id, n.name]));
+    const nodeMap = Object.fromEntries(
+      graphData.nodes.map((n) => [n.id, n.name]),
+    );
     return graphData.edges
-      .filter((e) => e.source === selectedNode.id || e.target === selectedNode.id)
+      .filter(
+        (e) => e.source === selectedNode.id || e.target === selectedNode.id,
+      )
       .map((e) => nodeMap[e.source === selectedNode.id ? e.target : e.source])
       .filter(Boolean);
   }, [selectedNode, graphData]);
@@ -328,12 +359,15 @@ export default function KnowledgeGraph({ documentId, onClose }: KnowledgeGraphPr
             Knowledge Graph
             {graphData && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {graphData.node_count} entities · {graphData.edge_count} connections
+                {graphData.node_count} entities · {graphData.edge_count}{" "}
+                connections
               </span>
             )}
           </h2>
           {graphData && (
-            <p className="text-xs text-muted-foreground truncate">{graphData.document_name}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {graphData.document_name}
+            </p>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-3">
@@ -365,7 +399,9 @@ export default function KnowledgeGraph({ documentId, onClose }: KnowledgeGraphPr
         {loading && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/80 backdrop-blur-sm">
             <RefreshCw className="h-8 w-8 animate-spin text-primary/60" />
-            <p className="text-sm text-muted-foreground">Building knowledge graph…</p>
+            <p className="text-sm text-muted-foreground">
+              Building knowledge graph…
+            </p>
           </div>
         )}
 
@@ -377,7 +413,9 @@ export default function KnowledgeGraph({ documentId, onClose }: KnowledgeGraphPr
             </div>
             <div>
               <p className="text-sm font-medium mb-1">Graph not available</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">{error}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {error}
+              </p>
             </div>
             <button
               type="button"
@@ -398,8 +436,8 @@ export default function KnowledgeGraph({ documentId, onClose }: KnowledgeGraphPr
             <div>
               <p className="text-sm font-medium mb-1">No entities found</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                No named entities were extracted from this document.
-                Try a document with named people, organisations, or places.
+                No named entities were extracted from this document. Try a
+                document with named people, organisations, or places.
               </p>
             </div>
           </div>
@@ -424,7 +462,12 @@ export default function KnowledgeGraph({ documentId, onClose }: KnowledgeGraphPr
             elementsSelectable
             attributionPosition="bottom-right"
           >
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(var(--border))" />
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={20}
+              size={1}
+              color="hsl(var(--border))"
+            />
             <Controls
               showInteractive={false}
               className="!border-border !bg-card !shadow-sm [&>button]:!border-border [&>button]:!bg-card [&>button]:!text-foreground"
