@@ -18,6 +18,7 @@ import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
 import DocumentCard from "./DocumentCard";
 import { toast } from "sonner";
+import { ConfirmationDialog } from "@/components/ui/confirm-dialog";
 
 interface Props {
   documents: DocInfo[];
@@ -63,6 +64,7 @@ export default function DocumentSidebar({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteConfirmDocId, setDeleteConfirmDocId] = useState<string | null>(null);
   const [settingsDoc, setSettingsDoc] = useState<DocInfo | null>(null);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -137,10 +139,16 @@ export default function DocumentSidebar({
     disabled: uploading,
   });
 
-  const handleDelete = async (docId: string, e: React.MouseEvent) => {
+  const handleDelete = (docId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(t("documents.deleteConfirm"))) return;
+    setDeleteConfirmDocId(docId);
+  };
+
+  const executeDelete = async () => {
+    if (!deleteConfirmDocId) return;
+    const docId = deleteConfirmDocId;
     setDeleting(docId);
+    setDeleteConfirmDocId(null);
     try {
       await api.delete(`/api/v1/documents/${docId}`);
       await onDocumentsChange();
@@ -466,6 +474,19 @@ export default function DocumentSidebar({
           </div>
         )}
       </ScrollArea>
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        open={deleteConfirmDocId !== null}
+        onOpenChange={(open) => { if (!open) setDeleteConfirmDocId(null); }}
+        title={t("documents.deleteTitle") || "Delete Document"}
+        message={t("documents.deleteConfirm")}
+        confirmLabel={t("documents.deleteConfirmLabel") || "Delete"}
+        cancelLabel={t("documents.deleteCancelLabel") || "Cancel"}
+        variant="danger"
+        loading={deleting !== null}
+        onConfirm={executeDelete}
+      />
+
       {/* Settings Modal */}
       {/* The DocumentSettings component is rendered here and controlled by the settingsDoc state. When a user clicks the settings button for a document, it sets that document in settingsDoc, which opens the modal. The modal can then call onDocumentsChange to refresh the list after saving settings. */}
       {settingsDoc && (
