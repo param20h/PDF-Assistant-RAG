@@ -81,6 +81,7 @@ def get_agent_executor(
 
     llm = HuggingFaceEndpoint(
         repo_id=settings.LLM_MODEL,
+        model=settings.LLM_MODEL,
         huggingfacehub_api_token=token,
         max_new_tokens=settings.LLM_MAX_NEW_TOKENS,
         temperature=settings.LLM_TEMPERATURE,
@@ -147,7 +148,8 @@ def generate_answer(
                 model=settings.LLM_MODEL,
                 max_tokens=256,
             )
-            answer = response.choices[0].message.content.strip() if response.choices else "Hello! How can I help you today?"
+            content = response.choices[0].message.content if response.choices else None
+            answer = content.strip() if content else "Hello! How can I help you today?"
         except Exception:
             answer = "Hello! I'm Document AI Analyst. How can I help you with your documents?"
         return {"answer": answer, "sources": []}

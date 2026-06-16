@@ -200,6 +200,8 @@ def _crawl_in_new_loop(url: str) -> str:
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    chunk_size: Optional[int] = Query(None, ge=100, le=2000),
+    chunk_overlap: Optional[int] = Query(None, ge=0),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -217,6 +219,8 @@ async def upload_document(
         background_tasks: FastAPI BackgroundTasks instance for in-process fallback execution.
         user: The currently authenticated user, injected by the `get_current_user` dependency.
         db: Database session, injected by the `get_db` dependency.
+        chunk_size: Optional custom chunk size for splitting the document.
+        chunk_overlap: Optional custom chunk overlap for splitting the document.
 
     Returns:
         DocumentResponse: The created document record, validated against the
@@ -261,6 +265,8 @@ async def upload_document(
         original_name=file.filename,
         file_size=file_size,
         status="pending",
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
     )
     db.add(document)
     db.commit()

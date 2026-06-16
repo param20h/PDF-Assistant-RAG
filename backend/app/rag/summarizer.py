@@ -66,7 +66,8 @@ def generate_document_summary(
             max_tokens=settings.SUMMARY_MAX_TOKENS,
             temperature=settings.LLM_TEMPERATURE,
         )
-        summary = response.choices[0].message.content.strip() if response.choices else None
+        content = response.choices[0].message.content if response.choices else None
+        summary = content.strip() if content else None
 
         return summary or None
 
