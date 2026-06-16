@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -10,6 +8,7 @@ import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatSessionSidebar from "@/components/chat/ChatSessionSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
+
 function PDFViewerSkeleton() {
   return (
     <div
@@ -40,6 +39,12 @@ const PDFViewer = dynamic(() => import("@/components/document/PDFViewer"), {
   ssr: false,
   loading: () => <PDFViewerSkeleton />,
 });
+
+// Lazy-load the graph panel — it pulls in @xyflow/react which is sizeable
+const KnowledgeGraph = dynamic(
+  () => import("@/components/graph/KnowledgeGraph"),
+  { ssr: false },
+);
 
 export interface DocInfo {
   chunk_size?: number;
@@ -76,6 +81,7 @@ export default function DashboardPage() {
   } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
+  const [graphOpen, setGraphOpen] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(true);
 
@@ -95,7 +101,6 @@ export default function DashboardPage() {
   useEffect(() => {
     if (user) {
       const hasHfToken = !!(user.hf_token || localStorage.getItem("hf_token"));
-
       if (!hasHfToken) {
         console.info(
           "Hugging Face API token is not configured. Personal model access will fall back to the system default unless set in the user profile menu."
@@ -138,7 +143,6 @@ export default function DashboardPage() {
     const nextPrevDocs: Record<string, string> = {};
     (documents || []).forEach((doc) => {
       nextPrevDocs[doc.id] = doc.status;
-
       const oldStatus = prev[doc.id];
       if (oldStatus && oldStatus !== doc.status) {
         if (doc.status === "ready") {
@@ -157,10 +161,14 @@ export default function DashboardPage() {
       (d) => d.status === "pending" || d.status === "processing"
     );
     if (!hasPending) return;
-
     const interval = setInterval(loadDocuments, 3000);
     return () => clearInterval(interval);
   }, [documents, loadDocuments]);
+
+  // Close graph panel when active document changes
+  useEffect(() => {
+    setGraphOpen(false);
+  }, [activeDoc?.id]);
 
   if (!initialized || !user) {
     return (
@@ -170,7 +178,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Shared sidebar content — used by both desktop panel and mobile sheet
   const sidebarContent = (
     <DocumentSidebar
       documents={documents}
@@ -186,13 +193,20 @@ export default function DashboardPage() {
   );
 
   return (
-    // min-w-[375px] ensures the layout never squishes below iPhone SE width
     <div className="h-screen flex flex-col overflow-hidden min-w-[375px]">
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         viewerOpen={viewerOpen}
         onToggleViewer={() => setViewerOpen(!viewerOpen)}
+        graphOpen={graphOpen}
+        onToggleGraph={() => {
+          if (!activeDoc) {
+            toast.info("Select a document first to view its knowledge graph.");
+            return;
+          }
+          setGraphOpen((v) => !v);
+        }}
         mobileSheetContent={sidebarContent}
       />
 
@@ -206,17 +220,17 @@ export default function DashboardPage() {
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        {/* ── Left: Document Sidebar — desktop only (md+) ─────────── */}
+        {/* ── Left: Document Sidebar — desktop only ───────────────────── */}
         {sidebarOpen && (
           <div className="hidden md:block w-72 flex-shrink-0 border-r border-border/50 overflow-hidden animate-fade-in-up">
             {sidebarContent}
           </div>
         )}
 
-        {/* ── Left-Center: Chat Sessions Sidebar ──── */}
+        {/* ── Left-Center: Chat Sessions Sidebar ──────────────────────── */}
         <ChatSessionSidebar />
 
-        {/* ── Center: Chat Panel ──────────────────────────────────── */}
+        {/* ── Center: Chat Panel ───────────────────────────────────────── */}
         <div className="flex-1 min-w-0 flex flex-col">
           <ChatPanel
             activeDoc={activeDoc}
@@ -228,8 +242,8 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* ── Right: PDF Viewer — hidden on mobile ────────────────── */}
-        {viewerOpen && activeDoc && activeDoc.original_name.endsWith(".pdf") && (
+        {/* ── Right: PDF Viewer — hidden on mobile ─────────────────────── */}
+        {viewerOpen && !graphOpen && activeDoc && activeDoc.original_name.endsWith(".pdf") && (
           <div className="hidden md:block w-[480px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
             <PDFViewer
               documentId={activeDoc.id}
@@ -242,6 +256,16 @@ export default function DashboardPage() {
               }}
               totalPages={activeDoc.page_count}
               highlightTarget={pdfHighlightTarget}
+            />
+          </div>
+        )}
+
+        {/* ── Right: Knowledge Graph panel ─────────────────────────────── */}
+        {graphOpen && activeDoc && (
+          <div className="hidden md:flex w-[520px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
+            <KnowledgeGraph
+              documentId={activeDoc.id}
+              onClose={() => setGraphOpen(false)}
             />
           </div>
         )}
