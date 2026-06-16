@@ -312,10 +312,12 @@ export default function KnowledgeGraph({
   }, [documentId, setNodes, setEdges]);
 
   useEffect(() => {
-    fetchGraph();
-    // fetchGraph is stable (memoised on documentId) — safe to omit from deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId]);
+    const timer = setTimeout(() => {
+      void fetchGraph();
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [fetchGraph]);
 
   // ── Node click → show detail panel ─────────────────────────────────────────
 
