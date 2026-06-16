@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 from app.models import Document
+from app.rag.agent import persist_document_keywords
 from app.rag.chunker import chunk_document, get_page_count
 from app.rag.vectorstore import store_chunks
 from app.config import get_settings
@@ -73,6 +74,38 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
         except TypeError:
             chunks = chunk_document(filepath)
 
+        # ── Proximity caption pass (PDF only) ────────────────────────────────
+        # Write bounding-box-derived captions into image chunks BEFORE store_chunks()
+        # so generate_captions_for_chunks() in vectorstore.py only needs to handle
+        # the OCR / placeholder fallback for any images without adjacent text.
+        ext = filepath.rsplit(".", 1)[-1].lower()
+        if ext == "pdf":
+            try:
+                from app.rag.vision import extract_captions_from_pdf
+
+                pdf_captions = extract_captions_from_pdf(filepath)
+                # Build lookup: page -> [captions in figure_index order]
+                caption_map: dict = {}
+                for cap in pdf_captions:
+                    caption_map.setdefault(cap["page"], []).append(cap)
+
+                fig_counters: dict = {}
+                for chunk in chunks:
+                    if not chunk.get("image_bytes"):
+                        continue
+                    page = chunk.get("page", 1)
+                    idx = fig_counters.get(page, 0)
+                    page_caps = caption_map.get(page, [])
+                    if idx < len(page_caps) and page_caps[idx]["caption"]:
+                        chunk["image_caption"] = page_caps[idx]["caption"]
+                        chunk["bbox"] = str(page_caps[idx]["bbox"])
+                    fig_counters[page] = idx + 1
+            except Exception as exc:
+                logger.warning(
+                    "Proximity caption extraction failed for %s: %s", document_id, exc
+                )
+        # ── End proximity caption pass ────────────────────────────────────────
+
         if not chunks:
             doc.status = "failed"
             doc.processing_progress = 0
@@ -102,6 +135,8 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
             filename=original_name,
             user_id=user_id,
         )
+
+        persist_document_keywords(doc, chunks, db)
 
         doc.processing_progress = 85
         db.commit()

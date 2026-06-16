@@ -20,9 +20,18 @@ from app.exceptions import ExternalServiceException
 from app.rag.security import MALFORMED_OUTPUT_MESSAGE, OutputParserError, parse_agent_output
 from app.rag.tools import PDFSearchTool, MathTool, WebSearchTool
 from app.rag.tracing import trace_function
+from app.rag.keywords import extract_keywords
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def persist_document_keywords(document, chunks, db) -> None:
+    """Extract TF-IDF keywords after indexing and persist on the document row."""
+    raw_texts = [c["text"] for c in chunks]
+    kws = extract_keywords(raw_texts, top_n=10)
+    document.keywords = json.dumps(kws)
+    db.add(document)
 
 
 

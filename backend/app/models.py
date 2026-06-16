@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     Boolean,
     Enum as SQLAlchemyEnum,
+    UniqueConstraint,
 )
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -106,6 +107,12 @@ class UserRole(str, enum.Enum):
     admin = "admin"
 
 
+class WorkspaceRole(str, enum.Enum):
+    admin = "admin"
+    editor = "editor"
+    viewer = "viewer"
+
+
 class User(Base):
     """
     Represents a registered user within the system.
@@ -163,6 +170,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    workspace_memberships = relationship(
+        "WorkspaceMember",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApiKey(Base):
@@ -188,11 +200,11 @@ class ApiKey(Base):
 class WorkspaceInvitation(Base):
     __tablename__ = "workspace_invitations"
 
-    id = Column(String, primary_key=True, default=generate_uuid)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     email = Column(String(120), nullable=False, index=True)
     token_hash = Column(String(255), nullable=False, unique=True, index=True)
     inviter_id = Column(
-        String,
+        GUID,
         ForeignKey("users.id"),
         nullable=False,
         index=True,
@@ -203,6 +215,88 @@ class WorkspaceInvitation(Base):
     accepted_at = Column(DateTime, nullable=True)
 
     inviter = relationship("User")
+
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+
+    name = Column(String(255), nullable=False)
+
+    created_by = Column(
+        GUID,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    creator = relationship("User")
+
+    members = relationship(
+        "WorkspaceMember",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+
+
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "user_id",
+            name="uq_workspace_member",
+        ),
+    )
+
+    id = Column(
+        GUID,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    workspace_id = Column(
+        GUID,
+        ForeignKey("workspaces.id"),
+        nullable=False,
+        index=True,
+    )
+
+    user_id = Column(
+        GUID,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+
+    role = Column(
+        SQLAlchemyEnum(WorkspaceRole),
+        nullable=False,
+        default=WorkspaceRole.viewer,
+        server_default="viewer",
+    )
+
+    joined_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    workspace = relationship(
+        "Workspace",
+        back_populates="members",
+    )
+
+    user = relationship(
+        "User",
+        back_populates="workspace_memberships",
+    )
 
 
 class ChatSession(Base):

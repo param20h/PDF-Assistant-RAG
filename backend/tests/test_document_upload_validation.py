@@ -151,6 +151,8 @@ def test_upload_document_handles_duplicate_original_names(
     first = _run(
         documents.upload_document(
             file=_upload_file("same-name.pdf", b"first"),
+            chunk_size=1000,
+            chunk_overlap=200,
             user=user,
             db=session,
         )
@@ -158,6 +160,8 @@ def test_upload_document_handles_duplicate_original_names(
     second = _run(
         documents.upload_document(
             file=_upload_file("same-name.pdf", b"second"),
+            chunk_size=1000,
+            chunk_overlap=200,
             user=user,
             db=session,
         )

@@ -87,7 +87,17 @@ def trace_function(
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(fn)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
-            metadata = metadata_factory(*args, **kwargs) if metadata_factory else None
+            metadata = None
+            if metadata_factory:
+                try:
+                    metadata = metadata_factory(*args, **kwargs)
+                except Exception:
+                    logger.warning(
+                        "Metadata factory failed for trace %r; continuing without metadata.",
+                        name,
+                        exc_info=True,
+                    )
+                    metadata = {}
             return trace_call(
                 name,
                 fn,
