@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
