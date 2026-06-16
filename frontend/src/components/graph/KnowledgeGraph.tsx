@@ -11,7 +11,7 @@
  * onClose     – called when the user dismisses the panel
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -29,7 +29,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import { X, RefreshCw, Info, ZoomIn, ZoomOut } from "lucide-react";
+import { X, RefreshCw, Info } from "lucide-react";
 import { api } from "@/lib/api";
 
 // ── API types ─────────────────────────────────────────────────────────────────
@@ -313,8 +313,8 @@ export default function KnowledgeGraph({
   }, [documentId, setNodes, setEdges]);
 
   useEffect(() => {
-    fetchGraph();
-  }, [fetchGraph]);
+    void fetchGraph();
+  }, [documentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Node click → show detail panel ─────────────────────────────────────────
 

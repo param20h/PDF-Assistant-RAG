@@ -178,10 +178,12 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [documents, loadDocuments]);
 
-  // Close graph panel when active document changes
-  useEffect(() => {
-    setGraphOpen(false);
-  }, [activeDoc?.id]);
+  // Close graph panel when active document changes — derive from render
+  const prevDocIdRef = useRef<string | null>(null);
+  if (activeDoc?.id !== prevDocIdRef.current) {
+    prevDocIdRef.current = activeDoc?.id ?? null;
+    if (graphOpen) setGraphOpen(false);
+  }
 
   if (!initialized || !user) {
     return (
