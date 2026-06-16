@@ -7,9 +7,24 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, GitBranch } from "lucide-react";
+import {
+  Brain,
+  User,
+  Copy,
+  Check,
+  Share2,
+  Link2,
+  X,
+  Play,
+  Pause,
+  GitBranch,
+} from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/store/chat-store";
 import { useSettingsStore } from "@/store/settings-store";
@@ -78,12 +93,13 @@ export default function MessageBubble({ message }: Props) {
     };
   }, []);
 
+  const setCurrentBranchId = useChatStore((s) => s.setCurrentBranchId);
 
-const setCurrentBranchId = useChatStore(
-  (s) => s.setCurrentBranchId
-);
-
-  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const mounted = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  );
   const fontSize = useSettingsStore((s) => s.fontSize);
 
   const activeFontSize = mounted ? fontSize : "medium";
@@ -109,9 +125,11 @@ const setCurrentBranchId = useChatStore(
     if (!message.content || message.isStreaming) return;
     try {
       const data = await api.post<{ message_id: string; share_url: string }>(
-        `/api/v1/chat/share/${message.id}`
+        `/api/v1/chat/share/${message.id}`,
       );
-      await navigator.clipboard.writeText(`${window.location.origin}${data.share_url}`);
+      await navigator.clipboard.writeText(
+        `${window.location.origin}${data.share_url}`,
+      );
       setShared(true);
       setShareFailed(false);
       if (sharedTimeoutRef.current) clearTimeout(sharedTimeoutRef.current);
@@ -157,13 +175,12 @@ const setCurrentBranchId = useChatStore(
     window.speechSynthesis.speak(utterance);
   };
 
-const handleBranch = () => {
-  setCurrentBranchId(message.id);
+  const handleBranch = () => {
+    setCurrentBranchId(message.id);
 
-  console.log("Branch created from:", message.id);
-};
-    
-  
+    console.log("Branch created from:", message.id);
+  };
+
   return (
     <div
       className={`flex gap-3 py-3 animate-fade-in-up ${isUser ? "justify-end" : "justify-start"}`}
@@ -182,7 +199,9 @@ const handleBranch = () => {
         }`}
       >
         {isUser ? (
-          <p className={`leading-relaxed whitespace-pre-wrap ${fontSizeClass}`}>{message.content}</p>
+          <p className={`leading-relaxed whitespace-pre-wrap ${fontSizeClass}`}>
+            {message.content}
+          </p>
         ) : (
           <>
             {message.content && (
@@ -217,7 +236,9 @@ const handleBranch = () => {
                             : "text-muted-foreground hover:text-foreground",
                         )}
                         onClick={handleSpeech}
-                        aria-label={isSpeaking ? "Stop reading" : "Read response aloud"}
+                        aria-label={
+                          isSpeaking ? "Stop reading" : "Read response aloud"
+                        }
                         aria-pressed={isSpeaking}
                       >
                         {isSpeaking ? (
@@ -250,7 +271,9 @@ const handleBranch = () => {
                         <Copy className="w-3.5 h-3.5" />
                       )}
                     </TooltipTrigger>
-                    <TooltipContent>{copied ? "Copied" : "Copy response"}</TooltipContent>
+                    <TooltipContent>
+                      {copied ? "Copied" : "Copy response"}
+                    </TooltipContent>
                   </Tooltip>
 
                   {/* Share button */}
@@ -263,7 +286,13 @@ const handleBranch = () => {
                           "text-muted-foreground hover:text-foreground",
                         )}
                         onClick={handleShare}
-                        aria-label={shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
+                        aria-label={
+                          shared
+                            ? "Link copied"
+                            : shareFailed
+                              ? "Share failed"
+                              : "Share response"
+                        }
                       >
                         {shared ? (
                           <Link2 className="w-3.5 h-3.5 text-emerald-400" />
@@ -274,7 +303,11 @@ const handleBranch = () => {
                         )}
                       </TooltipTrigger>
                       <TooltipContent>
-                        {shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
+                        {shared
+                          ? "Link copied"
+                          : shareFailed
+                            ? "Share failed"
+                            : "Share response"}
                       </TooltipContent>
                     </Tooltip>
                   )}
@@ -289,8 +322,12 @@ const handleBranch = () => {
                     Copied!
                   </div>
                 )}
+              </>
+            )}
 
-            <div className={`prose-chat ${fontSizeClass} ${message.content ? "pr-24" : ""}`}>
+            <div
+              className={`prose-chat ${fontSizeClass} ${message.content ? "pr-24" : ""}`}
+            >
               {message.content ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -310,24 +347,21 @@ const handleBranch = () => {
                 <span className="inline-block w-0.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
               )}
             </div>
-            
-        
           </>
         )}
-        
-         <div
+
+        <div
           className={`text-xs text-muted-foreground mt-2 ${
             isUser ? "text-right" : "text-left"
           }`}
           title={new Date(Number(message.id.split("-")[1])).toLocaleString()}
         >
-          {formatDistanceToNow(
-            new Date(Number(message.id.split("-")[1])),
-            { addSuffix: true }
-          )}
+          {formatDistanceToNow(new Date(Number(message.id.split("-")[1])), {
+            addSuffix: true,
+          })}
         </div>
       </div>
-       {isUser && (
+      {isUser && (
         <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
           <User className="w-4 h-4 text-primary-foreground" />
         </div>
