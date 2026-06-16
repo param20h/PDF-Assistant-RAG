@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-def _update_progress(document_id: str, progress: int, stage: str, error: str = None):
+def _update_progress(document_id: str, progress: int, stage: str, error: str | None = None):
     """Update document progress fields in the database."""
     from app.database import SessionLocal
 
@@ -21,10 +21,10 @@ def _update_progress(document_id: str, progress: int, stage: str, error: str = N
     try:
         doc = db.query(Document).filter(Document.id == document_id).first()
         if doc:
-            doc.processing_progress = progress
-            doc.processing_stage = stage
+            doc.processing_progress = progress  # type: ignore
+            doc.processing_stage = stage  # type: ignore
             if error:
-                doc.error_message = error
+                doc.error_message = error  # type: ignore
             db.commit()
     except Exception as e:
         logger.warning("Failed to update progress for %s: %s", document_id, e)
@@ -49,16 +49,16 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
             logger.error("Document %s not found for ingestion", document_id)
             return
 
-        doc.status = "processing"
-        doc.processing_stage = "extracting"
-        doc.processing_progress = 10
-        doc.error_message = None
-        doc.last_error_traceback = None
+        doc.status = "processing"  # type: ignore
+        doc.processing_stage = "extracting"  # type: ignore
+        doc.processing_progress = 10  # type: ignore
+        doc.error_message = None  # type: ignore
+        doc.last_error_traceback = None  # type: ignore
         db.commit()
 
         page_count = get_page_count(filepath)
-        doc.page_count = page_count
-        doc.processing_progress = 20
+        doc.page_count = page_count  # type: ignore
+        doc.processing_progress = 20  # type: ignore
         db.commit()
 
         try:
@@ -67,8 +67,8 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
                 chunk_kwargs["chunk_size"] = doc.chunk_size
             if doc.chunk_overlap is not None:
                 chunk_kwargs["chunk_overlap"] = doc.chunk_overlap
-            doc.processing_stage = "chunking"
-            doc.processing_progress = 30
+            doc.processing_stage = "chunking"  # type: ignore
+            doc.processing_progress = 30  # type: ignore
             db.commit()
             chunks = chunk_document(filepath, **chunk_kwargs)
         except TypeError:
@@ -107,14 +107,14 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
         # ── End proximity caption pass ────────────────────────────────────────
 
         if not chunks:
-            doc.status = "failed"
-            doc.processing_progress = 0
-            doc.error_message = "No text could be extracted from the document"
+            doc.status = "failed"  # type: ignore
+            doc.processing_progress = 0  # type: ignore
+            doc.error_message = "No text could be extracted from the document"  # type: ignore
             db.commit()
             return
 
-        doc.processing_progress = 50
-        doc.processing_stage = "indexing"
+        doc.processing_progress = 50  # type: ignore
+        doc.processing_stage = "indexing"  # type: ignore
         db.commit()
 
         try:
@@ -125,8 +125,8 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
         except Exception as e:
             logger.warning("Could not build knowledge graph for document %s: %s", document_id, e)
 
-        doc.processing_progress = 70
-        doc.processing_stage = "embedding"
+        doc.processing_progress = 70  # type: ignore
+        doc.processing_stage = "embedding"  # type: ignore
         db.commit()
 
         chunk_count = store_chunks(
@@ -138,7 +138,7 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
 
         persist_document_keywords(doc, chunks, db)
 
-        doc.processing_progress = 85
+        doc.processing_progress = 85  # type: ignore
         db.commit()
 
         try:
@@ -146,11 +146,11 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
 
             summary = generate_document_summary(filepath, max_sentences=2)
             if summary:
-                doc.summary = summary
+                doc.summary = summary  # type: ignore
                 db.commit()
         except Exception as e:
             logger.warning("Could not generate summary for document %s: %s", document_id, e)
-            doc.summary = None
+            doc.summary = None  # type: ignore
 
         # ── URL extraction pass (PDF only) ────────────────────────────────
         ext = filepath.rsplit(".", 1)[-1].lower()
@@ -160,7 +160,7 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
                 import json
 
                 urls = extract_urls_from_pdf(filepath)
-                doc.extracted_urls = json.dumps(urls) if urls else None
+                doc.extracted_urls = json.dumps(urls) if urls else None  # type: ignore
                 db.commit()
                 logger.info(
                     "Extracted %s URLs from document %s",
@@ -175,12 +175,12 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
                 )
         # ── End URL extraction pass ───────────────────────────────────────
 
-        doc.chunk_count = chunk_count
-        doc.status = "ready"
-        doc.processing_progress = 100
-        doc.processing_stage = "completed"
-        doc.completed_at = datetime.now(timezone.utc)
-        doc.error_message = None
+        doc.chunk_count = chunk_count  # type: ignore
+        doc.status = "ready"  # type: ignore
+        doc.processing_progress = 100  # type: ignore
+        doc.processing_stage = "completed"  # type: ignore
+        doc.completed_at = datetime.now(timezone.utc)  # type: ignore
+        doc.error_message = None  # type: ignore
         db.commit()
 
         logger.info(
@@ -199,10 +199,10 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
                 Document.is_deleted.is_(False),
             ).first()
             if doc:
-                doc.status = "failed"
-                doc.processing_progress = 0
-                doc.error_message = str(e)[:500]
-                doc.last_error_traceback = traceback.format_exc()[:2000]
+                doc.status = "failed"  # type: ignore
+                doc.processing_progress = 0  # type: ignore
+                doc.error_message = str(e)[:500]  # type: ignore
+                doc.last_error_traceback = traceback.format_exc()[:2000]  # type: ignore
                 db.commit()
         except Exception:
             logger.exception("Failed to mark document %s as failed", document_id)
