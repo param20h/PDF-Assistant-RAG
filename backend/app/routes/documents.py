@@ -501,7 +501,9 @@ def list_documents(
         items=[_deserialize_doc(d) for d in docs],
         total=totalDocuments,
         page=page,
-        pages=pages
+        pages=pages,
+        total_pages=pages,
+        limit=per_page,
     )
 
 
@@ -532,12 +534,11 @@ def update_document(
         raise ForbiddenException("You do not have permission to update this document")
 
     if update.name is not None:
-        doc.original_name = update.name
+        doc.original_name = update.name  # type: ignore
     if update.summary is not None:
         stripped = update.summary.strip()
-        doc.summary = stripped if stripped else None
+        doc.summary = stripped if stripped else None  # type: ignore
 
-    doc.original_name = rename.name  # type: ignore
     db.commit()
     db.refresh(doc)
 

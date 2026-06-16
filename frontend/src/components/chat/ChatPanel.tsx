@@ -4,13 +4,28 @@ import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api, API_BASE } from "@/lib/api";
-import { useChatStore, type ChatMsg, type SourceChunk, type SourceBoundingBox } from "@/store/chat-store";
+import {
+  useChatStore,
+  type ChatMsg,
+  type SourceChunk,
+  type SourceBoundingBox,
+} from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
-import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff, Settings2, HelpCircle } from "lucide-react";
+import {
+  Send,
+  Loader2,
+  Trash2,
+  MessageSquare,
+  Download,
+  Mic,
+  MicOff,
+  Settings2,
+  HelpCircle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Custom toast notification helper (change to your project's toast library if different)
@@ -73,7 +88,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const setStreaming = useChatStore((state) => state.setStreaming);
   const setIsTyping = useChatStore((state) => state.setIsTyping);
   const resetChat = useChatStore((state) => state.resetChat);
-  const fetchSessionHistory = useChatStore((state) => state.fetchSessionHistory);
+  const fetchSessionHistory = useChatStore(
+    (state) => state.fetchSessionHistory,
+  );
 
   // local state for topK since it is not defined in useChatStore
   const [topK, setTopK] = useState<number>(5);
@@ -103,7 +120,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
     textarea.style.height = "auto";
     const computedMaxHeight = Number.parseFloat(
-      window.getComputedStyle(textarea).maxHeight
+      window.getComputedStyle(textarea).maxHeight,
     );
     const maxHeight = Number.isFinite(computedMaxHeight)
       ? computedMaxHeight
@@ -146,9 +163,16 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     let cancelled = false;
 
     api
-      .get<{ messages: Array<{ id: string; role: string; content: string; sources?: SourceChunk[]; feedback?: "up" | "down" | null; created_at?: string }> }>(
-        `/api/v1/chat/history/${documentId}`
-      )
+      .get<{
+        messages: Array<{
+          id: string;
+          role: string;
+          content: string;
+          sources?: SourceChunk[];
+          feedback?: "up" | "down" | null;
+          created_at?: string;
+        }>;
+      }>(`/api/v1/chat/history/${documentId}`)
       .then((data) => {
         if (cancelled || prevDocId.current !== documentId) return;
 
@@ -160,7 +184,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             sources: m.sources || [],
             feedback: m.feedback,
             created_at: m.created_at,
-          }))
+          })),
         );
       })
       .catch(() => {
@@ -228,8 +252,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               prev.map((m) =>
                 m.id === assistantId
                   ? { ...m, content: m.content + (event.data as string) }
-                  : m
-              )
+                  : m,
+              ),
             );
           }
         } else if (event.type === "sources") {
@@ -237,8 +261,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             prev.map((m) =>
               m.id === assistantId
                 ? { ...m, sources: event.data as SourceChunk[] }
-                : m
-            )
+                : m,
+            ),
           );
         } else if (event.type === "error") {
           setIsTyping(false);
@@ -246,14 +270,14 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             prev.map((m) =>
               m.id === assistantId
                 ? { ...m, content: `Error: ${event.data}`, isStreaming: false }
-                : m
-            )
+                : m,
+            ),
           );
         } else if (event.type === "done") {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, isStreaming: false } : m
-            )
+              m.id === assistantId ? { ...m, isStreaming: false } : m,
+            ),
           );
         }
       }
@@ -269,8 +293,8 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 }),
                 isStreaming: false,
               }
-            : m
-        )
+            : m,
+        ),
       );
     } finally {
       setStreaming(false);
@@ -284,7 +308,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       await api.delete(`/api/v1/chat/history/${activeDoc.id}`);
       setMessages([]);
     } catch {
-        //silent fail
+      //silent fail
     }
   };
 
@@ -311,7 +335,11 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       ) {
         setShowExportMenu(false);
       }
-      if (showSettingsMenu && settingsMenuRef.current && !settingsMenuRef.current.contains(e.target as Node)) {
+      if (
+        showSettingsMenu &&
+        settingsMenuRef.current &&
+        !settingsMenuRef.current.contains(e.target as Node)
+      ) {
         setShowSettingsMenu(false);
       }
     };
@@ -336,7 +364,11 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         : null;
 
     if (!SpeechRecognitionAPI) {
-      setSpeechError(t("chat.speechNotSupported", { defaultValue: "Speech recognition is not supported in this browser." }));
+      setSpeechError(
+        t("chat.speechNotSupported", {
+          defaultValue: "Speech recognition is not supported in this browser.",
+        }),
+      );
       return;
     }
 
@@ -344,7 +376,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       const recognition = new SpeechRecognitionAPI();
       recognition.continuous = true;
       recognition.interimResults = true;
-      
+
       const currentLang = i18n.language || "en";
       const langMap: Record<string, string> = {
         en: "en-US",
@@ -366,7 +398,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         setInput(
           initialInputRef.current +
             (initialInputRef.current ? " " : "") +
-            sessionTranscript.trim()
+            sessionTranscript.trim(),
         );
       };
 
@@ -374,10 +406,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         const errorCode = event.error;
         if (errorCode === "aborted") return; // ignore manual aborts
 
-        let msg = t("chat.speechError", { defaultValue: `Speech recognition error: ${errorCode}` });
+        let msg = t("chat.speechError", {
+          defaultValue: `Speech recognition error: ${errorCode}`,
+        });
         if (errorCode === "not-allowed") {
           msg = t("chat.micPermissionDenied", {
-            defaultValue: "Microphone access denied. Please enable permissions in settings.",
+            defaultValue:
+              "Microphone access denied. Please enable permissions in settings.",
           });
         } else if (errorCode === "no-speech") {
           msg = t("chat.noSpeechDetected", {
@@ -403,7 +438,11 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       recognitionRef.current = recognition;
       recognition.start();
     } catch (err) {
-      setSpeechError(err instanceof Error ? err.message : "Failed to start speech recognition.");
+      setSpeechError(
+        err instanceof Error
+          ? err.message
+          : "Failed to start speech recognition.",
+      );
       setIsRecording(false);
     }
   };
@@ -429,7 +468,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     }
   };
 
-  const handleMenuKeyDown = (e: React.KeyboardEvent, menuType: "export" | "settings") => {
+  const handleMenuKeyDown = (
+    e: React.KeyboardEvent,
+    menuType: "export" | "settings",
+  ) => {
     if (e.key === "Escape") {
       if (menuType === "export") setShowExportMenu(false);
       if (menuType === "settings") setShowSettingsMenu(false);
@@ -515,16 +557,32 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   return (
     <div className="h-full flex flex-col">
       {/* ── Chat Messages ──────────────────────────── */}
-      <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" aria-busy={historyLoading}>
+      <div
+        className="flex-1 px-4 overflow-y-auto custom-scrollbar"
+        aria-busy={historyLoading}
+      >
         {historyLoading ? (
-          <div className="py-6 space-y-5 max-w-3xl mx-auto" aria-label="Loading chat history">
+          <div
+            className="py-6 space-y-5 max-w-3xl mx-auto"
+            aria-label="Loading chat history"
+          >
             {Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={index}
-                className={cn("flex gap-3", index % 2 === 0 ? "justify-end" : "justify-start")}
+                className={cn(
+                  "flex gap-3",
+                  index % 2 === 0 ? "justify-end" : "justify-start",
+                )}
               >
-                {index % 2 !== 0 && <Skeleton className="mt-1 h-8 w-8 rounded-full" />}
-                <div className={cn("space-y-2", index % 2 === 0 ? "w-2/3" : "w-3/4")}>
+                {index % 2 !== 0 && (
+                  <Skeleton className="mt-1 h-8 w-8 rounded-full" />
+                )}
+                <div
+                  className={cn(
+                    "space-y-2",
+                    index % 2 === 0 ? "w-2/3" : "w-3/4",
+                  )}
+                >
                   <Skeleton className="h-4 w-full" />
                   <Skeleton className="h-4 w-5/6" />
                   <Skeleton className="h-4 w-2/3" />
@@ -538,7 +596,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               <MessageSquare className="w-8 h-8 text-primary/60" />
             </div>
             <h3 className="text-lg font-semibold mb-1">
-              {activeDoc ? t("chat.askAboutDocument") : t("chat.selectDocument")}
+              {activeDoc
+                ? t("chat.askAboutDocument")
+                : t("chat.selectDocument")}
             </h3>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               {activeDoc
@@ -553,7 +613,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 <MessageBubble message={msg} />
                 {msg.role === "assistant" && msg.sources.length > 0 && (
                   <div className="ml-10 mt-1 mb-3">
-                    <SourceCard sources={msg.sources} onPageClick={onCitationClick} />
+                    <SourceCard
+                      sources={msg.sources}
+                      onPageClick={onCitationClick}
+                    />
                   </div>
                 )}
               </div>
@@ -584,11 +647,15 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                     </span>
                     <span className="font-medium text-muted-foreground">
-                      {t("chat.listening", { defaultValue: "Listening... Speak now." })}
+                      {t("chat.listening", {
+                        defaultValue: "Listening... Speak now.",
+                      })}
                     </span>
                   </>
                 ) : (
-                  <span className="text-destructive font-medium">{speechError}</span>
+                  <span className="text-destructive font-medium">
+                    {speechError}
+                  </span>
                 )}
               </div>
               <button
@@ -601,7 +668,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                   }
                 }}
                 className="text-muted-foreground hover:text-foreground font-semibold px-1.5 py-0.5 rounded hover:bg-muted transition-colors"
-                aria-label={isRecording ? "Stop speech recording" : "Dismiss speech error"}
+                aria-label={
+                  isRecording ? "Stop speech recording" : "Dismiss speech error"
+                }
               >
                 {isRecording ? t("chat.stop", { defaultValue: "Stop" }) : "✕"}
               </button>
@@ -618,7 +687,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 onKeyDown={handleKeyDown}
                 placeholder={
                   activeDoc
-                    ? t("chat.askPlaceholder", { name: activeDoc.original_name })
+                    ? t("chat.askPlaceholder", {
+                        name: activeDoc.original_name,
+                      })
                     : t("chat.selectPlaceholder")
                 }
                 disabled={streaming}
@@ -640,17 +711,25 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                   "absolute right-9 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground transition-all duration-200",
                   isRecording
                     ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 hover:text-red-600 animate-pulse"
-                    : "hover:text-primary hover:bg-accent"
+                    : "hover:text-primary hover:bg-accent",
                 )}
                 title={
                   isRecording
-                    ? t("chat.stopRecording", { defaultValue: "Stop recording" })
-                    : t("chat.startRecording", { defaultValue: "Start recording" })
+                    ? t("chat.stopRecording", {
+                        defaultValue: "Stop recording",
+                      })
+                    : t("chat.startRecording", {
+                        defaultValue: "Start recording",
+                      })
                 }
                 aria-label={
                   isRecording
-                    ? t("chat.stopRecording", { defaultValue: "Stop recording" })
-                    : t("chat.startRecording", { defaultValue: "Start recording" })
+                    ? t("chat.stopRecording", {
+                        defaultValue: "Stop recording",
+                      })
+                    : t("chat.startRecording", {
+                        defaultValue: "Start recording",
+                      })
                 }
                 aria-pressed={isRecording}
               >
@@ -676,142 +755,158 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               </Button>
             </div>
             <div className="flex gap-1.5 shrink-0">
-            <Button
-              id="send-btn"
-              size="icon"
-              onClick={handleSend}
-              disabled={!input.trim() || streaming}
-              className="h-[44px] w-[44px]"
-              aria-label={streaming ? "Sending message" : "Send message"}
-            >
-              {streaming ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
-            {messages.length > 0 && (
-              <>
-                {/* Export dropdown */}
-                <div className="relative" ref={exportMenuRef}>
+              <Button
+                id="send-btn"
+                size="icon"
+                onClick={handleSend}
+                disabled={!input.trim() || streaming}
+                className="h-[44px] w-[44px]"
+                aria-label={streaming ? "Sending message" : "Send message"}
+              >
+                {streaming ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </Button>
+              {messages.length > 0 && (
+                <>
+                  {/* Export dropdown */}
+                  <div className="relative" ref={exportMenuRef}>
+                    <Button
+                      id="export-chat-btn"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowExportMenu((v) => !v)}
+                      className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
+                      title={t("chat.exportTitle", {
+                        defaultValue: "Export Chat",
+                      })}
+                      aria-label={t("chat.exportTitle", {
+                        defaultValue: "Export Chat",
+                      })}
+                      aria-expanded={showExportMenu}
+                      aria-controls="chat-export-menu"
+                      aria-haspopup="menu"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    {showExportMenu && (
+                      <div
+                        id="chat-export-menu"
+                        role="menu"
+                        aria-label="Export chat"
+                        onKeyDown={(e) => handleMenuKeyDown(e, "export")}
+                        className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
+                      >
+                        <button
+                          id="export-md-btn"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleExport("md")}
+                          className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        >
+                          <span className="text-base">📝</span>
+                          {t("chat.markdown")}
+                        </button>
+                        <button
+                          id="export-txt-btn"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleExport("txt")}
+                          className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        >
+                          <span className="text-base">📄</span>
+                          {t("chat.plainText")}
+                        </button>
+                        <button
+                          id="export-pdf-btn"
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleExport("pdf")}
+                          className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                        >
+                          <span className="text-base">📕</span>
+                          {t("chat.pdf")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {/* Clear history */}
                   <Button
-                    id="export-chat-btn"
                     variant="ghost"
                     size="icon"
-                    onClick={() => setShowExportMenu((v) => !v)}
-                    className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
-                    title={t("chat.exportTitle", { defaultValue: "Export Chat" })}
-                    aria-label={t("chat.exportTitle", { defaultValue: "Export Chat" })}
-                    aria-expanded={showExportMenu}
-                    aria-controls="chat-export-menu"
-                    aria-haspopup="menu"
+                    onClick={handleClear}
+                    className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
+                    aria-label="Clear chat history"
                   >
-                    <Download className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" />
                   </Button>
-                  {showExportMenu && (
-                    <div
-                      id="chat-export-menu"
-                      role="menu"
-                      aria-label="Export chat"
-                      onKeyDown={(e) => handleMenuKeyDown(e, "export")}
-                      className="absolute bottom-full mb-2 right-0 min-w-[160px] rounded-lg border border-border bg-popover p-1 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50"
-                    >
-                      <button
-                        id="export-md-btn"
-                        type="button"
-                        role="menuitem"
-                        onClick={() => handleExport("md")}
-                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                      >
-                        <span className="text-base">📝</span>
-                        {t("chat.markdown")}
-                      </button>
-                      <button
-                        id="export-txt-btn"
-                        type="button"
-                        role="menuitem"
-                        onClick={() => handleExport("txt")}
-                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                      >
-                        <span className="text-base">📄</span>
-                        {t("chat.plainText")}
-                      </button>
-                      <button
-                        id="export-pdf-btn"
-                        type="button"
-                        role="menuitem"
-                        onClick={() => handleExport("pdf")}
-                        className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                      >
-                        <span className="text-base">📕</span>
-                        {t("chat.pdf")}
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {/* Clear history */}
+                </>
+              )}
+              {/* Settings dropdown */}
+              <div className="relative" ref={settingsMenuRef}>
                 <Button
+                  id="chat-settings-btn"
                   variant="ghost"
                   size="icon"
-                  onClick={handleClear}
-                  className="h-[44px] w-[44px] text-muted-foreground hover:text-destructive"
-                  aria-label="Clear chat history"
+                  onClick={() => setShowSettingsMenu((v) => !v)}
+                  className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
+                  title={t("chat.settingsTitle", {
+                    defaultValue: "Chat Settings",
+                  })}
+                  aria-label={t("chat.settingsTitle", {
+                    defaultValue: "Chat Settings",
+                  })}
+                  aria-expanded={showSettingsMenu}
+                  aria-controls="chat-settings-menu"
+                  aria-haspopup="menu"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Settings2 className="w-4 h-4" />
                 </Button>
-              </>
-            )}
-            {/* Settings dropdown */}
-            <div className="relative" ref={settingsMenuRef}>
-              <Button
-                id="chat-settings-btn"
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowSettingsMenu((v) => !v)}
-                className="h-[44px] w-[44px] text-muted-foreground hover:text-primary"
-                title={t("chat.settingsTitle", { defaultValue: "Chat Settings" })}
-                aria-label={t("chat.settingsTitle", { defaultValue: "Chat Settings" })}
-                aria-expanded={showSettingsMenu}
-                aria-controls="chat-settings-menu"
-                aria-haspopup="menu"
-              >
-                <Settings2 className="w-4 h-4" />
-              </Button>
-              {showSettingsMenu && (
-                <div
-                  id="chat-settings-menu"
-                  role="menu"
-                  aria-label="Chat Settings"
-                  onKeyDown={(e) => handleMenuKeyDown(e, "settings")}
-                  className="absolute bottom-full mb-2 right-0 min-w-[200px] rounded-lg border border-border bg-popover p-3 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50 flex flex-col gap-3"
-                >
-                  <div>
-                    <label htmlFor="top-k-input" className="block text-sm font-medium mb-1 text-foreground">
-                      {t("chat.topKLabel", { defaultValue: "Sources count (Top-K)" })}
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        id="top-k-input"
-                        type="range"
-                        min="1"
-                        max="20"
-                        value={topK || 5}
-                        onChange={(e) => setTopK(parseInt(e.target.value))}
-                        className="flex-1 cursor-pointer accent-primary"
-                      />
-                      <span className="text-sm font-mono text-muted-foreground w-6 text-right">
-                        {topK || 5}
-                      </span>
+                {showSettingsMenu && (
+                  <div
+                    id="chat-settings-menu"
+                    role="menu"
+                    aria-label="Chat Settings"
+                    onKeyDown={(e) => handleMenuKeyDown(e, "settings")}
+                    className="absolute bottom-full mb-2 right-0 min-w-[200px] rounded-lg border border-border bg-popover p-3 shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50 flex flex-col gap-3"
+                  >
+                    <div>
+                      <label
+                        htmlFor="top-k-input"
+                        className="block text-sm font-medium mb-1 text-foreground"
+                      >
+                        {t("chat.topKLabel", {
+                          defaultValue: "Sources count (Top-K)",
+                        })}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="top-k-input"
+                          type="range"
+                          min="1"
+                          max="20"
+                          value={topK || 5}
+                          onChange={(e) => setTopK(parseInt(e.target.value))}
+                          className="flex-1 cursor-pointer accent-primary"
+                        />
+                        <span className="text-sm font-mono text-muted-foreground w-6 text-right">
+                          {topK || 5}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {t("chat.topKDescription", {
+                          defaultValue:
+                            "Adjust number of context chunks retrieved.",
+                        })}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {t("chat.topKDescription", { defaultValue: "Adjust number of context chunks retrieved." })}
-                    </p>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
-        </div>
         </div>
         <p id="chat-input-hint" className="sr-only">
           Press Enter to send. Press Shift and Enter for a new line. Press
