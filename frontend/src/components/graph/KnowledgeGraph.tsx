@@ -230,91 +230,92 @@ export default function KnowledgeGraph({
   // ── Fetch graph data ────────────────────────────────────────────────────────
 
   const fetchGraph = useCallback(async () => {
-  setLoading(true);
-  setError(null);
-  setSelectedNode(null);
+    setLoading(true);
+    setError(null);
+    setSelectedNode(null);
 
-  let data: GraphData | null = null;
-  let fetchError: string | null = null;
+    let data: GraphData | null = null;
+    let fetchError: string | null = null;
 
-  try {
-    data = await api.get<GraphData>(`/api/v1/graph/${documentId}`);
-  } catch (err) {
-    fetchError = err instanceof Error ? err.message : "Failed to load knowledge graph";
-  }
+    try {
+      data = await api.get<GraphData>(`/api/v1/graph/${documentId}`);
+    } catch (err) {
+      fetchError =
+        err instanceof Error ? err.message : "Failed to load knowledge graph";
+    }
 
-  // All setState calls happen after the await, satisfying the linter
-  if (fetchError || !data) {
-    setError(fetchError ?? "No data returned");
-    setNodes([]);
-    setEdges([]);
+    // All setState calls happen after the await, satisfying the linter
+    if (fetchError || !data) {
+      setError(fetchError ?? "No data returned");
+      setNodes([]);
+      setEdges([]);
+      setLoading(false);
+      return;
+    }
+
+    setGraphData(data);
+
+    const maxMentions = Math.max(...data.nodes.map((n) => n.mentions), 1);
+    const radius = Math.min(Math.max(data.nodes.length * 18, 200), 500);
+
+    const rfNodes: Node[] = data.nodes.map((n, i) => {
+      const colour = colourFor(n.label);
+      const size = 36 + Math.round((n.mentions / maxMentions) * 36);
+      const pos = radialPosition(i, data!.nodes.length, radius);
+      return {
+        id: n.id,
+        position: pos,
+        data: {
+          label: (
+            <div
+              className="flex items-center justify-center text-center font-semibold leading-tight px-1"
+              style={{ fontSize: Math.max(9, size * 0.22), color: colour.text }}
+              title={n.name}
+            >
+              {n.name.length > 14 ? n.name.slice(0, 13) + "…" : n.name}
+            </div>
+          ),
+          _raw: n,
+        },
+        style: {
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          backgroundColor: colour.bg,
+          border: `2px solid ${colour.border}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+        },
+      };
+    });
+
+    const maxWeight = Math.max(...data.edges.map((e) => e.weight), 1);
+    const rfEdges: Edge[] = data.edges.map((e, i) => {
+      const opacity = 0.2 + 0.6 * (e.weight / maxWeight);
+      const strokeWidth = 1 + Math.round((e.weight / maxWeight) * 3);
+      return {
+        id: `e-${i}`,
+        source: e.source,
+        target: e.target,
+        animated: false,
+        style: { stroke: `rgba(100,116,139,${opacity})`, strokeWidth },
+        data: { _raw: e },
+      };
+    });
+
+    setNodes(rfNodes);
+    setEdges(rfEdges);
     setLoading(false);
-    return;
-  }
+  }, [documentId, setNodes, setEdges]);
 
-  setGraphData(data);
-
-  const maxMentions = Math.max(...data.nodes.map((n) => n.mentions), 1);
-  const radius = Math.min(Math.max(data.nodes.length * 18, 200), 500);
-
-  const rfNodes: Node[] = data.nodes.map((n, i) => {
-    const colour = colourFor(n.label);
-    const size = 36 + Math.round((n.mentions / maxMentions) * 36);
-    const pos = radialPosition(i, data!.nodes.length, radius);
-    return {
-      id: n.id,
-      position: pos,
-      data: {
-        label: (
-          <div
-            className="flex items-center justify-center text-center font-semibold leading-tight px-1"
-            style={{ fontSize: Math.max(9, size * 0.22), color: colour.text }}
-            title={n.name}
-          >
-            {n.name.length > 14 ? n.name.slice(0, 13) + "…" : n.name}
-          </div>
-        ),
-        _raw: n,
-      },
-      style: {
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        backgroundColor: colour.bg,
-        border: `2px solid ${colour.border}`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
-      },
-    };
-  });
-
-  const maxWeight = Math.max(...data.edges.map((e) => e.weight), 1);
-  const rfEdges: Edge[] = data.edges.map((e, i) => {
-    const opacity = 0.2 + 0.6 * (e.weight / maxWeight);
-    const strokeWidth = 1 + Math.round((e.weight / maxWeight) * 3);
-    return {
-      id: `e-${i}`,
-      source: e.source,
-      target: e.target,
-      animated: false,
-      style: { stroke: `rgba(100,116,139,${opacity})`, strokeWidth },
-      data: { _raw: e },
-    };
-  });
-
-  setNodes(rfNodes);
-  setEdges(rfEdges);
-  setLoading(false);
-}, [documentId, setNodes, setEdges]);
-
-useEffect(() => {
-  fetchGraph();
-  // fetchGraph is stable (memoised on documentId) — safe to omit from deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [documentId]);
+  useEffect(() => {
+    fetchGraph();
+    // fetchGraph is stable (memoised on documentId) — safe to omit from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId]);
 
   // ── Node click → show detail panel ─────────────────────────────────────────
 
