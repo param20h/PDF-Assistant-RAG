@@ -1,3 +1,4 @@
+"use client";
 /**
  * KnowledgeGraph — interactive entity relationship visualiser.
  *
@@ -10,7 +11,6 @@
  * documentId  – UUID of the active document
  * onClose     – called when the user dismisses the panel
  */
-"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
