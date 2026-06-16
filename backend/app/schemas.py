@@ -223,6 +223,24 @@ class DocumentRename(BaseModel):
         return stripped
 
 
+class DocumentUpdate(BaseModel):
+    """Schema for updating document metadata via PATCH. All fields are optional
+    so that callers can send a partial update (e.g. only the name or only the
+    summary) without having to include every field."""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    summary: Optional[str] = Field(None, max_length=5000)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None:
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("Document name cannot be empty")
+            return stripped
+        return value
+
+
 class DocumentStatusResponse(BaseModel):
     id: str
     status: str
