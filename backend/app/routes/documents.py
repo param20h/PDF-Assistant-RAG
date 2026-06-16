@@ -33,7 +33,7 @@ from app.schemas import (
     DocumentResponse,
     DocumentListResponse,
     DocumentStatusResponse,
-    DocumentRename,
+    DocumentUpdate,
     ChunkSettings,
     UploadUrl,
 )
@@ -506,14 +506,19 @@ def list_documents(
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)
-def rename_document(
+def update_document(
     document_id: str,
-    rename: DocumentRename,
+    update: DocumentUpdate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Rename an uploaded document without changing its stored file or vector data.
+    Update an uploaded document's metadata (name and/or summary) without
+    changing its stored file or vector data.
+
+    Both fields are optional so callers can send a partial update.  If a field
+    is not present (or is null) it will be left unchanged.  To clear the
+    current summary send an explicit empty string.
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
@@ -524,7 +529,13 @@ def rename_document(
         raise NotFoundException("Document")
 
     if str(doc.user_id) != str(user.id):
-        raise ForbiddenException("You do not have permission to rename this document")
+        raise ForbiddenException("You do not have permission to update this document")
+
+    if update.name is not None:
+        doc.original_name = update.name
+    if update.summary is not None:
+        stripped = update.summary.strip()
+        doc.summary = stripped if stripped else None
 
     doc.original_name = rename.name  # type: ignore
     db.commit()

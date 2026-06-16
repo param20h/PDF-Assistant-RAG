@@ -5,7 +5,7 @@ import json
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime
-from app.models import UserRole
+from app.models import UserRole, WorkspaceRole
 from app.password_validation import validate_password
 
 
@@ -223,6 +223,24 @@ class DocumentRename(BaseModel):
         return stripped
 
 
+class DocumentUpdate(BaseModel):
+    """Schema for updating document metadata via PATCH. All fields are optional
+    so that callers can send a partial update (e.g. only the name or only the
+    summary) without having to include every field."""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    summary: Optional[str] = Field(None, max_length=5000)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None:
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("Document name cannot be empty")
+            return stripped
+        return value
+
+
 class DocumentStatusResponse(BaseModel):
     id: str
     status: str
@@ -363,6 +381,54 @@ class ChatSessionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Workspaces ────────────────────────────────────────
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class WorkspaceMemberResponse(BaseModel):
+    id: str
+    workspace_id: str
+    user_id: str
+    role: WorkspaceRole
+    joined_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceResponse(BaseModel):
+    id: str
+    name: str
+    created_by: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceDetailResponse(BaseModel):
+    """Workspace detail including the full member list."""
+    id: str
+    name: str
+    created_by: str
+    created_at: datetime
+    members: List[WorkspaceMemberResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceMemberAdd(BaseModel):
+    user_id: str = Field(..., min_length=1)
+    role: WorkspaceRole = WorkspaceRole.viewer
+
+
+class WorkspaceMemberRoleUpdate(BaseModel):
+    role: WorkspaceRole
 
 
 # Rebuild models for forward references
