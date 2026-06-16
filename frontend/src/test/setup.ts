@@ -7,6 +7,14 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+Object.defineProperty(navigator, "clipboard", {
+  writable: true,
+  value: {
+    writeText: vi.fn(),
+    readText: vi.fn(),
+  },
+});
+
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
