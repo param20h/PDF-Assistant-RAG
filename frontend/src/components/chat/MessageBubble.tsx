@@ -68,18 +68,16 @@ export default function MessageBubble({ message }: Props) {
   const sharedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // Component unmount ആകുമ്പോൾ speech cancel ചെയ്യും
- useEffect(() => {
-  const currentUtterance = utteranceRef.current;
+  // Cancel speech synthesis when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (utteranceRef.current) {
+        window.speechSynthesis.cancel();
+        utteranceRef.current = null;
+      }
+    };
+  }, []);
 
-  return () => {
-    if (currentUtterance) {
-      window.speechSynthesis.cancel();
-    }
-  };
-}, []);
-
- 
 
 const setCurrentBranchId = useChatStore(
   (s) => s.setCurrentBranchId
@@ -133,6 +131,7 @@ const setCurrentBranchId = useChatStore(
 
   const handleSpeech = () => {
     if (!message.content || message.isStreaming) return;
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
 
     if (isSpeaking) {
       window.speechSynthesis.cancel();
@@ -188,63 +187,102 @@ const handleBranch = () => {
           <>
             {message.content && (
               <>
-                {/* Share button */}
-                {!message.isStreaming && (
+                {/* Action buttons row — shown on hover */}
+                <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
+                  {/* Branch button */}
                   <Tooltip>
                     <TooltipTrigger
                       type="button"
                       className={cn(
                         buttonVariants({ variant: "ghost", size: "icon-xs" }),
-                        `absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-opacity ${
-                          shared || shareFailed
-                            ? "opacity-100"
-                            : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                        }`,
+                        "text-muted-foreground hover:text-foreground",
                       )}
-                      onClick={handleShare}
-                      aria-label={shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
+                      onClick={handleBranch}
+                      aria-label="Branch conversation"
                     >
-                      {shared ? (
-                        <Link2 className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : shareFailed ? (
-                        <X className="w-3.5 h-3.5 text-destructive" />
+                      <GitBranch className="w-3.5 h-3.5" />
+                    </TooltipTrigger>
+                    <TooltipContent>Branch conversation</TooltipContent>
+                  </Tooltip>
+
+                  {/* Speech button */}
+                  {!message.isStreaming && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        type="button"
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "icon-xs" }),
+                          isSpeaking
+                            ? "text-primary"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                        onClick={handleSpeech}
+                        aria-label={isSpeaking ? "Stop reading" : "Read response aloud"}
+                        aria-pressed={isSpeaking}
+                      >
+                        {isSpeaking ? (
+                          <Pause className="w-3.5 h-3.5" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5" />
+                        )}
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {isSpeaking ? "Stop reading" : "Read response aloud"}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+
+                  {/* Copy button */}
+                  <Tooltip>
+                    <TooltipTrigger
+                      type="button"
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "icon-xs" }),
+                        "text-muted-foreground hover:text-foreground",
+                        copied && "opacity-100",
+                      )}
+                      onClick={handleCopy}
+                      aria-label={copied ? "Copied" : "Copy response"}
+                    >
+                      {copied ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
                       ) : (
-                        <Share2 className="w-3.5 h-3.5" />
+                        <Copy className="w-3.5 h-3.5" />
                       )}
                     </TooltipTrigger>
-                    <TooltipContent>
-                      {shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
-                    </TooltipContent>
+                    <TooltipContent>{copied ? "Copied" : "Copy response"}</TooltipContent>
                   </Tooltip>
-                )}
 
-                {/* Copy button */}
-                <Tooltip>
-                  <TooltipTrigger
-                    type="button"
-                    className={cn(
-                      buttonVariants({ variant: "ghost", size: "icon-xs" }),
-                      `absolute top-2 right-9 text-muted-foreground hover:text-foreground transition-opacity ${
-                        copied
-                          ? "opacity-100"
-                          : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                      }`,
-                    )}
-                    onClick={handleCopy}
-                    aria-label={copied ? "Copied" : "Copy response"}
-                  >
-                    {copied ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent>{copied ? "Copied" : "Copy response"}</TooltipContent>
-                </Tooltip>
+                  {/* Share button */}
+                  {!message.isStreaming && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        type="button"
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "icon-xs" }),
+                          "text-muted-foreground hover:text-foreground",
+                        )}
+                        onClick={handleShare}
+                        aria-label={shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
+                      >
+                        {shared ? (
+                          <Link2 className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : shareFailed ? (
+                          <X className="w-3.5 h-3.5 text-destructive" />
+                        ) : (
+                          <Share2 className="w-3.5 h-3.5" />
+                        )}
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
 
                 {copied && (
                   <div
-                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded-md whitespace-nowrap opacity-100 transition-opacity pointer-events-none"
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded-md whitespace-nowrap pointer-events-none"
                     role="status"
                     aria-live="polite"
                   >
@@ -252,51 +290,7 @@ const handleBranch = () => {
                   </div>
                 )}
 
-                {/* Speech button */}
-                {!message.isStreaming && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      type="button"
-                      className={cn(
-                        buttonVariants({ variant: "ghost", size: "icon-xs" }),
-                        `absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
-                          isSpeaking
-                            ? "opacity-100"
-                            : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                        }`,
-                      )}
-                      onClick={handleSpeech}
-                      aria-label={isSpeaking ? "Stop reading" : "Read response"}
-                    >
-                      {isSpeaking ? (
-                        <Pause className="w-3.5 h-3.5" />
-                      ) : (
-                        <Play className="w-3.5 h-3.5" />
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent>{isSpeaking ? "Stop reading" : "Read response"}</TooltipContent>
-                  </Tooltip>
-                )}
-
-                {/* Branch button */}
-                <Tooltip>
-                  <TooltipTrigger
-                    type="button"
-                    className={cn(
-                      buttonVariants({ variant: "ghost", size: "icon-xs" }),
-                      "absolute top-2 right-24 text-muted-foreground hover:text-foreground transition-opacity opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
-                    )}
-                    onClick={handleBranch}
-                    aria-label="Branch conversation"
-                  >
-                    <GitBranch className="w-3.5 h-3.5" />
-                  </TooltipTrigger>
-                  <TooltipContent>Branch conversation</TooltipContent>
-                </Tooltip>
-              </>
-            )}
-
-            <div className={`prose-chat ${fontSizeClass} ${message.content ? "pr-20" : ""}`}>
+            <div className={`prose-chat ${fontSizeClass} ${message.content ? "pr-24" : ""}`}>
               {message.content ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
