@@ -5,11 +5,17 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
-import { api, CONNECTION_ERROR_BANNER_MESSAGE, CONNECTION_ERROR_MESSAGE } from "@/lib/api";
+import {
+  api,
+  CONNECTION_ERROR_BANNER_MESSAGE,
+  CONNECTION_ERROR_MESSAGE,
+} from "@/lib/api";
 import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatSessionSidebar from "@/components/chat/ChatSessionSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
+import CompareView from "@/components/document/CompareView";
+
 function PDFViewerSkeleton() {
   return (
     <div
@@ -78,12 +84,17 @@ export default function DashboardPage() {
   const [viewerOpen, setViewerOpen] = useState(true);
   const [connectionError, setConnectionError] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const handleDocumentRenamed = useCallback((renamedDocument: DocInfo) => {
     setDocuments((current) =>
-      current.map((document) => (document.id === renamedDocument.id ? renamedDocument : document))
+      current.map((document) =>
+        document.id === renamedDocument.id ? renamedDocument : document,
+      ),
     );
-    setActiveDoc((current) => (current?.id === renamedDocument.id ? renamedDocument : current));
+    setActiveDoc((current) =>
+      current?.id === renamedDocument.id ? renamedDocument : current,
+    );
   }, []);
 
   // Auth guard
@@ -98,7 +109,7 @@ export default function DashboardPage() {
 
       if (!hasHfToken) {
         console.info(
-          "Hugging Face API token is not configured. Personal model access will fall back to the system default unless set in the user profile menu."
+          "Hugging Face API token is not configured. Personal model access will fall back to the system default unless set in the user profile menu.",
         );
       }
     }
@@ -109,16 +120,17 @@ export default function DashboardPage() {
     setDocumentsLoading(true);
     try {
       const data = await api.get<{ documents?: DocInfo[]; items?: DocInfo[] }>(
-        "/api/v1/documents/"
+        "/api/v1/documents/",
       );
       setDocuments(data?.documents ?? data?.items ?? []);
       setConnectionError("");
     } catch (err) {
-      const message = err instanceof Error ? err.message : CONNECTION_ERROR_MESSAGE;
+      const message =
+        err instanceof Error ? err.message : CONNECTION_ERROR_MESSAGE;
       setConnectionError(
         message === CONNECTION_ERROR_MESSAGE
           ? CONNECTION_ERROR_BANNER_MESSAGE
-          : `⚠️ ${message}`
+          : `⚠️ ${message}`,
       );
     } finally {
       setDocumentsLoading(false);
@@ -142,9 +154,13 @@ export default function DashboardPage() {
       const oldStatus = prev[doc.id];
       if (oldStatus && oldStatus !== doc.status) {
         if (doc.status === "ready") {
-          toast.success(`🎉 Ingestion complete: '${doc.original_name}' is ready!`);
+          toast.success(
+            `🎉 Ingestion complete: '${doc.original_name}' is ready!`,
+          );
         } else if (doc.status === "failed") {
-          toast.error(`❌ Ingestion failed for '${doc.original_name}': ${doc.error_message || "Unknown error"}`);
+          toast.error(
+            `❌ Ingestion failed for '${doc.original_name}': ${doc.error_message || "Unknown error"}`,
+          );
         }
       }
     });
@@ -154,7 +170,7 @@ export default function DashboardPage() {
   // Poll for processing status
   useEffect(() => {
     const hasPending = (documents || []).some(
-      (d) => d.status === "pending" || d.status === "processing"
+      (d) => d.status === "pending" || d.status === "processing",
     );
     if (!hasPending) return;
 
@@ -193,6 +209,8 @@ export default function DashboardPage() {
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         viewerOpen={viewerOpen}
         onToggleViewer={() => setViewerOpen(!viewerOpen)}
+        compareOpen={compareOpen}
+        onToggleCompare={() => setCompareOpen(!compareOpen)}
         mobileSheetContent={sidebarContent}
       />
 
@@ -222,28 +240,42 @@ export default function DashboardPage() {
             activeDoc={activeDoc}
             onCitationClick={(target) => {
               setPdfPage(target.page);
-              setPdfHighlightTarget({ page: target.page, rects: target.highlightRects });
+              setPdfHighlightTarget({
+                page: target.page,
+                rects: target.highlightRects,
+              });
               if (!viewerOpen) setViewerOpen(true);
             }}
           />
         </div>
 
-        {/* ── Right: PDF Viewer — hidden on mobile ────────────────── */}
-        {viewerOpen && activeDoc && activeDoc.original_name.endsWith(".pdf") && (
-          <div className="hidden md:block w-[480px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
-            <PDFViewer
-              documentId={activeDoc.id}
-              currentPage={pdfPage}
-              onPageChange={(page) => {
-                setPdfPage(page);
-                if (pdfHighlightTarget?.page !== page) {
-                  setPdfHighlightTarget(null);
-                }
-              }}
-              totalPages={activeDoc.page_count}
-              highlightTarget={pdfHighlightTarget}
+        {/* ── Right: Compare View or Single PDF Viewer ────────────── */}
+        {compareOpen ? (
+          <div className="hidden md:flex flex-1 min-w-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
+            <CompareView
+              documents={documents}
+              onClose={() => setCompareOpen(false)}
             />
           </div>
+        ) : (
+          viewerOpen &&
+          activeDoc &&
+          activeDoc.original_name.endsWith(".pdf") && (
+            <div className="hidden md:block w-[480px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
+              <PDFViewer
+                documentId={activeDoc.id}
+                currentPage={pdfPage}
+                onPageChange={(page) => {
+                  setPdfPage(page);
+                  if (pdfHighlightTarget?.page !== page) {
+                    setPdfHighlightTarget(null);
+                  }
+                }}
+                totalPages={activeDoc.page_count}
+                highlightTarget={pdfHighlightTarget}
+              />
+            </div>
+          )
         )}
       </div>
     </div>
