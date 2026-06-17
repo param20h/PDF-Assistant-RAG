@@ -8,6 +8,7 @@ import { useChatStore, type ChatMsg, type SourceBoundingBox, type SourceChunk } 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import { Send, Loader2, Trash2, MessageSquare, Download, Mic, MicOff, HelpCircle } from "lucide-react";
@@ -413,44 +414,70 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     }
   };
 
-  // ── NEW KEYBOARD SHORTCUTS ENGINE EFFECT ──────────────────────────
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+// ── KEYBOARD SHORTCUTS ──────────────────────────
+useEffect(() => {
+  const handleGlobalKeyDown = (e: KeyboardEvent) => {
+    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
 
-      // Shortcut 1: Ctrl/Cmd + Enter -> Send Message (When textarea has focus)
-      if (isCmdOrCtrl && e.key === "Enter") {
-        if (document.activeElement === textareaRef.current) {
-          e.preventDefault();
-          handleSend();
-        }
-      }
-
-      // Shortcut 2: Escape -> Clear Input / Close Modal
-      if (e.key === "Escape") {
-        if (document.activeElement === textareaRef.current) {
-          e.preventDefault();
-          setInput(""); // Clear textarea state
-        } else if (showHelpModal) {
-          setShowHelpModal(false); // Close shortcuts modal if open
-        }
-      }
-
-      // Shortcut 3: Ctrl/Cmd + K -> Focus chat input from anywhere
-      if (isCmdOrCtrl && (e.key === "k" || e.key === "K")) {
+    // Ctrl + Enter => Send
+    if (isCmdOrCtrl && e.key === "Enter") {
+      if (document.activeElement === textareaRef.current) {
         e.preventDefault();
-        textareaRef.current?.focus();
+        handleSend();
       }
-    };
+    }
 
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
-    };
-  }, [input, streaming, showHelpModal]); // Dependencies updated to capture fresh state data
+    // Escape => Clear input / close modal
+    if (e.key === "Escape") {
+      if (document.activeElement === textareaRef.current) {
+        e.preventDefault();
+        setInput("");
+      } else if (showHelpModal) {
+        setShowHelpModal(false);
+      }
+    }
 
+    // Ctrl + K => Focus input
+    if (isCmdOrCtrl && (e.key === "k" || e.key === "K")) {
+      e.preventDefault();
+      textareaRef.current?.focus();
+    }
+
+    // Ctrl + Shift + C => Copy latest assistant response
+    if (
+      isCmdOrCtrl &&
+      e.shiftKey &&
+      (e.key === "c" || e.key === "C")
+    ) {
+      e.preventDefault();
+
+      const latestAssistant = [...messages]
+        .reverse()
+        .find((msg) => msg.role === "assistant");
+
+      if (latestAssistant?.content) {
+        navigator.clipboard.writeText(latestAssistant.content);
+      }
+    }
+  };
+
+  window.addEventListener("keydown", handleGlobalKeyDown);
+
+  return () => {
+    window.removeEventListener("keydown", handleGlobalKeyDown);
+  };
+ }, [
+  input,
+  streaming,
+  showHelpModal,
+  messages,
+  setInput,
+  handleSend,
+]);
+    
   return (
     <div className="h-full flex flex-col relative">
+      
       {/* ── Chat Messages ──────────────────────────── */}
       <div className="flex-1 px-4 overflow-y-auto custom-scrollbar" aria-busy={historyLoading}>
         {historyLoading ? (
@@ -507,6 +534,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         <div ref={bottomRef} className="h-4" />
       </div>
 
+        
       {/* ── Input Area ─────────────────────────────── */}
       <div className="border-t border-border/50 p-4 bg-card/30 backdrop-blur-sm relative">
         <div className="max-w-3xl mx-auto relative">
@@ -737,6 +765,24 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                 </div>
               </li>
               <li className="flex flex-col gap-1.5">
+  <span className="text-muted-foreground text-xs font-medium">
+    Copy Latest Response
+  </span>
+  <div className="flex gap-1">
+    <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono">
+      Ctrl
+    </kbd>
+    <span>+</span>
+    <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono">
+      Shift
+    </kbd>
+    <span>+</span>
+    <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono">
+      C
+    </kbd>
+  </div>
+</li>
+              <li className="flex flex-col gap-1.5">
                 <span className="text-muted-foreground text-xs font-medium">Clear Chat Input</span>
                 <div>
                   <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">Esc</kbd>
@@ -753,7 +799,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             </ul>
           </div>
         </div>
+        
       )}
+
     </div>
+
   );
 }
