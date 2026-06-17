@@ -3,28 +3,43 @@ Auth API routes — register, login, and user profile.
 """
 import re
 import secrets
-import httpx
-import hashlib
 import logging
+import hashlib
+from html import escape
+from typing import Optional, List
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
-from fastapi import APIRouter, Body, Cookie, Depends, HTTPException, Response, status
-from fastapi.responses import RedirectResponse
+
+import httpx
+import jwt
+from fastapi import APIRouter, Depends, Query, status, Cookie, Response, Body
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
+from google_auth_oauthlib.flow import Flow
 from langsmith import expect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.config import get_settings
 from app.database import get_db
+from app.exceptions import (
+    AppException,
+    ConflictException,
+    ExternalServiceException,
+    NotFoundException,
+    UnauthorizedException,
+    ValidationException,
+)
 from app.models import User, ApiKey, UserRole
 from app.schemas import (
     GoogleLoginRequest,
+    GoogleDriveAuthUrlResponse,
+    GoogleDriveStatusResponse,
     HFTokenUpdate,
     RefreshRequest,
     TokenResponse,
     UpdatePassword,
     UpdatePasswordResponse,
+    ChangePasswordRequest,
     UserLogin,
     UserRegister,
     UserResponse,
@@ -105,6 +120,9 @@ async def _send_verification_email(user: User, token: str) -> None:
 
     await FastMail(conf).send_message(message)
 
+GOOGLE_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+GOOGLE_DRIVE_STATE_TOKEN_TYPE = "google_drive_oauth_state"
+
 
 def _create_token_response(user: User) -> TokenResponse:
     access_token = create_access_token(user.id)
@@ -119,19 +137,13 @@ def _create_token_response(user: User) -> TokenResponse:
 
 def _verify_google_token(id_token_value: str) -> dict:
     if not settings.GOOGLE_CLIENT_ID:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Google sign-in is not configured",
-        )
+        raise ExternalServiceException("Google", "Google sign-in is not configured")
 
     try:
         from google.auth.transport.requests import Request
         from google.oauth2 import id_token
     except ImportError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Google authentication dependency is not installed",
-        ) from exc
+        raise ExternalServiceException("Google", "Google authentication dependency is not installed") from exc
 
     try:
         google_payload = id_token.verify_oauth2_token(
@@ -140,17 +152,11 @@ def _verify_google_token(id_token_value: str) -> dict:
             settings.GOOGLE_CLIENT_ID,
         )
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google credential",
-        ) from exc
+        raise UnauthorizedException("Invalid Google credential") from exc
 
     email = google_payload.get("email")
     if not email or not google_payload.get("email_verified"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Google account email is not verified",
-        )
+        raise UnauthorizedException("Google account email is not verified")
 
     return google_payload
 
@@ -193,17 +199,11 @@ async def register(payload: UserRegister, db: Session = Depends(get_db)):
     """
     # Check existing username
     if db.query(User).filter(User.username == payload.username).first():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
-        )
+        raise ConflictException("Username already taken")
 
     # Check existing email
     if db.query(User).filter(User.email == payload.email).first():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        )
+        raise ConflictException("Email already registered")
 
     user = User(
         username=payload.username,
@@ -252,16 +252,10 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
 
     if not user or not verify_password(payload.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        )
+        raise UnauthorizedException("Invalid email or password")
 
     if not user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=VERIFICATION_REQUIRED_MESSAGE,
-        )
+        raise AppException("FORBIDDEN", VERIFICATION_REQUIRED_MESSAGE, 403)
 
     user.last_login = datetime.now(timezone.utc)
     db.commit()
@@ -311,10 +305,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     token_hash = _hash_verification_token(token)
     user = db.query(User).filter(User.verification_token_hash == token_hash).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired verification token",
-        )
+        raise ValidationException("Invalid or expired verification token")
 
     created_at = user.verification_token_created_at
     if created_at and created_at.tzinfo is None:
@@ -326,10 +317,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
         user.verification_token_hash = None
         user.verification_token_created_at = None
         db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired verification token",
-        )
+        raise ValidationException("Invalid or expired verification token")
 
     user.is_verified = True
     user.verification_token_hash = None
@@ -378,17 +366,11 @@ def refresh_token(payload: RefreshRequest, db: Session = Depends(get_db)):
     """
     user_id = decode_token(payload.refresh_token, token_type="refresh")
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
-        )
+        raise UnauthorizedException("Invalid or expired refresh token")
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-        )
+        raise UnauthorizedException("User not found")
         
     return _create_token_response(user)
 
@@ -477,30 +459,27 @@ def update_user_info(payload:UserUpdate,
         and a 400 response.
     """
     if payload.username is None and payload.email is None:
-        raise HTTPException(status_code=400, detail="Username and email are required")
+        raise ValidationException("At least one of username or email must be provided")
 
     try:
         if payload.username:
             existing_user = db.execute(select(User).where(User.username == payload.username)).scalar_one_or_none()
 
             if existing_user:
-                raise HTTPException(status_code=400, detail="Username already exists")
+                raise ValidationException("Username already exists")
             user.username = payload.username
         if payload.email:
             existing_user = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
 
             if existing_user:
-                raise HTTPException(status_code=400, detail="Email already exists")
+                raise ValidationException("Email already exists")
             user.email = payload.email
         db.commit()
         db.refresh(user)
         return user
-    except HTTPException:
-        raise
     except SQLAlchemyError:
         db.rollback()
-
-        raise HTTPException(status_code=400, detail="Database error")
+        raise ValidationException("Database error")
 
 @router.put("/password")
 def update_password(payload:UpdatePassword,
@@ -533,22 +512,60 @@ def update_password(payload:UpdatePassword,
         response.
     """
     if not payload.password and not payload.confirm_password:
-        raise HTTPException(status_code=400, detail="Password and confirm_password are required")
+        raise ValidationException("Password and confirm_password are required")
     if len(payload.password) == 0 and len(payload.confirm_password) == 0:
-        raise HTTPException(status_code=400, detail="Password and confirm_password are required")
+        raise ValidationException("Password and confirm_password are required")
     if payload.password != payload.confirm_password:
-        raise HTTPException(status_code=400, detail="Password and confirm_password are different")
+        raise ValidationException("Password and confirm_password are different")
     try:
         hashed_password = hash_password(payload.password)
         user.hashed_password = hashed_password
         db.commit()
         db.refresh(user)
         return user
-    except HTTPException:
-        raise
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Database error")
+        raise ValidationException("Database error")
+
+
+@router.post("/change-password", response_model=MessageResponse)
+def change_password(
+    payload: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Securely rotate the authenticated user's password.
+
+    Validates that the provided current password matches the stored hash
+    before updating to the new password. This is the secure, recommended
+    way for users to change their own password since it confirms the
+    requester actually knows the existing credentials.
+
+    Args:
+        payload: ChangePasswordRequest containing `current_password` and `new_password`.
+        user: The currently authenticated user, obtained from the `get_current_user` dependency.
+        db: SQLAlchemy database session, obtained from the dependency.
+
+    Returns:
+        MessageResponse: Confirmation message on success.
+
+    Raises:
+        HTTPException: 401 if `current_password` does not match the stored hash.
+        HTTPException: 400 if a database error occurs during commit.
+    """
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise UnauthorizedException("Current password is incorrect")
+
+    try:
+        user.hashed_password = hash_password(payload.new_password)
+        db.commit()
+        db.refresh(user)
+    except SQLAlchemyError:
+        db.rollback()
+        raise ValidationException("Database error")
+
+    return MessageResponse(message="Password updated successfully")
+
 
 @router.post("/api-keys", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_api_key(
@@ -599,7 +616,7 @@ def delete_api_key(key_id: str, user: User = Depends(get_current_user), db: Sess
     """Revoke an API key."""
     api_key = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.user_id == user.id).first()
     if not api_key:
-        raise HTTPException(status_code=404, detail="API key not found")
+        raise NotFoundException("API key")
 
     db.delete(api_key)
     db.commit()
@@ -631,6 +648,173 @@ def _unique_google_username(email: str, db: Session) -> str:
     return candidate
 
 
+def _require_google_drive_config() -> None:
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise ExternalServiceException("Google Drive", "Google Drive OAuth is not configured")
+
+
+def _create_google_drive_state(user_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user_id),
+        "type": GOOGLE_DRIVE_STATE_TOKEN_TYPE,
+        "iat": now,
+        "exp": now + timedelta(minutes=10),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def _decode_google_drive_state(state_token: str) -> str | None:
+    try:
+        payload = jwt.decode(
+            state_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+    except jwt.InvalidTokenError:
+        return None
+
+    if payload.get("type") != GOOGLE_DRIVE_STATE_TOKEN_TYPE:
+        return None
+    return payload.get("sub")
+
+
+def _google_drive_flow(state: str | None = None) -> Flow:
+    _require_google_drive_config()
+    return Flow.from_client_config(
+        {
+            "web": {
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [settings.GOOGLE_DRIVE_REDIRECT_URI],
+            }
+        },
+        scopes=GOOGLE_DRIVE_SCOPES,
+        state=state,
+        redirect_uri=settings.GOOGLE_DRIVE_REDIRECT_URI,
+    )
+
+
+def _google_drive_callback_page(title: str, message: str, success: bool) -> HTMLResponse:
+    color = "#16a34a" if success else "#dc2626"
+    safe_title = escape(title)
+    safe_message = escape(message)
+    return HTMLResponse(
+        f"""
+        <!doctype html>
+        <html>
+          <head>
+            <title>{safe_title}</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+          </head>
+          <body style="font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5;">
+            <h1 style="color: {color};">{safe_title}</h1>
+            <p>{safe_message}</p>
+            <p>You can close this tab and return to Document AI Analyst.</p>
+          </body>
+        </html>
+        """,
+        status_code=status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST,
+    )
+
+
+@router.get("/google-drive/connect", response_model=GoogleDriveAuthUrlResponse)
+def connect_google_drive(user: User = Depends(get_current_user)):
+    """
+    Create a Google OAuth consent URL for read-only Drive access.
+
+    The OAuth state is a short-lived signed token containing the current user
+    id, so the callback can store the refresh token without trusting client
+    input or requiring a browser Authorization header.
+    """
+    state_token = _create_google_drive_state(user.id)
+    flow = _google_drive_flow(state_token)
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent",
+    )
+    return GoogleDriveAuthUrlResponse(auth_url=auth_url)
+
+
+@router.get("/google-drive/callback")
+def google_drive_callback(
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Handle Google's OAuth callback and persist the encrypted refresh token."""
+    if error:
+        return _google_drive_callback_page("Google Drive not connected", error, False)
+
+    if not code or not state:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Missing Google OAuth callback data.",
+            False,
+        )
+
+    user_id = _decode_google_drive_state(state)
+    if not user_id:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Invalid or expired Google OAuth state.",
+            False,
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return _google_drive_callback_page("Google Drive not connected", "User not found.", False)
+
+    try:
+        flow = _google_drive_flow(state)
+        flow.fetch_token(code=code)
+    except Exception:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Failed to connect Google Drive.",
+            False,
+        )
+
+    refresh_token = flow.credentials.refresh_token
+    if not refresh_token:
+        return _google_drive_callback_page(
+            "Google Drive not connected",
+            "Google did not return a refresh token. Revoke access and try again.",
+            False,
+        )
+
+    user.google_refresh_token = refresh_token
+    db.commit()
+    db.refresh(user)
+
+    return _google_drive_callback_page(
+        "Google Drive connected",
+        "Read-only Google Drive access was granted successfully.",
+        True,
+    )
+
+
+@router.get("/google-drive/status", response_model=GoogleDriveStatusResponse)
+def google_drive_status(user: User = Depends(get_current_user)):
+    """Return whether the current user has connected Google Drive."""
+    return GoogleDriveStatusResponse(connected=bool(user.google_refresh_token))
+
+
+@router.delete("/google-drive/disconnect", response_model=GoogleDriveStatusResponse)
+def disconnect_google_drive(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove the stored Google Drive refresh token for the current user."""
+    user.google_refresh_token = None
+    db.commit()
+    return GoogleDriveStatusResponse(connected=False)
+
+
 @router.get("/login/huggingface")
 def huggingface_login(response: Response):
     """
@@ -638,10 +822,7 @@ def huggingface_login(response: Response):
     and returns the Hugging Face OAuth authorization URL.
     """
     if not settings.HF_CLIENT_ID or not settings.HF_REDIRECT_URI:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Hugging Face OAuth is not configured",
-        )
+        raise ExternalServiceException("Hugging Face", "Hugging Face OAuth is not configured")
 
     # Generate CSRF state
     state = secrets.token_urlsafe(32)
@@ -685,10 +866,7 @@ async def huggingface_callback(
     """
     # 1. Verify CSRF State
     if not oauth_state or state != oauth_state:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="State verification failed. Possible CSRF attack.",
-        )
+        raise ValidationException("State verification failed. Possible CSRF attack.")
 
     # 2. Exchange code for access_token via Hugging Face API
     token_url = "https://huggingface.co/oauth/token"
@@ -707,22 +885,13 @@ async def huggingface_callback(
             token_response.raise_for_status()
             token_data = token_response.json()
         except httpx.HTTPStatusError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Failed to exchange code: {e.response.text}",
-            )
+            raise UnauthorizedException(f"Failed to exchange code: {e.response.text}")
         except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Token exchange error: {str(e)}",
-            )
+            raise AppException("INTERNAL_ERROR", f"Token exchange error: {str(e)}", 500)
 
     hf_access_token = token_data.get("access_token")
     if not hf_access_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No access token returned from Hugging Face",
-        )
+        raise UnauthorizedException("No access token returned from Hugging Face")
 
     # 3. Fetch user profile data via /oauth/userinfo
     userinfo_url = "https://huggingface.co/oauth/userinfo"
@@ -734,19 +903,13 @@ async def huggingface_callback(
             userinfo_response.raise_for_status()
             user_data = userinfo_response.json()
         except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to retrieve Hugging Face user info: {str(e)}",
-            )
+            raise AppException("INTERNAL_ERROR", f"Failed to retrieve Hugging Face user info: {str(e)}", 500)
 
     email = user_data.get("email")
     username = user_data.get("preferred_username") or user_data.get("username") or user_data.get("name")
 
     if not email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Hugging Face account email is required but not provided",
-        )
+        raise ValidationException("Hugging Face account email is required but not provided")
 
     email = email.lower()
     if not username:
