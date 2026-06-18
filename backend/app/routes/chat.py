@@ -617,10 +617,22 @@ def clear_chat_history(
     db: Session = Depends(get_db),
 ):
     """Delete all chat messages associated with a specific document."""
+    # Find the query/subquery of chat messages to delete
+    message_ids_query = db.query(ChatMessage.id).filter(
+        ChatMessage.user_id == user.id,
+        ChatMessage.document_id == document_id,
+    )
+
+    # Delete any associated SharedMessage records first
+    db.query(SharedMessage).filter(
+        SharedMessage.message_id.in_(message_ids_query)
+    ).delete(synchronize_session=False)
+
+    # Delete the ChatMessage records
     db.query(ChatMessage).filter(
         ChatMessage.user_id == user.id,
         ChatMessage.document_id == document_id,
-    ).delete()
+    ).delete(synchronize_session=False)
     db.commit()
 
     return {"message": "Chat history cleared"}

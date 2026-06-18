@@ -30,7 +30,6 @@ httpx
 PyMuPDF
 pdfplumber
 python-docx
-unstructured[pdf]
 
 # LangChain & RAG
 langchain
@@ -71,4 +70,3 @@ pypdf
 reportlab
 # crawl4ai
 ddgs
-google-auth-oauthlib

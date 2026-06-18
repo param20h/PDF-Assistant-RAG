@@ -39,6 +39,7 @@ export default function RootLayout({
             <I18nProvider>
               <TooltipProvider>
                 {children}
+                <Toaster richColors position="top-right" closeButton />
               </TooltipProvider>
             </I18nProvider>
           </AuthProvider>
