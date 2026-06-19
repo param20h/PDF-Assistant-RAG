@@ -1,15 +1,22 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useSyncExternalStore } from "react";
 import { formatDistanceToNow } from "date-fns";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type { ChatMsg } from "@/store/chat-store";
 import { api } from "@/lib/api";
-import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, ThumbsUp, ThumbsDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Brain, User, Copy, Check, Share2, Link2, X, Play, Pause, GitBranch } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { useChatStore } from "@/store/chat-store";
+import { useSettingsStore } from "@/store/settings-store";
+
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 interface Props {
   message: ChatMsg;
@@ -62,16 +69,31 @@ export default function MessageBubble({ message }: Props) {
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Component unmount ആകുമ്പോൾ speech cancel ചെയ്യും
-  useEffect(() => {
-    return () => {
-      if (utteranceRef.current) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, []);
+ useEffect(() => {
+  const currentUtterance = utteranceRef.current;
 
-  const [feedbackState, setFeedbackState] = useState<"up" | "down" | null>(message.feedback ?? null);
-  const setMessages = useChatStore((s) => s.setMessages);
+  return () => {
+    if (currentUtterance) {
+      window.speechSynthesis.cancel();
+    }
+  };
+}, []);
+
+ 
+
+const setCurrentBranchId = useChatStore(
+  (s) => s.setCurrentBranchId
+);
+
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const fontSize = useSettingsStore((s) => s.fontSize);
+
+  const activeFontSize = mounted ? fontSize : "medium";
+  const fontSizeClass = {
+    small: "text-xs",
+    medium: "text-sm",
+    large: "text-base",
+  }[activeFontSize];
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -136,21 +158,13 @@ export default function MessageBubble({ message }: Props) {
     window.speechSynthesis.speak(utterance);
   };
 
-  const handleFeedback = async (value: "up" | "down") => {
-    const next = feedbackState === value ? null : value;
-    setFeedbackState(next);
-    setMessages((prev) =>
-      prev.map((msg) => (msg.id === message.id ? { ...msg, feedback: next } : msg)),
-    );
-    try {
-      await api.patch(`/api/v1/chat/feedback/${message.id}`, { feedback: next });
-    } catch {
-      setFeedbackState(message.feedback ?? null);
-      setMessages((prev) =>
-        prev.map((msg) => (msg.id === message.id ? { ...msg, feedback: message.feedback } : msg)),
-      );
-    }
-  };
+const handleBranch = () => {
+  setCurrentBranchId(message.id);
+
+  console.log("Branch created from:", message.id);
+};
+    
+  
   return (
     <div
       className={`flex gap-3 py-3 animate-fade-in-up ${isUser ? "justify-end" : "justify-start"}`}
@@ -169,78 +183,67 @@ export default function MessageBubble({ message }: Props) {
         }`}
       >
         {isUser ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          <p className={`leading-relaxed whitespace-pre-wrap ${fontSizeClass}`}>{message.content}</p>
         ) : (
           <>
             {message.content && (
               <>
                 {/* Share button */}
                 {!message.isStreaming && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className={`absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-opacity ${
-                      shared || shareFailed
-                        ? "opacity-100"
-                        : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                    }`}
-                    onClick={handleShare}
-                    aria-label={shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
-                  >
-                    {shared ? (
-                      <Link2 className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : shareFailed ? (
-                      <X className="w-3.5 h-3.5 text-destructive" />
-                    ) : (
-                      <Share2 className="w-3.5 h-3.5" />
-                    )}
-                  </Button>
-                )}
-
-                {/* Speech button */}
-                {!message.isStreaming && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
-                      isSpeaking
-                        ? "opacity-100"
-                        : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                    }`}
-                    onClick={handleSpeech}
-                    aria-label={isSpeaking ? "Stop reading" : "Read response"}
-                  >
-                    {isSpeaking ? (
-                      <Pause className="w-3.5 h-3.5" />
-                    ) : (
-                      <Play className="w-3.5 h-3.5" />
-                    )}
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      type="button"
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "icon-xs" }),
+                        `absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-opacity ${
+                          shared || shareFailed
+                            ? "opacity-100"
+                            : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                        }`,
+                      )}
+                      onClick={handleShare}
+                      aria-label={shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
+                    >
+                      {shared ? (
+                        <Link2 className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : shareFailed ? (
+                        <X className="w-3.5 h-3.5 text-destructive" />
+                      ) : (
+                        <Share2 className="w-3.5 h-3.5" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {shared ? "Link copied" : shareFailed ? "Share failed" : "Share response"}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
 
                 {/* Copy button */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className={`absolute top-2 right-9 text-muted-foreground hover:text-foreground transition-opacity ${
-                    copied
-                      ? "opacity-100"
-                      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                  }`}
-                  onClick={handleCopy}
-                  aria-label={copied ? "Copied" : "Copy response"}
-                >
-                  {copied ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    type="button"
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "icon-xs" }),
+                      `absolute top-2 right-9 text-muted-foreground hover:text-foreground transition-opacity ${
+                        copied
+                          ? "opacity-100"
+                          : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                      }`,
+                    )}
+                    onClick={handleCopy}
+                    aria-label={copied ? "Copied" : "Copy response"}
+                  >
+                    {copied ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>{copied ? "Copied" : "Copy response"}</TooltipContent>
+                </Tooltip>
+
                 {copied && (
-                  <div 
+                  <div
                     className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded-md whitespace-nowrap opacity-100 transition-opacity pointer-events-none"
                     role="status"
                     aria-live="polite"
@@ -249,30 +252,51 @@ export default function MessageBubble({ message }: Props) {
                   </div>
                 )}
 
-                {/* Play / Pause button */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className={`absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
-                    isSpeaking
-                      ? "opacity-100"
-                      : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
-                  }`}
-                  onClick={handleSpeech}
-                  disabled={message.isStreaming}
-                  aria-label={isSpeaking ? "Stop speech" : "Play speech"}
-                >
-                  {isSpeaking ? (
-                    <Pause className="w-3.5 h-3.5 text-primary" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5" />
-                  )}
-                </Button>
+                {/* Speech button */}
+                {!message.isStreaming && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      type="button"
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "icon-xs" }),
+                        `absolute top-2 right-16 text-muted-foreground hover:text-foreground transition-opacity ${
+                          isSpeaking
+                            ? "opacity-100"
+                            : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
+                        }`,
+                      )}
+                      onClick={handleSpeech}
+                      aria-label={isSpeaking ? "Stop reading" : "Read response"}
+                    >
+                      {isSpeaking ? (
+                        <Pause className="w-3.5 h-3.5" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>{isSpeaking ? "Stop reading" : "Read response"}</TooltipContent>
+                  </Tooltip>
+                )}
+
+                {/* Branch button */}
+                <Tooltip>
+                  <TooltipTrigger
+                    type="button"
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "icon-xs" }),
+                      "absolute top-2 right-24 text-muted-foreground hover:text-foreground transition-opacity opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
+                    )}
+                    onClick={handleBranch}
+                    aria-label="Branch conversation"
+                  >
+                    <GitBranch className="w-3.5 h-3.5" />
+                  </TooltipTrigger>
+                  <TooltipContent>Branch conversation</TooltipContent>
+                </Tooltip>
               </>
             )}
 
-            <div className={`prose-chat text-sm ${message.content ? "pr-20" : ""}`}>
+            <div className={`prose-chat ${fontSizeClass} ${message.content ? "pr-20" : ""}`}>
               {message.content ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -292,35 +316,8 @@ export default function MessageBubble({ message }: Props) {
                 <span className="inline-block w-0.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
               )}
             </div>
-            {!message.isStreaming && !isUser && (
-              <div className="flex items-center gap-1 pt-2 border-t border-border/40 mt-3">
-                <span className="text-[11px] text-muted-foreground/60 mr-1">Was this helpful?</span>
-                <button
-                  type="button"
-                  onClick={() => handleFeedback("up")}
-                  className={`p-1 rounded transition-colors ${
-                    feedbackState === "up"
-                      ? "text-emerald-500 bg-emerald-500/10"
-                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
-                  }`}
-                  aria-label="Thumbs up"
-                >
-                  <ThumbsUp className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleFeedback("down")}
-                  className={`p-1 rounded transition-colors ${
-                    feedbackState === "down"
-                      ? "text-red-500 bg-red-500/10"
-                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
-                  }`}
-                  aria-label="Thumbs down"
-                >
-                  <ThumbsDown className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+            
+        
           </>
         )}
         

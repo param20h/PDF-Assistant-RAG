@@ -235,9 +235,16 @@ export default function ChatSessionSidebar() {
         </Button>
       </div>
 
+      {/*
+        FAB — mobile only (md:hidden).
+        z-20: sits below the Header (z-50) and its backdrop (z-40) so
+              it is not tappable when the document navigation sheet is open.
+        bottom uses safe-area-inset-bottom so the button clears the iOS
+        home indicator on iPhone SE and other small-screen devices.
+      */}
       <Button
         onClick={() => setMobileOpen(true)}
-        className="fixed bottom-4 left-4 z-30 h-11 w-11 rounded-full shadow-lg md:hidden"
+        className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] left-4 z-20 h-11 w-11 rounded-full shadow-lg md:hidden"
         size="icon"
         aria-label="Open chat sessions"
         aria-controls="mobile-chat-sessions"
@@ -263,7 +270,7 @@ export default function ChatSessionSidebar() {
         )}
         aria-label="Chat sessions"
         aria-hidden={!mobileOpen}
-        inert={!mobileOpen ? true : undefined}
+        {...(!mobileOpen ? { inert: true } : {})}
       >
         {sessionsContent(true)}
       </aside>

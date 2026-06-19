@@ -1,11 +1,35 @@
 """Reusable document ingestion pipeline."""
+import traceback
 import logging
+from datetime import datetime, timezone
 
 from app.models import Document
+from app.rag.agent import persist_document_keywords
 from app.rag.chunker import chunk_document, get_page_count
 from app.rag.vectorstore import store_chunks
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+def _update_progress(document_id: str, progress: int, stage: str, error: str = None):
+    """Update document progress fields in the database."""
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if doc:
+            doc.processing_progress = progress
+            doc.processing_stage = stage
+            if error:
+                doc.error_message = error
+            db.commit()
+    except Exception as e:
+        logger.warning("Failed to update progress for %s: %s", document_id, e)
+    finally:
+        db.close()
 
 
 def ingest_document(document_id: str, filepath: str, original_name: str, user_id: str):
@@ -26,11 +50,16 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
             return
 
         doc.status = "processing"
+        doc.processing_stage = "extracting"
+        doc.processing_progress = 10
         doc.error_message = None
+        doc.last_error_traceback = None
         db.commit()
 
         page_count = get_page_count(filepath)
         doc.page_count = page_count
+        doc.processing_progress = 20
+        db.commit()
 
         try:
             chunk_kwargs = {}
@@ -38,16 +67,55 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
                 chunk_kwargs["chunk_size"] = doc.chunk_size
             if doc.chunk_overlap is not None:
                 chunk_kwargs["chunk_overlap"] = doc.chunk_overlap
+            doc.processing_stage = "chunking"
+            doc.processing_progress = 30
+            db.commit()
             chunks = chunk_document(filepath, **chunk_kwargs)
         except TypeError:
-            # Preserve compatibility with patched/test implementations.
             chunks = chunk_document(filepath)
+
+        # ── Proximity caption pass (PDF only) ────────────────────────────────
+        # Write bounding-box-derived captions into image chunks BEFORE store_chunks()
+        # so generate_captions_for_chunks() in vectorstore.py only needs to handle
+        # the OCR / placeholder fallback for any images without adjacent text.
+        ext = filepath.rsplit(".", 1)[-1].lower()
+        if ext == "pdf":
+            try:
+                from app.rag.vision import extract_captions_from_pdf
+
+                pdf_captions = extract_captions_from_pdf(filepath)
+                # Build lookup: page -> [captions in figure_index order]
+                caption_map: dict = {}
+                for cap in pdf_captions:
+                    caption_map.setdefault(cap["page"], []).append(cap)
+
+                fig_counters: dict = {}
+                for chunk in chunks:
+                    if not chunk.get("image_bytes"):
+                        continue
+                    page = chunk.get("page", 1)
+                    idx = fig_counters.get(page, 0)
+                    page_caps = caption_map.get(page, [])
+                    if idx < len(page_caps) and page_caps[idx]["caption"]:
+                        chunk["image_caption"] = page_caps[idx]["caption"]
+                        chunk["bbox"] = str(page_caps[idx]["bbox"])
+                    fig_counters[page] = idx + 1
+            except Exception as exc:
+                logger.warning(
+                    "Proximity caption extraction failed for %s: %s", document_id, exc
+                )
+        # ── End proximity caption pass ────────────────────────────────────────
 
         if not chunks:
             doc.status = "failed"
+            doc.processing_progress = 0
             doc.error_message = "No text could be extracted from the document"
             db.commit()
             return
+
+        doc.processing_progress = 50
+        doc.processing_stage = "indexing"
+        db.commit()
 
         try:
             from app.rag.graph_builder import build_graph, save_graph
@@ -57,12 +125,21 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
         except Exception as e:
             logger.warning("Could not build knowledge graph for document %s: %s", document_id, e)
 
+        doc.processing_progress = 70
+        doc.processing_stage = "embedding"
+        db.commit()
+
         chunk_count = store_chunks(
             chunks=chunks,
             document_id=document_id,
             filename=original_name,
             user_id=user_id,
         )
+
+        persist_document_keywords(doc, chunks, db)
+
+        doc.processing_progress = 85
+        db.commit()
 
         try:
             from app.rag.summarizer import generate_document_summary
@@ -75,8 +152,34 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
             logger.warning("Could not generate summary for document %s: %s", document_id, e)
             doc.summary = None
 
+        # ── URL extraction pass (PDF only) ────────────────────────────────
+        ext = filepath.rsplit(".", 1)[-1].lower()
+        if ext == "pdf":
+            try:
+                from app.rag.url_extractor import extract_urls_from_pdf
+                import json
+
+                urls = extract_urls_from_pdf(filepath)
+                doc.extracted_urls = json.dumps(urls) if urls else None
+                db.commit()
+                logger.info(
+                    "Extracted %s URLs from document %s",
+                    len(urls),
+                    document_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "URL extraction failed for document %s: %s",
+                    document_id,
+                    exc,
+                )
+        # ── End URL extraction pass ───────────────────────────────────────
+
         doc.chunk_count = chunk_count
         doc.status = "ready"
+        doc.processing_progress = 100
+        doc.processing_stage = "completed"
+        doc.completed_at = datetime.now(timezone.utc)
         doc.error_message = None
         db.commit()
 
@@ -89,6 +192,7 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
 
     except Exception as e:
         logger.error("Ingestion error for %s: %s", document_id, e)
+        db.rollback()
         try:
             doc = db.query(Document).filter(
                 Document.id == document_id,
@@ -96,7 +200,9 @@ def ingest_document(document_id: str, filepath: str, original_name: str, user_id
             ).first()
             if doc:
                 doc.status = "failed"
+                doc.processing_progress = 0
                 doc.error_message = str(e)[:500]
+                doc.last_error_traceback = traceback.format_exc()[:2000]
                 db.commit()
         except Exception:
             logger.exception("Failed to mark document %s as failed", document_id)
