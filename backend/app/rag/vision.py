@@ -46,25 +46,48 @@ def caption_image(image_bytes: bytes, page: int | None = None) -> str:
     provider = getattr(settings, "VISION_PROVIDER", None)
     if provider == "openai":
         try:
-            import openai
-            # Minimal integration: attempt a text-only caption via responses if available.
-            # This is a best-effort hook; users should adapt to their provider's API.
+            import base64
+            from openai import OpenAI
+            
             api_key = getattr(settings, "OPENAI_API_KEY", None)
             if api_key:
-                openai.api_key = api_key
-                # Use a generic prompt: "Describe the following image"
-                # Note: concrete multimodal API usage may vary across SDK versions.
-                resp = openai.Image.create(
-                    prompt="Describe this image in one concise sentence.",
-                    n=1,
-                    # We do not re-upload image bytes here; this is a placeholder to show
-                    # where provider code would be invoked. For production, follow
-                    # provider docs for sending image data.
+                # Initialize modern client
+                client = OpenAI(api_key=api_key)
+                
+                # Base64 encode the incoming image bytes
+                base64_image = base64.b64encode(image_bytes).decode('utf-8')
+                
+                # Request a visual caption using Chat Completions payload structure
+                resp = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text", 
+                                    "text": "Describe this image in one concise sentence."
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=150
                 )
-                # openai.Image.create returns generated images, not captions — so skip.
-        except Exception:
-            # If provider integration fails, fall back to OCR below
-            logger.debug("OpenAI vision provider failed, falling back to OCR")
+                
+                # Extract and return the caption immediately if successful
+                caption_text = resp.choices[0].message.content
+                if caption_text:
+                    return caption_text.strip()
+                    
+        except Exception as e:
+            # Enhanced error logging to make debugging transparent
+            logger.warning(f"OpenAI vision provider failed: {e}, falling back to OCR")
 
     # Try OCR caption
     ocr = _ocr_caption(image_bytes)
