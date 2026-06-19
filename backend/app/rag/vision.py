@@ -15,13 +15,27 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Global availability flag for OCR dependencies to avoid repetitive runtime overhead
+try:
+    from PIL import Image
+    import pytesseract
+    HAS_OCR = True
+except ImportError:
+    HAS_OCR = False
+
 
 def _ocr_caption(image_bytes: bytes) -> str:
     """Try to produce a caption using pytesseract OCR; returns empty string if not available."""
+    if not HAS_OCR:
+        return ""
+
     try:
-        from PIL import Image
-        import pytesseract
-    except Exception:
+        img = Image.open(BytesIO(image_bytes)).convert("RGB")
+        text = pytesseract.image_to_string(img)
+        text = text.strip()
+        return text
+    except Exception as e:
+        logger.debug(f"OCR failed: {e}")
         return ""
 
     try:
