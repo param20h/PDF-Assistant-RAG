@@ -21,6 +21,25 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# ── Optional OCR backend (PIL + pytesseract) ─────────────────────────────────
+# Imported once at module load instead of inline on every _ocr_caption() call.
+# ``HAS_OCR`` records availability so the hot path (large batch caption loops in
+# generate_captions_for_chunks) can short-circuit with a cheap boolean check
+# rather than re-running an import + try/except on each image.
+try:
+    from PIL import Image
+    import pytesseract
+
+    HAS_OCR = True
+except ImportError:
+    Image = None  # type: ignore[assignment]
+    pytesseract = None  # type: ignore[assignment]
+    HAS_OCR = False
+    logger.info(
+        "OCR backend unavailable (PIL/pytesseract not installed); "
+        "image captioning will fall back to placeholders."
+    )
+
 # Minimum image area (px²) — smaller images are decorative and skipped.
 _MIN_IMAGE_AREA = 1_000
 
@@ -123,11 +142,12 @@ def extract_captions_from_pdf(filepath: str) -> List[Dict[str, Any]]:
 # ── 2. OCR fallback ──────────────────────────────────────────────────────────
 
 def _ocr_caption(image_bytes: bytes) -> str:
-    """Attempt OCR via pytesseract; returns empty string if unavailable."""
-    try:
-        from PIL import Image
-        import pytesseract
-    except Exception:
+    """Attempt OCR via pytesseract; returns empty string if unavailable.
+
+    The PIL/pytesseract import is resolved once at module load (see ``HAS_OCR``),
+    so this only does a boolean check before touching the image bytes.
+    """
+    if not HAS_OCR:
         return ""
 
     try:
