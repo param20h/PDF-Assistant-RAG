@@ -19,8 +19,11 @@ except ImportError:
 
         def invoke(self, query):
             docs = []
-            for retriever in self.retrievers:
-                docs.extend(retriever.invoke(query))
+            for i, retriever in enumerate(self.retrievers):
+                retrieved = retriever.invoke(query)
+                for j, doc in enumerate(retrieved):
+                      doc['id'] = f"{doc.metadata.get('source','unk')}_{doc.metadata.get('page',0)}_{i}_{j}"
+                      docs.append(doc)
             return docs
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document as LangchainDocument
@@ -31,6 +34,7 @@ from app.config import get_settings
 from app.rag.embeddings import embed_query
 from app.rag.tracing import trace_function
 from app.rag.vectorstore import query_chunks
+from app.rag.bm25 import store_bm25_index, query_bm25, update_bm25_index
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -90,6 +94,8 @@ class CustomBM25Retriever(BaseRetriever):
             document_id=self.document_id,
             top_k=self.top_k,
         )
+        for i, c in enumerate(candidates):
+         c['id'] = f"bm25_{c.get('document_id','unk')}_{c.get('page',0)}_{i}"
         return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
 
 

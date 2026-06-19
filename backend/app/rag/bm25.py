@@ -6,6 +6,7 @@ import os
 import glob
 import pickle
 import logging
+import re
 from typing import List, Dict, Any, Optional
 
 from app.config import get_settings
@@ -29,10 +30,11 @@ def get_bm25_path(user_id: str, document_id: str) -> str:
     """Get the file path for a specific document's BM25 index."""
     return os.path.join(get_bm25_dir(user_id), f"{document_id}.pkl")
 
+import re
+
 def tokenize(text: str) -> List[str]:
-    """Simple tokenization for BM25."""
-    # Convert to lowercase and split by whitespace
-    return text.lower().split()
+    """Better tokenization for BM25."""
+    return re.findall(r'\w+', text.lower())
 
 def store_bm25_index(chunks: List[Dict[str, Any]], document_id: str, filename: str, user_id: str):
     """
@@ -100,6 +102,7 @@ def _query_single_index(path: str, tokenized_query: List[str], top_k: int) -> Li
             # BM25 scores are usually > 0, often 1-10.
             # We keep the raw score for now, RRF will handle the ranking.
             chunk["score"] = float(scores[i])
+            chunk['id'] = f"bm25_{chunk.get('document_id','unk')}_{chunk.get('page',0)}_{i}"
             results.append(chunk)
 
     return results
@@ -155,3 +158,8 @@ def delete_user_bm25_indexes(user_id: str):
             logger.info(f"Deleted BM25 directory for user {user_id}")
         except Exception as e:
             logger.warning(f"Error deleting BM25 directory for user {user_id}: {e}")
+
+def update_bm25_index(chunks: List[Dict[str, Any]], document_id: str, filename: str, user_id: str):
+    """Update existing BM25 index."""
+    delete_bm25_index(document_id, user_id)
+    store_bm25_index(chunks, document_id, filename, user_id)
