@@ -127,3 +127,83 @@ def test_agent_dynamic_token(monkeypatch):
     generate_answer(question="hello?", user_id="some-user", hf_token=None)
     from app.config import get_settings
     assert called_with_token == get_settings().HF_TOKEN
+
+
+def test_clear_chat_history_with_shared_messages(client, auth_headers, ready_document, db_session, user):
+    from app.models import ChatMessage, SharedMessage
+    
+    # Create a user ChatMessage and an assistant ChatMessage associated with ready_document
+    user_msg = ChatMessage(
+        user_id=user.id,
+        document_id=ready_document.id,
+        role="user",
+        content="Hello, is anyone there?",
+    )
+    assistant_msg = ChatMessage(
+        user_id=user.id,
+        document_id=ready_document.id,
+        role="assistant",
+        content="Yes, I am here.",
+    )
+    db_session.add_all([user_msg, assistant_msg])
+    db_session.commit()
+    db_session.refresh(assistant_msg)
+    
+    # Make assistant message shared by creating a SharedMessage link
+    shared = SharedMessage(message_id=assistant_msg.id)
+    db_session.add(shared)
+    db_session.commit()
+
+    assistant_msg_id = assistant_msg.id
+    
+    # Expunge objects so session doesn't try to auto-refresh deleted rows
+    db_session.expunge(user_msg)
+    db_session.expunge(assistant_msg)
+    db_session.expunge(shared)
+    
+    # Call DELETE /api/v1/chat/history/{document_id}
+    response = client.delete(
+        f"/api/v1/chat/history/{ready_document.id}",
+        headers=auth_headers,
+    )
+    
+    # Check results
+    assert response.status_code == 200
+    assert response.json() == {"message": "Chat history cleared"}
+    
+    # Check that ChatMessage records are deleted
+    remaining_messages = db_session.query(ChatMessage).filter(
+        ChatMessage.document_id == ready_document.id
+    ).all()
+    assert len(remaining_messages) == 0
+    
+    # Check that SharedMessage records are deleted
+    remaining_shared = db_session.query(SharedMessage).filter(
+        SharedMessage.message_id == assistant_msg_id
+    ).all()
+    assert len(remaining_shared) == 0
+
+
+def test_clear_chat_history_repeated_or_empty(client, auth_headers, ready_document, db_session):
+    from app.models import ChatMessage
+    # Check history is empty initially
+    remaining_messages = db_session.query(ChatMessage).filter(
+        ChatMessage.document_id == ready_document.id
+    ).all()
+    assert len(remaining_messages) == 0
+
+    # First delete on empty history
+    response = client.delete(
+        f"/api/v1/chat/history/{ready_document.id}",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json() == {"message": "Chat history cleared"}
+
+    # Second delete (repeated request)
+    response = client.delete(
+        f"/api/v1/chat/history/{ready_document.id}",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json() == {"message": "Chat history cleared"}
