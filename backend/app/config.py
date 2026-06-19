@@ -15,8 +15,16 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:7860"
 
+    # ── Logging ──────────────────────────────────────────
+    LOG_LEVEL: str | None = None
+    LOG_FILE: str = "./data/logs/app.log"
+
+
     # ── Database ─────────────────────────────────────────
     DATABASE_URL: str = "sqlite:///./data/app.db"
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_PRE_PING: bool = True
 
     # ── Auth ─────────────────────────────────────────────
     JWT_ALGORITHM: str = "HS256"
@@ -50,6 +58,12 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     CELERY_TASK_TRACK_STARTED: bool = True
 
+    # ── Document Processing ──────────────────────────────
+    DOC_PROCESSING_TIMEOUT_MINUTES: int = 30
+    DOC_PROCESSING_MAX_RETRIES: int = 3
+    DOC_PROCESSING_RETRY_DELAY_SECONDS: int = 30
+    DOC_CLEANUP_MAX_AGE_DAYS: int = 90
+
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
@@ -70,6 +84,10 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
     TOP_K_RETRIEVAL: int = 20 # Fetch more candidates for reranking
     TOP_K_RERANK: int = 8 # Final number of chunks to return after reranking
+
+    # ── Hybrid Search / RRF ───────────────────────────────
+    USE_HYBRID_SEARCH: bool = True   # set to False to fall back to vector-only
+    RRF_K: int = 60                  # RRF rank constant; 60 is the standard default
 
     # ── Knowledge Graph (GraphRAG) ───────────────────────
     GRAPH_PERSIST_DIR: str = "./data/graphs"
@@ -101,6 +119,17 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.3
     SUMMARY_MAX_TOKENS: int = 512
 
+    # ── Field-level Encryption ────────────────────────
+    # Dedicated key for encrypting sensitive user fields (tokens, secrets).
+    # Must be overridden in production — validate_production() enforces this.
+    # Generate a strong key: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    FIELD_ENCRYPTION_KEY: str = "change-me-in-production-field-encryption-key"
+    FIELD_ENCRYPTION_KEY_VERSION: int = 1
+
+    # ── Document Cleanup ─────────────────────────────
+    DOC_CLEANUP_ENABLED: bool = True
+    DOC_CLEANUP_INACTIVE_DAYS: int = 30
+
     # ── LangSmith Tracing (optional) ─────────────────────
     LANGSMITH_TRACING: bool = False
     LANGSMITH_API_KEY: str = ""
@@ -128,6 +157,21 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT == "production":
             return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
         return ["*"]
+
+    def validate_production(self):
+        """Raises ValueError if dangerous defaults are active in production."""
+        if self.ENVIRONMENT != "production":
+            return
+        if self.SECRET_KEY in ("change-me-in-production-please", "dev-secret-key-change-me"):
+            raise ValueError(
+                "SECRET_KEY must be overridden in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        if not self.FIELD_ENCRYPTION_KEY:
+            raise ValueError(
+                "FIELD_ENCRYPTION_KEY must be set in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
 
     class Config:
         env_file = ".env"

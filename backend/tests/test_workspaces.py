@@ -11,7 +11,7 @@ def test_workspace_invite_requires_admin(client, db_session, user):
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Admin access required"
+    assert response.json()["error"]["message"] == "Admin access required"
 
 
 def test_workspace_invite_creates_invitation_and_sends_email(client, db_session, monkeypatch):

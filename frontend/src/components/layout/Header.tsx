@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -13,12 +13,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuPortal,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import {
   Brain,
@@ -29,17 +23,30 @@ import {
   LogOut,
   Menu,
   X,
-  Palette,
   Briefcase,
   ChevronDown,
   Sun,
-  Moon
+  Moon,
+  Settings,
+  Eye,
+  EyeOff,
 } from "lucide-react";
-import { useWorkspaceStore, WORKSPACES, type WorkspaceId } from "@/store/workspace-store";
-import { api } from "@/lib/api";
+import { KeyRound } from "lucide-react";
 import { useTheme } from "next-themes";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  useWorkspaceStore,
+  WORKSPACES,
+  type WorkspaceId,
+} from "@/store/workspace-store";
+import { api } from "@/lib/api";
 
-import { useSyncExternalStore } from "react";
+import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -64,13 +71,36 @@ export default function Header({
   const { user, logout } = useAuth();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const mounted = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+  ); // ← replaces useState + useEffect
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [temperature, setTemperature] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("temperature");
+      return saved ? Number(saved) : 0.5;
+    }
+    return 0.5;
+  });
+  const [hfModalOpen, setHfModalOpen] = useState(false);
+  const [hfToken, setHfToken] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [hfError, setHfError] = useState("");
+  const [hfSuccess, setHfSuccess] = useState("");
+  const [hfLoading, setHfLoading] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem("temperature", temperature.toString());
+  }, [temperature]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const workspace = useWorkspaceStore((s) => s.workspace);
   const setWorkspace = useWorkspaceStore((s) => s.setWorkspace);
 
-  const currentWorkspaceLabel = WORKSPACES.find((w) => w.id === workspace)?.label ?? workspace;
+  const currentWorkspaceLabel =
+    WORKSPACES.find((w) => w.id === workspace)?.label ?? workspace;
   const isDark = theme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
@@ -82,7 +112,9 @@ export default function Header({
   const fetchDocumentsForWorkspace = async (id: string) => {
     setWorkspaceLoading(true);
     try {
-      const res = await api.get(`/api/v1/documents?workspace=${encodeURIComponent(id)}`).catch(() => null);
+      const res = await api
+        .get(`/api/v1/documents?workspace=${encodeURIComponent(id)}`)
+        .catch(() => null);
       console.log("workspace change, fetched documents:", res);
     } catch (err) {
       console.warn("Failed to fetch documents for workspace", id, err);
@@ -117,7 +149,9 @@ export default function Header({
             className="h-8 w-8 hidden md:inline-flex"
             onClick={onToggleSidebar}
             title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-            aria-label={sidebarOpen ? "Close document sidebar" : "Open document sidebar"}
+            aria-label={
+              sidebarOpen ? "Close document sidebar" : "Open document sidebar"
+            }
             aria-pressed={sidebarOpen}
           >
             {sidebarOpen ? (
@@ -136,7 +170,9 @@ export default function Header({
             <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
               <Brain className="w-4 h-4 text-primary" />
             </div>
-            <span className="font-semibold text-sm hidden sm:inline">Document AI Analyst</span>
+            <span className="font-semibold text-sm hidden sm:inline">
+              Document AI Analyst
+            </span>
           </Link>
         </div>
 
@@ -157,6 +193,16 @@ export default function Header({
               <PanelRightOpen className="w-4 h-4" />
             )}
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setSettingsOpen(true)}
+            title="LLM Settings"
+            aria-label="Open LLM settings"
+          >
+            <Settings className="w-4 h-4" />
+          </Button>
 
           {mounted && (
             <Button
@@ -165,11 +211,19 @@ export default function Header({
               className="h-8 w-8"
               onClick={toggleTheme}
               title={isDark ? "Light mode" : "Dark mode"}
-              aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label={
+                isDark ? "Switch to light mode" : "Switch to dark mode"
+              }
             >
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {isDark ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
             </Button>
           )}
+
+          <KeyboardShortcutsModal />
 
           {/* Workspace switcher */}
           <DropdownMenu>
@@ -186,7 +240,9 @@ export default function Header({
               ) : (
                 <>
                   <Briefcase className="w-4 h-4" />
-                  <span className="text-sm hidden sm:inline">{currentWorkspaceLabel}</span>
+                  <span className="text-sm hidden sm:inline">
+                    {currentWorkspaceLabel}
+                  </span>
                   <ChevronDown className="w-3 h-3" />
                 </>
               )}
@@ -222,10 +278,27 @@ export default function Header({
             <DropdownMenuContent align="end" className="w-48">
               <div className="px-3 py-2">
                 <p className="text-sm font-medium">{user?.username}</p>
-                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {user?.email}
+                </p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={() => {
+                  setHfToken(user?.hf_token ? "" : "");
+                  setHfError("");
+                  setHfSuccess("");
+                  setHfModalOpen(true);
+                }}
+              >
+                <KeyRound className="w-4 h-4 mr-2" />
+                HuggingFace Token
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive cursor-pointer"
+                onClick={handleLogout}
+              >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign out
               </DropdownMenuItem>
@@ -253,7 +326,7 @@ export default function Header({
         ].join(" ")}
         aria-label="Mobile navigation"
         aria-hidden={!sheetOpen}
-        inert={!sheetOpen ? true : undefined}
+        {...(!sheetOpen ? { inert: true } : {})}
       >
         <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border flex-shrink-0">
           {/* MOBILE LOGO — clicking navigates to dashboard and closes the sheet */}
@@ -279,8 +352,149 @@ export default function Header({
           </Button>
         </div>
 
-        <div className="flex-1 overflow-hidden">{sheetOpen ? mobileSheetContent : null}</div>
+        <div className="flex-1 overflow-hidden">
+          {sheetOpen ? mobileSheetContent : null}
+        </div>
       </aside>
+
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>LLM Settings</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <label className="text-sm">Temperature: {temperature}</label>
+
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={temperature}
+              onChange={(e) => setTemperature(Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={hfModalOpen} onOpenChange={setHfModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>HuggingFace Token</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {user?.hf_token && (
+              <div className="text-sm">
+                <span className="font-medium">Token configured: </span>
+                <span>
+                  {user.hf_token.slice(0, 7)}
+                  {"****"}
+                  {user.hf_token.slice(-4)}
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label htmlFor="hf-token-input" className="text-sm font-medium">
+                HuggingFace API Token
+              </label>
+              <div className="relative">
+                <input
+                  id="hf-token-input"
+                  type={showToken ? "text" : "password"}
+                  value={hfToken}
+                  onChange={(e) => setHfToken(e.target.value)}
+                  placeholder="hf_..."
+                  className="w-full border rounded-md px-3 py-2 pr-10 text-sm bg-background"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  aria-label={showToken ? "Hide token" : "Show token"}
+                  onClick={() => setShowToken((s) => !s)}
+                >
+                  {showToken ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {hfError && <p className="text-sm text-destructive">{hfError}</p>}
+            {hfSuccess && <p className="text-sm text-green-600">{hfSuccess}</p>}
+
+            <div className="flex justify-between gap-2">
+              {user?.hf_token && (
+                <Button
+                  variant="outline"
+                  className="text-destructive"
+                  disabled={hfLoading}
+                  onClick={async () => {
+                    setHfError("");
+                    setHfSuccess("");
+                    setHfLoading(true);
+                    try {
+                      await api.put("/api/v1/auth/hf-token", { hf_token: "" });
+                      setHfSuccess("Token removed successfully");
+                    } catch (e: unknown) {
+                      setHfError(
+                        e instanceof Error ? e.message : "Failed to save token",
+                      );
+                    } finally {
+                      setHfLoading(false);
+                    }
+                  }}
+                >
+                  Remove
+                </Button>
+              )}
+
+              <div className="flex gap-2 ml-auto">
+                <Button variant="ghost" onClick={() => setHfModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!hfToken || hfLoading}
+                  onClick={async () => {
+                    setHfError("");
+                    setHfSuccess("");
+
+                    if (!hfToken.startsWith("hf_")) {
+                      setHfError("Token must start with 'hf_'");
+                      return;
+                    }
+                    if (hfToken.length < 10) {
+                      setHfError("Token is too short");
+                      return;
+                    }
+
+                    setHfLoading(true);
+                    try {
+                      await api.put("/api/v1/auth/hf-token", {
+                        hf_token: hfToken,
+                      });
+                      setHfSuccess("Token saved successfully");
+                    } catch (e: unknown) {
+                      setHfError(
+                        e instanceof Error ? e.message : "Failed to save token",
+                      );
+                    } finally {
+                      setHfLoading(false);
+                    }
+                  }}
+                >
+                  {user?.hf_token ? "Update Token" : "Save Token"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
