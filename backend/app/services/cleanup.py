@@ -2,6 +2,24 @@
 
 All cleanup functions use batched pagination and transaction-safe patterns
 to avoid race conditions, double-deletes, and database lock contention.
+
+Each batch is committed independently rather than being accumulated inside
+one long-lived transaction spanning the whole job. This means:
+
+  * No manually advancing ``offset`` is tracked across iterations. Each
+    iteration re-runs the *same* filtered, ``ORDER BY``-ed query with only
+    ``LIMIT`` applied. Once a batch is committed, the rows in it no longer
+    match the filter (they were just marked "failed", soft-deleted, or
+    hard-deleted), so they naturally fall out of the next query's results
+    and the next "page" is simply whatever rows are still eligible --
+    without needing an offset to skip past already-handled rows.
+  * A failure partway through a large job (e.g. on row 220 of 250) cannot
+    roll back the rows already committed in earlier batches. Without this,
+    a single unhandled error anywhere in the run would discard every prior
+    batch's work when the surrounding transaction rolled back, including
+    already-performed irreversible side effects like deleted vector-store
+    entries or removed files in ``_hard_delete_document`` -- leaving
+    orphaned DB rows pointing at data that no longer exists.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -51,9 +69,9 @@ def cleanup_stale_documents():
     timeout_minutes = settings.DOC_PROCESSING_TIMEOUT_MINUTES
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
 
-    with get_db_session() as db:
-        offset = 0
-        while True:
+    total = 0
+    while True:
+        with get_db_session() as db:
             batch = (
                 db.query(Document)
                 .filter(
@@ -62,8 +80,8 @@ def cleanup_stale_documents():
                     Document.processing_started_at < cutoff,
                     Document.is_deleted.is_(False),
                 )
+                .order_by(Document.id)
                 .limit(_CLEANUP_BATCH_SIZE)
-                .offset(offset)
                 .all()
             )
             if not batch:
@@ -80,7 +98,11 @@ def cleanup_stale_documents():
                 doc.error_message = f"Processing timed out after {timeout_minutes} minutes"
                 doc.last_error_traceback = "Timed out: no progress update received within the configured timeout window."
                 logger.info("Marked stale document %s as failed", doc.id)
-            offset += _CLEANUP_BATCH_SIZE
+            total += len(batch)
+        # `with get_db_session()` has committed this batch; loop and
+        # re-query from the top so the next batch picks up whatever rows
+        # are still eligible (this batch's rows no longer match the filter).
+    return total
 
 
 def cleanup_old_deleted_documents():
@@ -88,9 +110,9 @@ def cleanup_old_deleted_documents():
     max_age_days = settings.DOC_CLEANUP_MAX_AGE_DAYS
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
 
-    with get_db_session() as db:
-        offset = 0
-        while True:
+    total = 0
+    while True:
+        with get_db_session() as db:
             batch = (
                 db.query(Document)
                 .filter(
@@ -98,8 +120,8 @@ def cleanup_old_deleted_documents():
                     Document.deleted_at.isnot(None),
                     Document.deleted_at < cutoff,
                 )
+                .order_by(Document.id)
                 .limit(_CLEANUP_BATCH_SIZE)
-                .offset(offset)
                 .all()
             )
             if not batch:
@@ -117,7 +139,8 @@ def cleanup_old_deleted_documents():
                     doc.id,
                     doc.original_name,
                 )
-            offset += _CLEANUP_BATCH_SIZE
+            total += len(batch)
+    return total
 
 
 def cleanup_inactive_active_documents():
@@ -130,22 +153,22 @@ def cleanup_inactive_active_documents():
     """
     if not settings.DOC_CLEANUP_ENABLED:
         logger.info("Inactive document cleanup is disabled via DOC_CLEANUP_ENABLED")
-        return
+        return 0
 
     inactive_days = settings.DOC_CLEANUP_INACTIVE_DAYS
     cutoff = datetime.now(timezone.utc) - timedelta(days=inactive_days)
 
-    with get_db_session() as db:
-        offset = 0
-        while True:
+    total = 0
+    while True:
+        with get_db_session() as db:
             batch = (
                 db.query(Document)
                 .filter(
                     Document.is_deleted.is_(False),
                     Document.last_accessed_at < cutoff,
                 )
+                .order_by(Document.id)
                 .limit(_CLEANUP_BATCH_SIZE)
-                .offset(offset)
                 .all()
             )
             if not batch:
@@ -163,4 +186,5 @@ def cleanup_inactive_active_documents():
                     doc.id,
                     doc.original_name,
                 )
-            offset += _CLEANUP_BATCH_SIZE
+            total += len(batch)
+    return total
