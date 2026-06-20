@@ -207,3 +207,38 @@ def test_clear_chat_history_repeated_or_empty(client, auth_headers, ready_docume
     )
     assert response.status_code == 200
     assert response.json() == {"message": "Chat history cleared"}
+
+
+def test_chat_ws_rate_limited_after_threshold(client, user, monkeypatch):
+    """
+    Regression test for #639: /chat/ws must enforce the same
+    CHAT_QUERY_RATE_LIMIT (15/minute) that @limiter.limit applies to
+    POST /chat/ask and /chat/ask/stream, instead of letting an unbounded
+    number of RAG/LLM pipeline calls through per user over the WebSocket
+    transport — including across multiple separate connections.
+    """
+    from app.auth import create_access_token
+    from app.rate_limit import CHAT_QUERY_RATE_LIMIT
+
+    def fake_generate_answer_stream(*_args, **_kwargs):
+        yield "data: {}\n\n"
+
+    monkeypatch.setattr("app.routes.chat.generate_answer_stream", fake_generate_answer_stream)
+
+    token = create_access_token(user.id)
+    limit = int(CHAT_QUERY_RATE_LIMIT.split("/")[0])
+
+    for _ in range(limit):
+        with client.websocket_connect(f"/api/v1/chat/ws?token={token}") as ws:
+            ws.send_json({"question": "What is in the doc?"})
+            seen_types = []
+            while "done" not in seen_types:
+                msg = ws.receive_json()
+                seen_types.append(msg.get("type"))
+            assert "error" not in seen_types
+
+    # The connection beyond the configured limit must be rejected before
+    # generate_answer_stream runs again, without even waiting for a payload.
+    with client.websocket_connect(f"/api/v1/chat/ws?token={token}") as ws:
+        msg = ws.receive_json()
+        assert msg == {"type": "error", "data": "Rate limit exceeded"}
