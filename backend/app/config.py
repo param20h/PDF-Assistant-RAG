@@ -5,7 +5,7 @@ All config is loaded from environment variables with sensible defaults.
 import os
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-
+from pydantic import model_validator
 
 class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────
@@ -128,6 +128,15 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT == "production":
             return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
         return ["*"]
+
+    @model_validator(mode="after")
+    def validate_vision_provider_keys(self) -> "Settings":
+        provider = self.VISION_PROVIDER.lower() if self.VISION_PROVIDER else None
+        if provider == "openai" and not self.OPENAI_API_KEY:
+            raise ValueError(
+                "ValidationError: OPENAI_API_KEY is required when VISION_PROVIDER is set to 'openai'."
+            )
+        return self
 
     class Config:
         env_file = ".env"
