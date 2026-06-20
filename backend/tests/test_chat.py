@@ -207,3 +207,45 @@ def test_clear_chat_history_repeated_or_empty(client, auth_headers, ready_docume
     )
     assert response.status_code == 200
     assert response.json() == {"message": "Chat history cleared"}
+
+
+def test_chat_ask_cache_is_isolated_per_user(client, user, other_user, auth_headers, monkeypatch):
+    """
+    Regression test for #640: the response cache must be keyed per user, so
+    two different users asking the identical document-less question never
+    receive each other's cached RAG answer (each user's generate_answer call
+    is independently computed and cached under its own user-scoped key).
+    """
+    from app.auth import create_access_token
+
+    def fake_generate_answer(question, user_id, document_id=None, **kwargs):
+        return {"answer": f"Private answer for {user_id}", "sources": []}
+
+    monkeypatch.setattr("app.routes.chat.generate_answer", fake_generate_answer)
+
+    other_headers = {"Authorization": f"Bearer {create_access_token(other_user.id)}"}
+
+    response_a = client.post(
+        "/api/v1/chat/ask",
+        headers=auth_headers,
+        json={"question": "Summarize the key points"},
+    )
+    response_b = client.post(
+        "/api/v1/chat/ask",
+        headers=other_headers,
+        json={"question": "Summarize the key points"},
+    )
+
+    assert response_a.status_code == 200
+    assert response_b.status_code == 200
+    assert response_a.json()["answer"] == f"Private answer for {user.id}"
+    assert response_b.json()["answer"] == f"Private answer for {other_user.id}"
+    assert response_a.json()["answer"] != response_b.json()["answer"]
+
+    # Same user, same question again must now hit their own cache entry.
+    response_a_again = client.post(
+        "/api/v1/chat/ask",
+        headers=auth_headers,
+        json={"question": "Summarize the key points"},
+    )
+    assert response_a_again.json()["answer"] == response_a.json()["answer"]
