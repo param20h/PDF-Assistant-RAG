@@ -8,8 +8,7 @@ from google import (
 )
 
 # Initialize Gemini Client
-client = genai.Client()
-
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", "dummy_key"))
 
 class AdvancedPDFParser:
     def __init__(self, pdf_path: str):
@@ -48,6 +47,13 @@ class AdvancedPDFParser:
         """Extracts images/charts and uses Gemini Flash to generate dense data descriptions."""
         image_descriptions = []
         image_list = page_obj.get_images(full=True)
+
+        try:
+            from google import genai
+            client = genai.Client()
+        except Exception as e:
+            print(f"Gemini client init failed, skipping vision: {e}")
+            return image_descriptions
 
         for img_index, img in enumerate(image_list):
             xref = img[0]

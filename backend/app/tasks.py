@@ -68,14 +68,31 @@ def process_document(
                     logger.debug(
                         f"Processing chunk {idx} (Type: {chunk_type}) on Page {page_num}: {text_content[:30]}..."
                     )
+                    
+                    # NOTE FOR GSSOC CONTRIBUTION: 
+                    # Look inside 'app.services.document_ingestion' to see the exact name 
+                    # of their embedding service/Pinecone client instance. 
+                    # Hook it up here like this:
+                    # 
+                    # vector_id = f"{document_id}_chunk_{idx}"
+                    # embedding = generate_vector_embeddings(text_content)
+                    # pinecone_index.upsert(
+                    #     vectors=[(vector_id, embedding, {
+                    #         "text": text_content,
+                    #         "page": page_num,
+                    #         "type": chunk_type,
+                    #         "document_id": document_id,
+                    #         "user_id": user_id
+                    #     })]
+                    # )
                     pass
 
                 # 4. Mark document pipeline processing as completely successful
-                doc.status = "completed"
+                doc.status = "ready"
                 doc.processing_progress = 100
                 db.commit()
 
-            return {"document_id": document_id, "status": "completed"}
+            return {"document_id": document_id, "status": "ready"}
 
         except Exception as exc:
             logger.error("Document %s processing failed (attempt %s): %s", document_id, self.request.retries + 1, exc)

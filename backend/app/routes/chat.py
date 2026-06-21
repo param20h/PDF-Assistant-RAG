@@ -20,11 +20,10 @@ from app.database import get_db
 from app.exceptions import (
     NotFoundException,
     UnauthorizedException,
-    ValidationException,
-)
+    ValidationException, )
 from app.metrics import record_query_response_time
 from app.models import User, ChatMessage, Document, SharedMessage, ChatSession
-from app.rate_limit import CHAT_QUERY_RATE_LIMIT, limiter
+from app.rate_limit import CHAT_QUERY_RATE_LIMIT, check_chat_ws_rate_limit, limiter
 from app.rag.security import UnsafePromptError, validate_user_input
 from app.schemas import (
     ChatRequest,
@@ -98,6 +97,17 @@ async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
 
         if not user:
             await websocket.send_json({"type": "error", "data": "User not found"})
+            await websocket.close()
+            return
+
+        # /chat/ask and /chat/ask/stream enforce CHAT_QUERY_RATE_LIMIT via
+        # @limiter.limit, but that decorator only works on HTTP routes — it
+        # never runs for this WebSocket handler. Without this check, a client
+        # could call the same generate_answer_stream(...) RAG/LLM pipeline an
+        # unbounded number of times per minute by sending requests over /chat/ws
+        # (or opening multiple connections), completely bypassing the limit.
+        if not check_chat_ws_rate_limit(user.id):
+            await websocket.send_json({"type": "error", "data": "Rate limit exceeded"})
             await websocket.close()
             return
 
@@ -584,8 +594,9 @@ def ask_question(
         recent_messages.reverse()
         chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
 
-        # Cache check — return instantly if this (question, document) was answered before
+        # Cache check — return instantly if this (user, document, question) was answered before
         cached_answer = get_cached_response(
+            user_id=user.id,
             document_id=str(payload.document_id or ""),
             question=payload.question,
         )
@@ -616,6 +627,7 @@ def ask_question(
 
         # Store result in cache for future identical questions
         set_cached_response(
+            user_id=user.id,
             document_id=str(payload.document_id or ""),
             question=payload.question,
             answer=result["answer"],
@@ -725,6 +737,7 @@ def ask_question_stream(
 
     # Cache check before starting the stream
     cached_answer = get_cached_response(
+        user_id=user.d,
         document_id=str(payload.document_id or ""),
         question=payload.question,
     )
@@ -777,6 +790,7 @@ def ask_question_stream(
             # Cache the full answer for future identical questions
             if full_answer:
                 set_cached_response(
+                    user_id=user.id,
                     document_id=str(payload.document_id or ""),
                     question=payload.question,
                     answer=full_answer,
@@ -946,10 +960,22 @@ def clear_chat_history(
     db: Session = Depends(get_db),
 ):
     """Delete all chat messages associated with a specific document."""
+    # Find the query/subquery of chat messages to delete
+    message_ids_query = db.query(ChatMessage.id).filter(
+        ChatMessage.user_id == user.id,
+        ChatMessage.document_id == document_id,
+    )
+
+    # Delete any associated SharedMessage records first
+    db.query(SharedMessage).filter(
+        SharedMessage.message_id.in_(message_ids_query)
+    ).delete(synchronize_session=False)
+
+    # Delete the ChatMessage records
     db.query(ChatMessage).filter(
         ChatMessage.user_id == user.id,
         ChatMessage.document_id == document_id,
-    ).delete()
+    ).delete(synchronize_session=False)
     db.commit()
 
     return {"message": "Chat history cleared"}
