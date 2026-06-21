@@ -161,7 +161,7 @@ def query_chunks(
         query_embeddings=[query_embedding],
         n_results=top_k,
         where=where_filter,
-        include=["documents", "metadatas", "distances"],
+        include=["documents", "metadatas", "distances", "ids"],
     )
 
     # ── Format results ───────────────────────────────
@@ -170,11 +170,13 @@ def query_chunks(
         for i, doc in enumerate(results["documents"][0]):
             metadata = results["metadatas"][0][i] if results["metadatas"] else {}
             distance = results["distances"][0][i] if results["distances"] else 0
+            chunk_id = results["ids"][0][i] if results.get("ids") and len(results["ids"]) > 0 else None
 
             # Convert cosine distance to similarity score (0-1)
             similarity = 1 - distance
 
             chunks.append({
+                "id": chunk_id,
                 "text": doc,
                 "filename": metadata.get("filename", ""),
                 "document_id": metadata.get("document_id", ""),

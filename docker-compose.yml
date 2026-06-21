@@ -57,7 +57,7 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
       - HF_TOKEN=${HF_TOKEN}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
       - UPLOAD_DIR=/app/data/uploads
       - CHROMA_PERSIST_DIR=/app/data/chroma_db
       - GRAPH_PERSIST_DIR=/app/data/graphs
@@ -90,7 +90,7 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
       - HF_TOKEN=${HF_TOKEN}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
       - UPLOAD_DIR=/app/data/uploads
       - CHROMA_PERSIST_DIR=/app/data/chroma_db
       - GRAPH_PERSIST_DIR=/app/data/graphs
@@ -123,15 +123,13 @@ services:
     container_name: pdf_rag_worker
     profiles: ["cpu"]
     logging: *default-logging
-    command: >
-      sh -c "cd /app/backend &&
-      celery -A app.celery_app.celery_app worker --loglevel=info"
+    command: celery -A app.celery_app.celery_app worker --loglevel=info
     volumes:
       - app_data:/app/data
     environment:
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
       - HF_TOKEN=${HF_TOKEN}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
       - UPLOAD_DIR=/app/data/uploads
       - CHROMA_PERSIST_DIR=/app/data/chroma_db
       - GRAPH_PERSIST_DIR=/app/data/graphs
@@ -151,15 +149,13 @@ services:
     container_name: pdf_rag_worker
     profiles: ["gpu"]
     logging: *default-logging
-    command: >
-      sh -c "cd /app/backend &&
-             celery -A app.celery_app.celery_app worker --loglevel=info"
+    command: celery -A app.celery_app.celery_app worker --loglevel=info
     volumes:
       - app_data:/app/data
     environment:
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-me}
       - HF_TOKEN=${HF_TOKEN}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-pdf_rag_user}:${POSTGRES_PASSWORD:-pdf_rag_pass}@postgres:5432/${POSTGRES_DB:-pdf_rag}
       - UPLOAD_DIR=/app/data/uploads
       - CHROMA_PERSIST_DIR=/app/data/chroma_db
       - GRAPH_PERSIST_DIR=/app/data/graphs

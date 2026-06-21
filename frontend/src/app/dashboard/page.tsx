@@ -5,11 +5,16 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
-import { api, CONNECTION_ERROR_BANNER_MESSAGE, CONNECTION_ERROR_MESSAGE } from "@/lib/api";
+import {
+  api,
+  CONNECTION_ERROR_BANNER_MESSAGE,
+  CONNECTION_ERROR_MESSAGE,
+} from "@/lib/api";
 import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatSessionSidebar from "@/components/chat/ChatSessionSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
+
 function PDFViewerSkeleton() {
   return (
     <div
@@ -40,6 +45,12 @@ const PDFViewer = dynamic(() => import("@/components/document/PDFViewer"), {
   ssr: false,
   loading: () => <PDFViewerSkeleton />,
 });
+
+// Lazy-load the graph panel — it pulls in @xyflow/react which is sizeable
+const KnowledgeGraph = dynamic(
+  () => import("@/components/graph/KnowledgeGraph"),
+  { ssr: false },
+);
 
 export interface DocInfo {
   chunk_size?: number;
@@ -76,14 +87,19 @@ export default function DashboardPage() {
   } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
+  const [graphOpen, setGraphOpen] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(true);
 
   const handleDocumentRenamed = useCallback((renamedDocument: DocInfo) => {
     setDocuments((current) =>
-      current.map((document) => (document.id === renamedDocument.id ? renamedDocument : document))
+      current.map((document) =>
+        document.id === renamedDocument.id ? renamedDocument : document,
+      ),
     );
-    setActiveDoc((current) => (current?.id === renamedDocument.id ? renamedDocument : current));
+    setActiveDoc((current) =>
+      current?.id === renamedDocument.id ? renamedDocument : current,
+    );
   }, []);
 
   // Auth guard
@@ -95,10 +111,9 @@ export default function DashboardPage() {
   useEffect(() => {
     if (user) {
       const hasHfToken = !!(user.hf_token || localStorage.getItem("hf_token"));
-
       if (!hasHfToken) {
         console.info(
-          "Hugging Face API token is not configured. Personal model access will fall back to the system default unless set in the user profile menu."
+          "Hugging Face API token is not configured. Personal model access will fall back to the system default unless set in the user profile menu.",
         );
       }
     }
@@ -109,16 +124,17 @@ export default function DashboardPage() {
     setDocumentsLoading(true);
     try {
       const data = await api.get<{ documents?: DocInfo[]; items?: DocInfo[] }>(
-        "/api/v1/documents/"
+        "/api/v1/documents/",
       );
       setDocuments(data?.documents ?? data?.items ?? []);
       setConnectionError("");
     } catch (err) {
-      const message = err instanceof Error ? err.message : CONNECTION_ERROR_MESSAGE;
+      const message =
+        err instanceof Error ? err.message : CONNECTION_ERROR_MESSAGE;
       setConnectionError(
         message === CONNECTION_ERROR_MESSAGE
           ? CONNECTION_ERROR_BANNER_MESSAGE
-          : `⚠️ ${message}`
+          : `⚠️ ${message}`,
       );
     } finally {
       setDocumentsLoading(false);
@@ -138,13 +154,16 @@ export default function DashboardPage() {
     const nextPrevDocs: Record<string, string> = {};
     (documents || []).forEach((doc) => {
       nextPrevDocs[doc.id] = doc.status;
-
       const oldStatus = prev[doc.id];
       if (oldStatus && oldStatus !== doc.status) {
         if (doc.status === "ready") {
-          toast.success(`🎉 Ingestion complete: '${doc.original_name}' is ready!`);
+          toast.success(
+            `🎉 Ingestion complete: '${doc.original_name}' is ready!`,
+          );
         } else if (doc.status === "failed") {
-          toast.error(`❌ Ingestion failed for '${doc.original_name}': ${doc.error_message || "Unknown error"}`);
+          toast.error(
+            `❌ Ingestion failed for '${doc.original_name}': ${doc.error_message || "Unknown error"}`,
+          );
         }
       }
     });
@@ -154,13 +173,19 @@ export default function DashboardPage() {
   // Poll for processing status
   useEffect(() => {
     const hasPending = (documents || []).some(
-      (d) => d.status === "pending" || d.status === "processing"
+      (d) => d.status === "pending" || d.status === "processing",
     );
     if (!hasPending) return;
-
     const interval = setInterval(loadDocuments, 3000);
     return () => clearInterval(interval);
   }, [documents, loadDocuments]);
+
+  // Close graph panel when active document changes — derive from render
+  const prevDocIdRef = useRef<string | null>(null);
+  if (activeDoc?.id !== prevDocIdRef.current) {
+    prevDocIdRef.current = activeDoc?.id ?? null;
+    if (graphOpen) setGraphOpen(false);
+  }
 
   if (!initialized || !user) {
     return (
@@ -170,7 +195,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Shared sidebar content — used by both desktop panel and mobile sheet
   const sidebarContent = (
     <DocumentSidebar
       documents={documents}
@@ -186,13 +210,20 @@ export default function DashboardPage() {
   );
 
   return (
-    // min-w-[375px] ensures the layout never squishes below iPhone SE width
     <div className="h-screen flex flex-col overflow-hidden min-w-[375px]">
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         viewerOpen={viewerOpen}
         onToggleViewer={() => setViewerOpen(!viewerOpen)}
+        graphOpen={graphOpen}
+        onToggleGraph={() => {
+          if (!activeDoc) {
+            toast.info("Select a document first to view its knowledge graph.");
+            return;
+          }
+          setGraphOpen((v) => !v);
+        }}
         mobileSheetContent={sidebarContent}
       />
 
@@ -206,42 +237,58 @@ export default function DashboardPage() {
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        {/* ── Left: Document Sidebar — desktop only (md+) ─────────── */}
+        {/* ── Left: Document Sidebar — desktop only ───────────────────── */}
         {sidebarOpen && (
           <div className="hidden md:block w-72 flex-shrink-0 border-r border-border/50 overflow-hidden animate-fade-in-up">
             {sidebarContent}
           </div>
         )}
 
-        {/* ── Left-Center: Chat Sessions Sidebar ──── */}
+        {/* ── Left-Center: Chat Sessions Sidebar ──────────────────────── */}
         <ChatSessionSidebar />
 
-        {/* ── Center: Chat Panel ──────────────────────────────────── */}
+        {/* ── Center: Chat Panel ───────────────────────────────────────── */}
         <div className="flex-1 min-w-0 flex flex-col">
           <ChatPanel
             activeDoc={activeDoc}
             onCitationClick={(target) => {
               setPdfPage(target.page);
-              setPdfHighlightTarget({ page: target.page, rects: target.highlightRects });
+              setPdfHighlightTarget({
+                page: target.page,
+                rects: target.highlightRects,
+              });
               if (!viewerOpen) setViewerOpen(true);
             }}
           />
         </div>
 
-        {/* ── Right: PDF Viewer — hidden on mobile ────────────────── */}
-        {viewerOpen && activeDoc && activeDoc.original_name.endsWith(".pdf") && (
-          <div className="hidden md:block w-[480px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
-            <PDFViewer
+        {/* ── Right: PDF Viewer — hidden on mobile ─────────────────────── */}
+        {viewerOpen &&
+          !graphOpen &&
+          activeDoc &&
+          activeDoc.original_name.endsWith(".pdf") && (
+            <div className="hidden md:block w-[480px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
+              <PDFViewer
+                documentId={activeDoc.id}
+                currentPage={pdfPage}
+                onPageChange={(page) => {
+                  setPdfPage(page);
+                  if (pdfHighlightTarget?.page !== page) {
+                    setPdfHighlightTarget(null);
+                  }
+                }}
+                totalPages={activeDoc.page_count}
+                highlightTarget={pdfHighlightTarget}
+              />
+            </div>
+          )}
+
+        {/* ── Right: Knowledge Graph panel ─────────────────────────────── */}
+        {graphOpen && activeDoc && (
+          <div className="hidden md:flex w-[520px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
+            <KnowledgeGraph
               documentId={activeDoc.id}
-              currentPage={pdfPage}
-              onPageChange={(page) => {
-                setPdfPage(page);
-                if (pdfHighlightTarget?.page !== page) {
-                  setPdfHighlightTarget(null);
-                }
-              }}
-              totalPages={activeDoc.page_count}
-              highlightTarget={pdfHighlightTarget}
+              onClose={() => setGraphOpen(false)}
             />
           </div>
         )}

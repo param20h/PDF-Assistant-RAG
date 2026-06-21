@@ -14,21 +14,25 @@ import {
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import MessageBubble from "./MessageBubble";
 import SourceCard from "./SourceCard";
 import {
-      Send,
-      Loader2,
-      Trash2,
-      MessageSquare,
-      Download,
-      Mic,
-      MicOff,
-      HelpCircle,
-      ChevronDown,
-    } from "lucide-react";
-    import { cn } from "@/lib/utils";
+  Send,
+  Loader2,
+  Trash2,
+  MessageSquare,
+  Download,
+  Mic,
+  MicOff,
+  HelpCircle,
+  ChevronDown,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 interface ISpeechRecognitionEvent {
   resultIndex: number;
   results: {
@@ -95,8 +99,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
 
-  // New State for Keyboard Shortcuts Help Modal
-  const [showHelpModal, setShowHelpModal] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
@@ -146,7 +148,10 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
   const scrollToBottom = () => {
     if (containerRef.current) {
-      containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
+      containerRef.current.scrollTo({
+        top: containerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
     }
   };
 
@@ -206,7 +211,7 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       cancelled = true;
     };
   }, [activeSessionId, activeDoc, fetchSessionHistory, setMessages]);
-  
+
   const handleStop = () => {
     abortControllerRef.current?.abort();
     setStreaming(false);
@@ -215,7 +220,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return;
-
 
     const question = input.trim();
     setInput("");
@@ -239,9 +243,14 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
     try {
       // Try WebSocket first for real-time agentic thought streaming
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const base = API_BASE || window.location.origin;
-      const wsScheme = base.startsWith("https") ? "wss" : base.startsWith("http") ? "ws" : "wss";
+      const wsScheme = base.startsWith("https")
+        ? "wss"
+        : base.startsWith("http")
+          ? "ws"
+          : "wss";
       const host = base.replace(/^https?:/, "");
       const wsUrl = `${wsScheme}:${host}/api/v1/chat/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 
@@ -262,7 +271,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
 
         ws.onopen = () => {
           // Send initial payload
-          ws.send(JSON.stringify({ question, document_id: activeDoc?.id || null, session_id: activeSessionId }));
+          ws.send(
+            JSON.stringify({
+              question,
+              document_id: activeDoc?.id || null,
+              session_id: activeSessionId,
+            }),
+          );
         };
 
         // If WS doesn't open within 800ms, treat as failure and fallback
@@ -310,11 +325,25 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               );
             } else if (event.type === "error") {
               setIsTyping(false);
-              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m)));
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        content: `Error: ${event.data}`,
+                        isStreaming: false,
+                      }
+                    : m,
+                ),
+              );
               ws.close();
               reject(new Error(String(event.data)));
             } else if (event.type === "done") {
-              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)));
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, isStreaming: false } : m,
+                ),
+              );
               ws.close();
               resolve();
             }
@@ -343,18 +372,22 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
     } catch (err) {
       if (
         err instanceof Error &&
-        (err.name === "AbortError" || err.message === "The user aborted a request.")
+        (err.name === "AbortError" ||
+          err.message === "The user aborted a request.")
       ) {
         return;
       }
-
       // Fallback to existing SSE stream if WebSocket fails
       try {
-        const stream = api.streamPost("/api/v1/chat/ask/stream", {
-          question,
-          document_id: activeDoc?.id || null,
-          session_id: activeSessionId,
-        }, abortController.signal);
+        const stream = api.streamPost(
+          "/api/v1/chat/ask/stream",
+          {
+            question,
+            document_id: activeDoc?.id || null,
+            session_id: activeSessionId,
+          },
+          abortController.signal,
+        );
 
         let sseAssistantCreated = false;
         const ensureSseAssistantCreated = (initialThoughts?: string[], initialSources?: SourceChunk[]) => {
@@ -389,21 +422,36 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             );
           } else if (event.type === "error") {
             setIsTyping(false);
-            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: `Error: ${event.data}`, isStreaming: false } : m)));
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      content: `Error: ${event.data}`,
+                      isStreaming: false,
+                    }
+                  : m,
+              ),
+            );
           } else if (event.type === "done") {
-            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)));
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, isStreaming: false } : m,
+              ),
+            );
           }
         }
       } catch (err2) {
         setIsTyping(false);
         if (
           err2 instanceof Error &&
-          (err2.name === "AbortError" || err2.message === "The user aborted a request.")
+          (err2.name === "AbortError" ||
+            err2.message === "The user aborted a request.")
         ) {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, isStreaming: false } : m
-            )
+              m.id === assistantId ? { ...m, isStreaming: false } : m,
+            ),
           );
           return;
         }
@@ -413,12 +461,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
               ? {
                   ...m,
                   content: t("chat.fallbackError", {
-                    message: err2 instanceof Error ? err2.message : "Unknown error",
+                    message:
+                      err2 instanceof Error ? err2.message : "Unknown error",
                   }),
                   isStreaming: false,
                 }
-              : m
-          )
+              : m,
+          ),
         );
       }
     } finally {
@@ -621,8 +670,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         } else if (document.activeElement === textareaRef.current) {
           e.preventDefault();
           setInput("");
-        } else if (showHelpModal) {
-          setShowHelpModal(false);
         } else if (showExportMenu) {
           setShowExportMenu(false);
         }
@@ -632,12 +679,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       if (isCmdOrCtrl && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         textareaRef.current?.focus();
-      }
-
-      // Shortcut 4: Ctrl/Cmd + / → Toggle shortcuts help modal
-      if (isCmdOrCtrl && e.key === "/") {
-        e.preventDefault();
-        setShowHelpModal((prev) => !prev);
       }
 
       // Shortcut 5: Ctrl/Cmd + Shift + C → Clear chat history
@@ -668,15 +709,15 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, streaming, showHelpModal, showExportMenu, messages]); // Dependencies updated to capture fresh state data
+  }, [input, streaming, showExportMenu, messages]); // Dependencies updated to capture fresh state data
 
   return (
     <div className="h-full flex flex-col relative">
       {/* ── Chat Messages ──────────────────────────── */}
-        <div 
-            ref={containerRef}
-            onScroll={handleScroll}
-            className="flex-1 px-4 overflow-y-auto custom-scrollbar" 
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="flex-1 px-4 overflow-y-auto custom-scrollbar"
         aria-busy={historyLoading}
       >
         {historyLoading ? (
@@ -758,7 +799,9 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
         aria-label="Scroll to bottom"
         className={cn(
           "absolute right-4 bottom-20 z-50 rounded-full p-2 bg-primary text-primary-foreground shadow-lg transition-all duration-200",
-          showScrollButton ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
+          showScrollButton
+            ? "opacity-100 translate-y-0"
+            : "opacity-0 translate-y-2 pointer-events-none",
         )}
       >
         <ChevronDown className="h-5 w-5" />
@@ -871,23 +914,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
                         defaultValue: "Start recording",
                       })}
                 </TooltipContent>
-              </Tooltip>
-
-              {/* NEW Keyboard Shortcuts Info Button */}
-              <Tooltip>
-                <TooltipTrigger
-                  id="shortcut-help-btn"
-                  type="button"
-                  onClick={() => setShowHelpModal(true)}
-                  className={cn(
-                    buttonVariants({ variant: "ghost", size: "icon" }),
-                    "absolute right-2 bottom-1.5 h-7 w-7 rounded-md text-muted-foreground hover:text-primary hover:bg-accent transition-all duration-200",
-                  )}
-                  aria-label="View Keyboard Shortcuts"
-                >
-                  <HelpCircle className="h-4 w-4" />
-                </TooltipTrigger>
-                <TooltipContent>Keyboard shortcuts</TooltipContent>
               </Tooltip>
             </div>
 
@@ -1002,144 +1028,6 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
           Ctrl+Enter to send from anywhere. Press Escape to cancel streaming.
         </p>
       </div>
-
-      {/* ── NEW KEYBOARD SHORTCUTS HELP MODAL OVERLAY ───────────────── */}
-      {showHelpModal && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200"
-          onClick={() => setShowHelpModal(false)}
-        >
-          <div
-            className="bg-popover text-popover-foreground border border-border p-6 rounded-xl w-80 relative shadow-2xl animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()} // Stop overlay closing when clicking inside
-          >
-            <button
-              onClick={() => setShowHelpModal(false)}
-              className="absolute top-3 right-4 text-xl font-medium text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Close shortcuts help"
-            >
-              &times;
-            </button>
-
-            <h3 className="text-lg font-bold mb-1 flex items-center gap-2 text-foreground">
-              ⌨️ Keyboard Shortcuts
-            </h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              Enhance your typing productivity
-            </p>
-            <hr className="border-border mb-4" />
-
-            <ul className="space-y-4 text-sm">
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Send Message
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Enter
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Cancel Streaming / Clear Input
-                </span>
-                <div>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Esc
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Focus Chat Input
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    K
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Toggle Shortcuts Help
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    /
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Clear Chat History
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Shift
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    C
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Toggle Export Menu
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Shift
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    E
-                  </kbd>
-                </div>
-              </li>
-              <li className="flex flex-col gap-1.5">
-                <span className="text-muted-foreground text-xs font-medium">
-                  Toggle Mic Recording
-                </span>
-                <div className="flex gap-1 items-center">
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Ctrl
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    Shift
-                  </kbd>
-                  <span className="text-muted-foreground text-xs">+</span>
-                  <kbd className="bg-muted px-2 py-0.5 rounded border border-border text-xs font-mono shadow-[0_1.5px_0_rgba(0,0,0,0.2)]">
-                    M
-                  </kbd>
-                </div>
-              </li>
-            </ul>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

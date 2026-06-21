@@ -29,6 +29,9 @@ httpx
 
 # Document Processing
 PyMuPDF
+pymupdf4llm
+google-generativeai
+google-genai
 pdfplumber
 python-docx
 unstructured[pdf]
@@ -74,3 +77,5 @@ reportlab
 ddgs
 loguru
 redis>=4.6.0
+pymupdf4llm
+google-genai
