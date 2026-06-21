@@ -29,7 +29,6 @@ import {
   Download,
   Mic,
   MicOff,
-  HelpCircle,
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
