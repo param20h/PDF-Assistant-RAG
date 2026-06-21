@@ -53,6 +53,8 @@ interface HeaderProps {
   onToggleSidebar: () => void;
   viewerOpen: boolean;
   onToggleViewer: () => void;
+  graphOpen: boolean;
+  onToggleGraph: () => void;
   /** Pass DocumentSidebar JSX so the mobile sheet can render it */
   mobileSheetContent?: React.ReactNode;
 }

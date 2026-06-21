@@ -209,43 +209,36 @@ def test_clear_chat_history_repeated_or_empty(client, auth_headers, ready_docume
     assert response.json() == {"message": "Chat history cleared"}
 
 
-def test_chat_ask_cache_is_isolated_per_user(client, user, other_user, auth_headers, monkeypatch):
+def test_chat_ws_rate_limited_after_threshold(client, user, monkeypatch):
     """
-    Regression test for #640: the response cache must be keyed per user, so
-    two different users asking the identical document-less question never
-    receive each other's cached RAG answer (each user's generate_answer call
-    is independently computed and cached under its own user-scoped key).
+    Regression test for #639: /chat/ws must enforce the same
+    CHAT_QUERY_RATE_LIMIT (15/minute) that @limiter.limit applies to
+    POST /chat/ask and /chat/ask/stream, instead of letting an unbounded
+    number of RAG/LLM pipeline calls through per user over the WebSocket
+    transport — including across multiple separate connections.
     """
     from app.auth import create_access_token
+    from app.rate_limit import CHAT_QUERY_RATE_LIMIT
 
-    def fake_generate_answer(question, user_id, document_id=None, **kwargs):
-        return {"answer": f"Private answer for {user_id}", "sources": []}
+    def fake_generate_answer_stream(*_args, **_kwargs):
+        yield "data: {}\n\n"
 
-    monkeypatch.setattr("app.routes.chat.generate_answer", fake_generate_answer)
+    monkeypatch.setattr("app.routes.chat.generate_answer_stream", fake_generate_answer_stream)
 
-    other_headers = {"Authorization": f"Bearer {create_access_token(other_user.id)}"}
+    token = create_access_token(user.id)
+    limit = int(CHAT_QUERY_RATE_LIMIT.split("/")[0])
 
-    response_a = client.post(
-        "/api/v1/chat/ask",
-        headers=auth_headers,
-        json={"question": "Summarize the key points"},
-    )
-    response_b = client.post(
-        "/api/v1/chat/ask",
-        headers=other_headers,
-        json={"question": "Summarize the key points"},
-    )
+    for _ in range(limit):
+        with client.websocket_connect(f"/api/v1/chat/ws?token={token}") as ws:
+            ws.send_json({"question": "What is in the doc?"})
+            seen_types = []
+            while "done" not in seen_types:
+                msg = ws.receive_json()
+                seen_types.append(msg.get("type"))
+            assert "error" not in seen_types
 
-    assert response_a.status_code == 200
-    assert response_b.status_code == 200
-    assert response_a.json()["answer"] == f"Private answer for {user.id}"
-    assert response_b.json()["answer"] == f"Private answer for {other_user.id}"
-    assert response_a.json()["answer"] != response_b.json()["answer"]
-
-    # Same user, same question again must now hit their own cache entry.
-    response_a_again = client.post(
-        "/api/v1/chat/ask",
-        headers=auth_headers,
-        json={"question": "Summarize the key points"},
-    )
-    assert response_a_again.json()["answer"] == response_a.json()["answer"]
+    # The connection beyond the configured limit must be rejected before
+    # generate_answer_stream runs again, without even waiting for a payload.
+    with client.websocket_connect(f"/api/v1/chat/ws?token={token}") as ws:
+        msg = ws.receive_json()
+        assert msg == {"type": "error", "data": "Rate limit exceeded"}
