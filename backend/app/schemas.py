@@ -5,7 +5,6 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 from app.models import UserRole
-from app.password_validation import validate_password
 
 
 # ── Auth ─────────────────────────────────────────────
@@ -13,13 +12,7 @@ from app.password_validation import validate_password
 class UserRegister(BaseModel):
     username: str = Field(..., min_length=3, max_length=80)
     email: EmailStr
-    password: str = Field(..., min_length=8)
-
-    @field_validator("password")
-    @classmethod
-    def validate_password_strength(cls, value: str) -> str:
-        validate_password(value)
-        return value
+    password: str = Field(..., min_length=6)
 
 
 class UserLogin(BaseModel):
@@ -60,12 +53,6 @@ class UpdatePassword(BaseModel):
     password: str
     confirm_password: str
 
-    @field_validator("password")
-    @classmethod
-    def validate_password_strength(cls, value: str) -> str:
-        validate_password(value)
-        return value
-
 class UpdatePasswordResponse(BaseModel):
     id: str
     username: str
@@ -100,14 +87,6 @@ class RefreshRequest(BaseModel):
 class HFTokenUpdate(BaseModel):
     """Request schema for updating the user's HuggingFace token."""
     hf_token: str
-
-
-class GoogleDriveAuthUrlResponse(BaseModel):
-    auth_url: str
-
-
-class GoogleDriveStatusResponse(BaseModel):
-    connected: bool
 
 
 class ApiKeyResponse(BaseModel):

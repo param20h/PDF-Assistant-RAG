@@ -373,6 +373,43 @@ async def upload_document_url(
         if temp_path is not None:
             Path(temp_path).unlink(missing_ok=True)
 
+@router.get("/trash", response_model=DocumentListResponse)
+def list_trash(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    List all soft-deleted documents for the authenticated user.
+    """
+    docs = db.query(Document).filter(
+        Document.user_id == user.id,
+        Document.is_deleted.is_(True)
+    ).order_by(Document.deleted_at.desc()).all()
+    
+    return DocumentListResponse(
+        items=[DocumentResponse.model_validate(d) for d in docs],
+        total=len(docs),
+        page=1,
+        pages=1
+    )
+
+@router.post("/{document_id}/restore", response_model=DocumentResponse)
+def restore_document(document_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Restore a soft-deleted document.
+    """
+    doc = db.query(Document).filter(
+        Document.id == document_id, 
+        Document.user_id == user.id, 
+        Document.is_deleted.is_(True)
+    ).first()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found in trash")
+    
+    doc.is_deleted = False
+    doc.deleted_at = None
+    db.commit()
+    db.refresh(doc)
+    
+    return DocumentResponse.model_validate(doc)
 
 
 @router.get("/{document_id}/status", response_model=DocumentStatusResponse)

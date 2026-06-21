@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Brain, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Brain, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 import HuggingFaceSignInButton from "@/components/auth/HuggingFaceSignInButton";
@@ -16,7 +16,6 @@ export default function LoginPage() {
   const { login, user, initialized } = useAuth();
   const { t } = useTranslation();
   const router = useRouter();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -45,15 +44,16 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t("login.fallbackError");
       setError(message);
-      setLoading(false); // Keeps loading indicator active only until redirect happens
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4">
       {/* Background glow */}
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary/8 rounded-full blur-[100px] pointer-events-none" />
-      
+
       <Card className="w-full max-w-md relative z-10 bg-card/80 backdrop-blur-xl border-border/50 animate-fade-in-up">
         <CardHeader className="text-center pb-2">
           <div className="flex justify-center mb-4">
@@ -64,12 +64,14 @@ export default function LoginPage() {
           <CardTitle className="text-2xl font-bold">{t("login.title")}</CardTitle>
           <CardDescription>{t("login.description")}</CardDescription>
         </CardHeader>
-        
+
         <CardContent>
-          {/* Social Sign-In Buttons */}
           <div className="flex flex-col gap-2.5 mb-4">
             <HuggingFaceSignInButton onError={setError} />
-            <GoogleSignInButton onError={setError} onSuccess={handleGoogleSuccess} />
+            <GoogleSignInButton
+              onError={setError}
+              onSuccess={handleGoogleSuccess}
+            />
           </div>
 
           <div className="relative my-5">
@@ -85,18 +87,13 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div 
-                className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive"
-                role="alert"
-              >
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
                 {error}
               </div>
             )}
 
             <div className="space-y-2">
-              <label htmlFor="login-email" className="text-sm font-medium">
-                {t("common.email")}
-              </label>
+              <label className="text-sm font-medium">{t("common.email")}</label>
               <Input
                 id="login-email"
                 type="email"
@@ -105,14 +102,11 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="h-11"
-                autoComplete="email"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="login-password" className="text-sm font-medium">
-                {t("common.password")}
-              </label>
+              <label className="text-sm font-medium">{t("common.password")}</label>
               <div className="relative">
                 <Input
                   id="login-password"
@@ -122,29 +116,21 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className="h-11 pr-10"
-                  autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label={showPw ? "Hide password" : "Show password"}
-                  aria-pressed={showPw}
                 >
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            <Button 
-              id="sign-in-btn" 
-              type="submit" 
-              className="w-full h-11 text-base" 
-              disabled={loading}
-            >
+            <Button id="sign-in-btn" type="submit" className="w-full h-11 text-base" disabled={loading}>
               {loading ? (
                 <span className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                   {t("login.submitting")}
                 </span>
               ) : (
