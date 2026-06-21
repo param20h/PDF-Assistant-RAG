@@ -6,10 +6,17 @@ import { useAuth } from "@/lib/auth";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Brain, Eye, EyeOff } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Brain } from "lucide-react";
 import Link from "next/link";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
+import { PasswordField } from "@/components/auth/PasswordField";
 import HuggingFaceSignInButton from "@/components/auth/HuggingFaceSignInButton";
 
 export default function RegisterPage() {
@@ -19,7 +26,6 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [registeredEmail, setRegisteredEmail] = useState("");
@@ -50,7 +56,8 @@ export default function RegisterPage() {
       setSuccess(result.message);
       setVerificationUrl(result.verification_url ?? "");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : t("register.fallbackError");
+      const message =
+        err instanceof Error ? err.message : t("register.fallbackError");
       setError(message);
     } finally {
       setLoading(false);
@@ -68,7 +75,9 @@ export default function RegisterPage() {
               <Brain className="w-6 h-6 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">{t("register.title")}</CardTitle>
+          <CardTitle className="text-2xl font-bold">
+            {t("register.title")}
+          </CardTitle>
           <CardDescription>{t("register.description")}</CardDescription>
         </CardHeader>
 
@@ -81,9 +90,12 @@ export default function RegisterPage() {
             />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             {error && (
-              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive">
+              <div
+                role="alert"
+                className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive"
+              >
                 {error}
               </div>
             )}
@@ -94,7 +106,10 @@ export default function RegisterPage() {
                   {t("register.verifyMessage", { email: registeredEmail })}
                 </p>
                 {verificationUrl && (
-                  <Link href={verificationUrl} className="inline-flex mt-3 font-medium underline">
+                  <Link
+                    href={verificationUrl}
+                    className="inline-flex mt-3 font-medium underline"
+                  >
                     {t("register.openVerification")}
                   </Link>
                 )}
@@ -102,7 +117,9 @@ export default function RegisterPage() {
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("common.username")}</label>
+              <label htmlFor="reg-username" className="text-sm font-medium">
+                {t("common.username")}
+              </label>
               <Input
                 id="reg-username"
                 type="text"
@@ -117,7 +134,9 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("common.email")}</label>
+              <label htmlFor="reg-email" className="text-sm font-medium">
+                {t("common.email")}
+              </label>
               <Input
                 id="reg-email"
                 type="email"
@@ -130,31 +149,19 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("common.password")}</label>
-              <div className="relative">
-                <Input
-                  id="reg-password"
-                  type={showPw ? "text" : "password"}
-                  placeholder={t("register.passwordPlaceholder")}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  disabled={Boolean(success)}
-                  className="h-11 pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+            <PasswordField
+              id="reg-password"
+              value={password}
+              onChange={setPassword}
+              placeholder={t("register.passwordPlaceholder")}
+              disabled={Boolean(success)}
+            />
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={loading || Boolean(success)}>
+            <Button
+              type="submit"
+              className="w-full h-11 text-base"
+              disabled={loading || Boolean(success)}
+            >
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
@@ -168,7 +175,10 @@ export default function RegisterPage() {
 
           <p className="text-center text-sm text-muted-foreground mt-6">
             {t("register.hasAccount")}{" "}
-            <Link href="/login" className="text-primary hover:underline font-medium">
+            <Link
+              href="/login"
+              className="text-primary hover:underline font-medium"
+            >
               {t("register.signIn")}
             </Link>
           </p>
