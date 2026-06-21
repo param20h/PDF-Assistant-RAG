@@ -5,8 +5,9 @@ Supports two backends:
 - Redis (preferred, for production)
 - LRU in-memory cache (fallback for development or when Redis is unavailable)
 
-Cache key is a SHA-256 hash of (document_id, question) to ensure keys are
-short, stable, and unique across all question/document combinations.
+Cache key is a SHA-256 hash of (user_id, document_id, question) to ensure
+keys are short, stable, and unique across all user/question/document
+combinations — never shared between different users.
 """
 
 import hashlib
@@ -101,25 +102,28 @@ def _lru_delete(key: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def make_cache_key(document_id: str, question: str) -> str:
+def make_cache_key(user_id: str, document_id: str, question: str) -> str:
     """
-    Generate a stable, short cache key from document_id + question.
+    Generate a stable, short cache key from user_id + document_id + question.
 
     SHA-256 gives us a 64-char hex string that is:
     - Always the same length regardless of question length
-    - Unique per (document_id, question) pair
+    - Unique per (user_id, document_id, question) triple — user_id is
+      required so two different users asking the identical question never
+      collide on the same cache entry, even when document_id is empty
+      (cross-document queries against a user's own private knowledge base)
     - Safe for Redis keys and dict keys
     """
-    raw = f"{document_id}:{question.strip().lower()}"
+    raw = f"{user_id}:{document_id}:{question.strip().lower()}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def get_cached_response(document_id: str, question: str) -> Optional[str]:
+def get_cached_response(user_id: str, document_id: str, question: str) -> Optional[str]:
     """
-    Look up a cached answer for a (document_id, question) pair.
+    Look up a cached answer for a (user_id, document_id, question) triple.
     Returns the answer string on hit, None on miss.
     """
-    key = make_cache_key(document_id, question)
+    key = make_cache_key(user_id, document_id, question)
     r = _get_redis()
 
     if r is not None:
@@ -140,12 +144,13 @@ def get_cached_response(document_id: str, question: str) -> Optional[str]:
     return None
 
 
-def set_cached_response(document_id: str, question: str, answer: str) -> None:
+
+def set_cached_response(user_id: str, document_id: str, question: str, answer: str) -> None:
     """
     Store an answer. Tries Redis first; falls back to LRU.
     TTL is controlled by the CACHE_TTL environment variable.
     """
-    key = make_cache_key(document_id, question)
+    key = make_cache_key(user_id, document_id, question)
     serialised = json.dumps(answer)
     r = _get_redis()
 
@@ -161,9 +166,9 @@ def set_cached_response(document_id: str, question: str, answer: str) -> None:
     logger.debug("Cache SET (LRU) key %s", key[:12])
 
 
-def invalidate_cache(document_id: str, question: str) -> None:
+def invalidate_cache(user_id: str, document_id: str, question: str) -> None:
     """Remove one cache entry — useful when a document is re-indexed."""
-    key = make_cache_key(document_id, question)
+    key = make_cache_key(user_id, document_id, question)
     r = _get_redis()
     if r is not None:
         try:

@@ -594,8 +594,9 @@ def ask_question(
         recent_messages.reverse()
         chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
 
-        # Cache check — return instantly if this (question, document) was answered before
+        # Cache check — return instantly if this (user, document, question) was answered before
         cached_answer = get_cached_response(
+            user_id=user.id,
             document_id=str(payload.document_id or ""),
             question=payload.question,
         )
@@ -626,6 +627,7 @@ def ask_question(
 
         # Store result in cache for future identical questions
         set_cached_response(
+            user_id=user.id,
             document_id=str(payload.document_id or ""),
             question=payload.question,
             answer=result["answer"],
@@ -735,6 +737,7 @@ def ask_question_stream(
 
     # Cache check before starting the stream
     cached_answer = get_cached_response(
+        user_id=user.d,
         document_id=str(payload.document_id or ""),
         question=payload.question,
     )
@@ -787,6 +790,7 @@ def ask_question_stream(
             # Cache the full answer for future identical questions
             if full_answer:
                 set_cached_response(
+                    user_id=user.id,
                     document_id=str(payload.document_id or ""),
                     question=payload.question,
                     answer=full_answer,
