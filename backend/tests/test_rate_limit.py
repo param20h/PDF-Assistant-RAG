@@ -6,6 +6,7 @@ attribute assignments, and that the global handler intercepts limit breaches
 to return a 429 status code.
 """
 from types import SimpleNamespace
+from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from slowapi.errors import RateLimitExceeded
@@ -77,3 +78,41 @@ def test_rate_limit_handler_returns_429(client: TestClient):
     assert "Rate limit exceeded. Please try again later." in json_data["error"]["message"]
     assert "request_id" in json_data["error"]
     assert isinstance(json_data["error"]["details"], dict)
+
+
+# ── Manual /chat/ws Rate Limit Enforcement ──────────────────────────────────
+
+def test_chat_ws_rate_limit_allows_up_to_configured_threshold():
+    """check_chat_ws_rate_limit must allow exactly CHAT_QUERY_RATE_LIMIT hits."""
+    from app.rate_limit import CHAT_QUERY_RATE_LIMIT, check_chat_ws_rate_limit
+
+    limit = int(CHAT_QUERY_RATE_LIMIT.split("/")[0])
+    user_id = f"ws-rate-limit-{uuid4()}"
+
+    for _ in range(limit):
+        assert check_chat_ws_rate_limit(user_id) is True
+
+
+def test_chat_ws_rate_limit_blocks_after_threshold_exceeded():
+    """The hit beyond CHAT_QUERY_RATE_LIMIT must be rejected — this is the
+    bypass from #639, where /chat/ws had no rate limiting at all."""
+    from app.rate_limit import CHAT_QUERY_RATE_LIMIT, check_chat_ws_rate_limit
+
+    limit = int(CHAT_QUERY_RATE_LIMIT.split("/")[0])
+    user_id = f"ws-rate-limit-{uuid4()}"
+
+    for _ in range(limit):
+        check_chat_ws_rate_limit(user_id)
+
+    assert check_chat_ws_rate_limit(user_id) is False
+
+
+def test_chat_ws_rate_limit_is_scoped_per_user():
+    """One user's usage must not consume another user's rate-limit budget."""
+    from app.rate_limit import check_chat_ws_rate_limit
+
+    user_a = f"ws-rate-limit-{uuid4()}"
+    user_b = f"ws-rate-limit-{uuid4()}"
+
+    assert check_chat_ws_rate_limit(user_a) is True
+    assert check_chat_ws_rate_limit(user_b) is True

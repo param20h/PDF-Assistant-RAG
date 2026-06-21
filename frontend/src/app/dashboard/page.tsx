@@ -47,6 +47,12 @@ const PDFViewer = dynamic(() => import("@/components/document/PDFViewer"), {
   loading: () => <PDFViewerSkeleton />,
 });
 
+// Lazy-load the graph panel — it pulls in @xyflow/react which is sizeable
+const KnowledgeGraph = dynamic(
+  () => import("@/components/graph/KnowledgeGraph"),
+  { ssr: false },
+);
+
 export interface DocInfo {
   chunk_size?: number;
   chunk_overlap?: number;
@@ -82,6 +88,7 @@ export default function DashboardPage() {
   } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);
+  const [graphOpen, setGraphOpen] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -106,7 +113,6 @@ export default function DashboardPage() {
   useEffect(() => {
     if (user) {
       const hasHfToken = !!(user.hf_token || localStorage.getItem("hf_token"));
-
       if (!hasHfToken) {
         console.info(
           "Hugging Face API token is not configured. Personal model access will fall back to the system default unless set in the user profile menu.",
@@ -150,7 +156,6 @@ export default function DashboardPage() {
     const nextPrevDocs: Record<string, string> = {};
     (documents || []).forEach((doc) => {
       nextPrevDocs[doc.id] = doc.status;
-
       const oldStatus = prev[doc.id];
       if (oldStatus && oldStatus !== doc.status) {
         if (doc.status === "ready") {
@@ -173,10 +178,16 @@ export default function DashboardPage() {
       (d) => d.status === "pending" || d.status === "processing",
     );
     if (!hasPending) return;
-
     const interval = setInterval(loadDocuments, 3000);
     return () => clearInterval(interval);
   }, [documents, loadDocuments]);
+
+  // Close graph panel when active document changes — derive from render
+  const prevDocIdRef = useRef<string | null>(null);
+  if (activeDoc?.id !== prevDocIdRef.current) {
+    prevDocIdRef.current = activeDoc?.id ?? null;
+    if (graphOpen) setGraphOpen(false);
+  }
 
   if (!initialized || !user) {
     return (
@@ -186,7 +197,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Shared sidebar content — used by both desktop panel and mobile sheet
   const sidebarContent = (
     <DocumentSidebar
       documents={documents}
@@ -202,7 +212,6 @@ export default function DashboardPage() {
   );
 
   return (
-    // min-w-[375px] ensures the layout never squishes below iPhone SE width
     <div className="h-screen flex flex-col overflow-hidden min-w-[375px]">
       <Header
         sidebarOpen={sidebarOpen}
@@ -224,17 +233,17 @@ export default function DashboardPage() {
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        {/* ── Left: Document Sidebar — desktop only (md+) ─────────── */}
+        {/* ── Left: Document Sidebar — desktop only ───────────────────── */}
         {sidebarOpen && (
           <div className="hidden md:block w-72 flex-shrink-0 border-r border-border/50 overflow-hidden animate-fade-in-up">
             {sidebarContent}
           </div>
         )}
 
-        {/* ── Left-Center: Chat Sessions Sidebar ──── */}
+        {/* ── Left-Center: Chat Sessions Sidebar ──────────────────────── */}
         <ChatSessionSidebar />
 
-        {/* ── Center: Chat Panel ──────────────────────────────────── */}
+        {/* ── Center: Chat Panel ───────────────────────────────────────── */}
         <div className="flex-1 min-w-0 flex flex-col">
           <ChatPanel
             activeDoc={activeDoc}
