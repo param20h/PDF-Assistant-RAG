@@ -27,6 +27,7 @@ export interface ChatMsg {
   sources: SourceChunk[];
   feedback?: "up" | "down" | null;
   isStreaming?: boolean;
+  response_time_ms?: number;
 }
 
 export interface ChatSession {

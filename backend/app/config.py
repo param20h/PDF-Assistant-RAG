@@ -23,8 +23,6 @@ class Settings(BaseSettings):
     JWT_ACCESS_EXPIRY_MINUTES: int = 15
     JWT_REFRESH_EXPIRY_DAYS: int = 7
     GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_DRIVE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google-drive/callback"
     HF_CLIENT_ID: str = ""
     HF_CLIENT_SECRET: str = ""
     HF_REDIRECT_URI: str = ""
@@ -68,8 +66,8 @@ class Settings(BaseSettings):
     # ── RAG Pipeline ─────────────────────────────────────
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
-    TOP_K_RETRIEVAL: int = 20 # Fetch more candidates for reranking
-    TOP_K_RERANK: int = 8 # Final number of chunks to return after reranking
+    TOP_K_RETRIEVAL: int = 10
+    TOP_K_RERANK: int = 5
 
     # ── Knowledge Graph (GraphRAG) ───────────────────────
     GRAPH_PERSIST_DIR: str = "./data/graphs"
@@ -108,7 +106,7 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = "pdf-assistant-rag"
 
     # ── Reranker ─────────────────────────────────────────
-    RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3" # Lightweight 384-dim model fine-tuned for relevance ranking
+    RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     # ── Vision / Image captioning ─────────────────────
     VISION_PROVIDER: str | None = None  # e.g. 'openai'
     VISION_MODEL: str | None = None

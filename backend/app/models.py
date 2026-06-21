@@ -118,7 +118,6 @@ class User(Base):
     username = Column(String(80), unique=True, nullable=False, index=True)
     email = Column(String(120), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
-    google_refresh_token = Column(EncryptedString, nullable=True)
 
     role = Column(
         SQLAlchemyEnum(UserRole),

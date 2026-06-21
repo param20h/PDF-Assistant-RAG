@@ -452,18 +452,19 @@ def ask_question_stream(
                 top_k=payload.top_k,
                 chat_history=chat_history,
             ):
-                yield chunk
-
                 # Parse to accumulate full answer for history
                 try:
                     if chunk.startswith("data: "):
                         data = json.loads(chunk[6:].strip())
+                        if data.get("type") == "done":
+                            continue  # We will yield our own done event with response time
                         if data.get("type") == "token":
                             full_answer += data.get("data", "")
                         elif data.get("type") == "sources":
                             sources = data.get("data", [])
                 except Exception:
                     pass
+                yield chunk
 
             # Save assistant response to history
             from app.database import SessionLocal
@@ -472,6 +473,9 @@ def ask_question_stream(
                 _save_message(save_db, user.id, payload.document_id, "assistant", full_answer, sources, session_id=session_id)
             finally:
                 save_db.close()
+
+            elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+            yield f"data: {json.dumps({'type': 'done', 'response_time_ms': elapsed_ms})}\n\n"
         finally:
             record_query_response_time(time.perf_counter() - started_at)
 

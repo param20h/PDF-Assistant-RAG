@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { formatDistanceToNow } from "date-fns";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -319,24 +318,18 @@ export default function MessageBubble({ message }: Props) {
                 >
                   <ThumbsDown className="w-3.5 h-3.5" />
                 </button>
+                {message.response_time_ms && (
+                  <span className="text-[10px] text-muted-foreground ml-auto">
+                    ⚡ {(message.response_time_ms / 1000).toFixed(1)}s
+                  </span>
+                )}
               </div>
             )}
           </>
         )}
-        
-         <div
-          className={`text-xs text-muted-foreground mt-2 ${
-            isUser ? "text-right" : "text-left"
-          }`}
-          title={new Date(Number(message.id.split("-")[1])).toLocaleString()}
-        >
-          {formatDistanceToNow(
-            new Date(Number(message.id.split("-")[1])),
-            { addSuffix: true }
-          )}
-        </div>
       </div>
-       {isUser && (
+
+      {isUser && (
         <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
           <User className="w-4 h-4 text-primary-foreground" />
         </div>
