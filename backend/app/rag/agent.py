@@ -6,23 +6,32 @@ import logging
 import json
 from typing import List, Dict, Any, Optional, Generator
 
-from sympy import python
-
 from huggingface_hub import InferenceClient
 from langchain_classic.agents import create_react_agent, AgentExecutor
 from langchain_core.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEndpoint
+from langchain_huggingface.chat_models import ChatHuggingFace
 
 from app.config import get_settings
 from app.rag.retriever import retrieve
 from app.rag.graph_retriever import get_entity_context
 from app.rag.prompts import AGENT_SYSTEM_PROMPT
+from app.exceptions import ExternalServiceException
 from app.rag.security import MALFORMED_OUTPUT_MESSAGE, OutputParserError, parse_agent_output
 from app.rag.tools import PDFSearchTool, MathTool, WebSearchTool
 from app.rag.tracing import trace_function
+from app.rag.keywords import extract_keywords
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def persist_document_keywords(document, chunks, db) -> None:
+    """Extract TF-IDF keywords after indexing and persist on the document row."""
+    raw_texts = [c["text"] for c in chunks]
+    kws = extract_keywords(raw_texts, top_n=10)
+    document.keywords = json.dumps(kws)
+    db.add(document)
 
 
 
@@ -78,9 +87,11 @@ def get_agent_executor(
         timeout=300,
     )
 
+    chat_llm = ChatHuggingFace(llm=llm)
+
     # Setup Agent
     prompt = PromptTemplate.from_template(AGENT_SYSTEM_PROMPT)
-    agent = create_react_agent(llm, tools, prompt)
+    agent = create_react_agent(chat_llm, tools, prompt)
 
     executor = AgentExecutor(
         agent=agent,
@@ -168,12 +179,12 @@ def generate_answer(
 
         return {"answer": answer, "sources": sources}
 
+    except (OutputParserError, ValueError) as e:
+        logger.warning(f"Agent output error: {e}")
+        return {"answer": MALFORMED_OUTPUT_MESSAGE, "sources": []}
     except Exception as e:
         logger.error(f"Agent execution error: {e}")
-        return {
-            "answer": f"I encountered an error while processing your request: {str(e)}",
-            "sources": []
-        }
+        raise ExternalServiceException("HuggingFace", str(e)) from e
 
 
 @trace_function(

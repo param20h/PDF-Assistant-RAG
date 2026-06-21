@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     Boolean,
     Enum as SQLAlchemyEnum,
+    UniqueConstraint,
 )
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -106,6 +107,12 @@ class UserRole(str, enum.Enum):
     admin = "admin"
 
 
+class WorkspaceRole(str, enum.Enum):
+    admin = "admin"
+    editor = "editor"
+    viewer = "viewer"
+
+
 class User(Base):
     """
     Represents a registered user within the system.
@@ -118,6 +125,7 @@ class User(Base):
     username = Column(String(80), unique=True, nullable=False, index=True)
     email = Column(String(120), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
+    google_refresh_token = Column(EncryptedString, nullable=True)
 
     role = Column(
         SQLAlchemyEnum(UserRole),
@@ -162,6 +170,11 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    workspace_memberships = relationship(
+        "WorkspaceMember",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApiKey(Base):
@@ -187,11 +200,11 @@ class ApiKey(Base):
 class WorkspaceInvitation(Base):
     __tablename__ = "workspace_invitations"
 
-    id = Column(String, primary_key=True, default=generate_uuid)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     email = Column(String(120), nullable=False, index=True)
     token_hash = Column(String(255), nullable=False, unique=True, index=True)
     inviter_id = Column(
-        String,
+        GUID,
         ForeignKey("users.id"),
         nullable=False,
         index=True,
@@ -202,6 +215,88 @@ class WorkspaceInvitation(Base):
     accepted_at = Column(DateTime, nullable=True)
 
     inviter = relationship("User")
+
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+
+    name = Column(String(255), nullable=False)
+
+    created_by = Column(
+        GUID,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    creator = relationship("User")
+
+    members = relationship(
+        "WorkspaceMember",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+
+
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "user_id",
+            name="uq_workspace_member",
+        ),
+    )
+
+    id = Column(
+        GUID,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    workspace_id = Column(
+        GUID,
+        ForeignKey("workspaces.id"),
+        nullable=False,
+        index=True,
+    )
+
+    user_id = Column(
+        GUID,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+
+    role = Column(
+        SQLAlchemyEnum(WorkspaceRole),
+        nullable=False,
+        default=WorkspaceRole.viewer,
+        server_default="viewer",
+    )
+
+    joined_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    workspace = relationship(
+        "Workspace",
+        back_populates="members",
+    )
+
+    user = relationship(
+        "User",
+        back_populates="workspace_memberships",
+    )
 
 
 class ChatSession(Base):
@@ -232,7 +327,7 @@ class Document(Base):
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False, index=True)
-    filename = Column(String(255), nullable=False)
+    filename = Column(String(255), nullable=False, index=True)
     original_name = Column(String(255), nullable=False)
     file_size = Column(Integer, default=0)
     page_count = Column(Integer, default=0)
@@ -253,6 +348,13 @@ class Document(Base):
     drive_synced_at = Column(DateTime, nullable=True)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
+    processing_progress = Column(Integer, default=0)
+    processing_stage = Column(String(20), default="queued")
+    retry_count = Column(Integer, default=0)
+    last_error_traceback = Column(Text, nullable=True)
+    processing_started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    extracted_urls = Column(Text, nullable=True)
 
     # Relationships
     owner = relationship("User", back_populates="documents")

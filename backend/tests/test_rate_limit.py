@@ -1,8 +1,20 @@
+"""
+Unit tests for rate limiting middleware and identifier resolution (#445).
+
+Verifies key function fallback resolutions (User ID vs IP Address), route
+attribute assignments, and that the global handler intercepts limit breaches
+to return a 429 status code.
+"""
 from types import SimpleNamespace
+from uuid import uuid4
+import pytest
+from fastapi.testclient import TestClient
+from slowapi.errors import RateLimitExceeded
 
 from app.auth import create_access_token
 from app.rate_limit import CHAT_QUERY_RATE_LIMIT, rate_limit_key_func
 from app.routes.chat import ask_question, ask_question_stream
+from app.main import app
 
 
 class DummyRequest:
@@ -10,6 +22,8 @@ class DummyRequest:
         self.headers = headers or {}
         self.client = SimpleNamespace(host="203.0.113.10")
 
+
+# ── Your Original Key Resolution & Route Tests ───────────────────────────────
 
 def test_rate_limit_key_prefers_authenticated_user_id():
     token = create_access_token("user-123")
@@ -31,3 +45,74 @@ def test_chat_endpoints_use_required_rate_limit():
     assert CHAT_QUERY_RATE_LIMIT == "15/minute"
     assert ask_question.__rate_limits__ == [CHAT_QUERY_RATE_LIMIT]
     assert ask_question_stream.__rate_limits__ == [CHAT_QUERY_RATE_LIMIT]
+
+
+# ── Middleware 429 Response Verification ──────────────────────────────────────
+
+def test_rate_limit_handler_returns_429(client: TestClient):
+    """
+    Verify that hitting an endpoint that triggers a RateLimitExceeded exception
+    correctly triggers the global handler, returning a 429 status code and the
+    exact JSON error layout specified in app/main.py.
+    """
+    from fastapi import APIRouter
+    test_router = APIRouter()
+    @test_router.get("/api/v1/test-rate-limiting-trigger-429")
+    def trigger_rate_limit():
+        raise RateLimitExceeded("Too Many Requests")
+    
+    app.include_router(test_router)
+    # Move the newly added route to the top so it takes precedence over the SPA catch-all
+    new_route = app.router.routes.pop()
+    app.router.routes.insert(0, new_route)
+
+    response = client.get("/api/v1/test-rate-limiting-trigger-429")
+    
+    # Verify the 429 status code requirement
+    assert response.status_code == 429
+    
+    # Verify the specific JSON payload structure from app/main.py
+    json_data = response.json()
+    assert "error" in json_data
+    assert json_data["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+    assert "Rate limit exceeded. Please try again later." in json_data["error"]["message"]
+    assert "request_id" in json_data["error"]
+    assert isinstance(json_data["error"]["details"], dict)
+
+
+# ── Manual /chat/ws Rate Limit Enforcement ──────────────────────────────────
+
+def test_chat_ws_rate_limit_allows_up_to_configured_threshold():
+    """check_chat_ws_rate_limit must allow exactly CHAT_QUERY_RATE_LIMIT hits."""
+    from app.rate_limit import CHAT_QUERY_RATE_LIMIT, check_chat_ws_rate_limit
+
+    limit = int(CHAT_QUERY_RATE_LIMIT.split("/")[0])
+    user_id = f"ws-rate-limit-{uuid4()}"
+
+    for _ in range(limit):
+        assert check_chat_ws_rate_limit(user_id) is True
+
+
+def test_chat_ws_rate_limit_blocks_after_threshold_exceeded():
+    """The hit beyond CHAT_QUERY_RATE_LIMIT must be rejected — this is the
+    bypass from #639, where /chat/ws had no rate limiting at all."""
+    from app.rate_limit import CHAT_QUERY_RATE_LIMIT, check_chat_ws_rate_limit
+
+    limit = int(CHAT_QUERY_RATE_LIMIT.split("/")[0])
+    user_id = f"ws-rate-limit-{uuid4()}"
+
+    for _ in range(limit):
+        check_chat_ws_rate_limit(user_id)
+
+    assert check_chat_ws_rate_limit(user_id) is False
+
+
+def test_chat_ws_rate_limit_is_scoped_per_user():
+    """One user's usage must not consume another user's rate-limit budget."""
+    from app.rate_limit import check_chat_ws_rate_limit
+
+    user_a = f"ws-rate-limit-{uuid4()}"
+    user_b = f"ws-rate-limit-{uuid4()}"
+
+    assert check_chat_ws_rate_limit(user_a) is True
+    assert check_chat_ws_rate_limit(user_b) is True
