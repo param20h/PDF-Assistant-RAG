@@ -11,11 +11,21 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen, Cloud,
+  FileText,
+  Upload,
+  UploadCloud,
+  Trash2,
+  FileCheck,
+  Clock,
+  AlertCircle,
+  Loader2,
+  FolderOpen,
+  Cloud,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
+import DocumentCard from "./DocumentCard";
 import { toast } from "sonner";
 
 interface Props {
@@ -31,7 +41,10 @@ function DocumentListSkeleton() {
   return (
     <div className="space-y-2 pb-3" aria-hidden="true">
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="rounded-lg border border-sidebar-border/60 p-2.5">
+        <div
+          key={index}
+          className="rounded-lg border border-sidebar-border/60 p-2.5"
+        >
           <div className="flex items-start gap-2.5">
             <Skeleton className="mt-0.5 h-4 w-4 rounded-full bg-sidebar-accent" />
             <div className="min-w-0 flex-1 space-y-2">
@@ -76,7 +89,9 @@ export default function DocumentSidebar({
 
     async function loadDriveStatus() {
       try {
-        const data = await api.get<{ connected: boolean }>("/api/v1/auth/google-drive/status");
+        const data = await api.get<{ connected: boolean }>(
+          "/api/v1/auth/google-drive/status",
+        );
         if (!cancelled) setDriveConnected(data.connected);
       } catch {
         if (!cancelled) setDriveError("Unable to load Google Drive status");
@@ -105,15 +120,18 @@ export default function DocumentSidebar({
             const file = acceptedFiles[i];
             const formData = new FormData();
             formData.append("file", file);
-            
+
             toast.info(`⏳ Uploading '${file.name}'...`);
             await api.postForm("/api/v1/documents/upload", formData);
             setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
-            toast.success(`📤 '${file.name}' uploaded successfully! Ingestion started.`);
+            toast.success(
+              `📤 '${file.name}' uploaded successfully! Ingestion started.`,
+            );
           }
           await onDocumentsChange();
         } catch (err) {
-          const message = err instanceof Error ? err.message : t("documents.uploadFailed");
+          const message =
+            err instanceof Error ? err.message : t("documents.uploadFailed");
           setUploadError(message);
           toast.error(`❌ Upload failed: ${message}`);
         } finally {
@@ -122,14 +140,15 @@ export default function DocumentSidebar({
         }
       })();
     },
-    [onDocumentsChange, t]
+    [onDocumentsChange, t],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       "application/pdf": [".pdf"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        [".docx"],
       "text/plain": [".txt"],
       "text/markdown": [".md"],
     },
@@ -152,7 +171,7 @@ export default function DocumentSidebar({
 
   const handleSettingsClick = (doc: DocInfo, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent triggering document selection
-    setSettingsDoc(doc); 
+    setSettingsDoc(doc);
   };
 
   const startRename = (doc: DocInfo, e?: React.MouseEvent) => {
@@ -197,7 +216,10 @@ export default function DocumentSidebar({
     }
   };
 
-  const handleRenameKeyDown = (doc: DocInfo, e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleRenameKeyDown = (
+    doc: DocInfo,
+    e: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
     if (e.key === "Enter") {
       e.preventDefault();
       void submitRename(doc);
@@ -220,10 +242,14 @@ export default function DocumentSidebar({
     setDriveError("");
 
     try {
-      const data = await api.get<{ auth_url: string }>("/api/v1/auth/google-drive/connect");
+      const data = await api.get<{ auth_url: string }>(
+        "/api/v1/auth/google-drive/connect",
+      );
       window.location.assign(data.auth_url);
     } catch (err) {
-      setDriveError(err instanceof Error ? err.message : "Failed to connect Google Drive");
+      setDriveError(
+        err instanceof Error ? err.message : "Failed to connect Google Drive",
+      );
       setDriveConnecting(false);
     }
   };
@@ -233,15 +259,20 @@ export default function DocumentSidebar({
     setDriveError("");
 
     try {
-      const data = await api.delete<{ connected: boolean }>("/api/v1/auth/google-drive/disconnect");
+      const data = await api.delete<{ connected: boolean }>(
+        "/api/v1/auth/google-drive/disconnect",
+      );
       setDriveConnected(data.connected);
     } catch (err) {
-      setDriveError(err instanceof Error ? err.message : "Failed to disconnect Google Drive");
+      setDriveError(
+        err instanceof Error
+          ? err.message
+          : "Failed to disconnect Google Drive",
+      );
     } finally {
       setDriveConnecting(false);
     }
   };
-
 
   const statusIcon = (status: string) => {
     switch (status) {
@@ -284,14 +315,25 @@ export default function DocumentSidebar({
           {uploading ? (
             <div className="space-y-2">
               <Loader2 className="w-5 h-5 mx-auto animate-spin text-primary" />
-              <p className="text-xs text-muted-foreground">{t("documents.uploading")}</p>
+              <p className="text-xs text-muted-foreground">
+                {t("documents.uploading")}
+              </p>
               <Progress value={uploadProgress} className="h-1" />
             </div>
           ) : (
             <>
-              <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
-              <p className="text-xs text-muted-foreground">
-                {isDragActive ? t("documents.dropHere") : t("documents.dropOrClick")}
+              {isDragActive ? (
+                <UploadCloud className="w-6 h-6 mx-auto text-primary mb-2 animate-bounce" />
+              ) : (
+                <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
+              )}
+              <p
+                className={`text-xs transition-colors ${isDragActive ? "text-primary font-medium" : "text-muted-foreground"}`}
+                aria-live="polite"
+              >
+                {isDragActive
+                  ? t("documents.dropHere")
+                  : t("documents.dropOrClick")}
               </p>
               <p className="text-[10px] text-muted-foreground/60 mt-1">
                 {t("documents.uploadFormats")}
@@ -306,7 +348,9 @@ export default function DocumentSidebar({
             <div className="min-w-0">
               <p className="text-sm font-medium leading-tight">Google Drive</p>
               <p className="text-xs text-muted-foreground">
-                {driveConnected ? "Connected for PDF sync" : "Connect to import PDFs"}
+                {driveConnected
+                  ? "Connected for PDF sync"
+                  : "Connect to import PDFs"}
               </p>
             </div>
           </div>
@@ -319,7 +363,9 @@ export default function DocumentSidebar({
             variant={driveConnected ? "outline" : "secondary"}
             size="sm"
             className="w-full"
-            onClick={driveConnected ? handleDisconnectDrive : handleConnectDrive}
+            onClick={
+              driveConnected ? handleDisconnectDrive : handleConnectDrive
+            }
             disabled={driveLoading || driveConnecting}
           >
             {driveConnecting || driveLoading ? (
@@ -327,7 +373,9 @@ export default function DocumentSidebar({
             ) : (
               <Cloud className="w-3.5 h-3.5" />
             )}
-            {driveConnected ? "Disconnect Google Drive" : "Connect Google Drive"}
+            {driveConnected
+              ? "Disconnect Google Drive"
+              : "Connect Google Drive"}
           </Button>
         </div>
       </div>
@@ -347,8 +395,12 @@ export default function DocumentSidebar({
         ) : documents.length === 0 ? (
           <div className="text-center py-12">
             <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="text-sm text-muted-foreground">{t("documents.noDocuments")}</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">{t("documents.getStarted")}</p>
+            <p className="text-sm text-muted-foreground">
+              {t("documents.noDocuments")}
+            </p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              {t("documents.getStarted")}
+            </p>
           </div>
         ) : (
           <div className="space-y-1 pb-3">
@@ -364,12 +416,16 @@ export default function DocumentSidebar({
                   aria-disabled={doc.status !== "ready"}
                   aria-current={activeDoc?.id === doc.id ? "true" : undefined}
                   aria-label={`Select document ${doc.original_name}. Status: ${doc.status}`}
-                  onClick={() => doc.status === "ready" && !isEditing && onSelectDoc(doc)}
+                  onClick={() =>
+                    doc.status === "ready" && !isEditing && onSelectDoc(doc)
+                  }
                   onKeyDown={(e) => handleDocumentKeyDown(doc, e)}
                   className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
-                    ${activeDoc?.id === doc.id
-                      ? "bg-primary/15 border border-primary/30"
-                      : "hover:bg-sidebar-accent border border-transparent"}
+                    ${
+                      activeDoc?.id === doc.id
+                        ? "bg-primary/15 border border-primary/30"
+                        : "hover:bg-sidebar-accent border border-transparent"
+                    }
                     ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}`}
                 >
                   <div className="flex items-start gap-2.5">
@@ -395,72 +451,85 @@ export default function DocumentSidebar({
                         </p>
                       )}
 
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {doc.summary || "📄 No summary available"}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-muted-foreground">
-                        {formatSize(doc.file_size)}
-                      </span>
-                      {doc.status === "ready" && (
-                        <>
-                          <span className="text-[10px] text-muted-foreground">•</span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {t("documents.pagesShort", { count: doc.page_count })}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">•</span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {t("documents.chunks", { count: doc.chunk_count })}
-                          </span>
-                        </>
-                      )}
-                      {doc.status === "processing" && (
-                        <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
-                          {t("documents.processing")}
-                        </Badge>
-                      )}
-                      {doc.status === "failed" && (
-                        <Badge variant="destructive" className="text-[9px] h-4 px-1.5">
-                          {t("documents.failed")}
-                        </Badge>
-                      )}
-                    </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {doc.summary || "📄 No summary available"}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatSize(doc.file_size)}
+                        </span>
+                        {doc.status === "ready" && (
+                          <>
+                            <span className="text-[10px] text-muted-foreground">
+                              •
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {t("documents.pagesShort", {
+                                count: doc.page_count,
+                              })}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              •
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {t("documents.chunks", {
+                                count: doc.chunk_count,
+                              })}
+                            </span>
+                          </>
+                        )}
+                        {doc.status === "processing" && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[9px] h-4 px-1.5"
+                          >
+                            {t("documents.processing")}
+                          </Badge>
+                        )}
+                        {doc.status === "failed" && (
+                          <Badge
+                            variant="destructive"
+                            className="text-[9px] h-4 px-1.5"
+                          >
+                            {t("documents.failed")}
+                          </Badge>
+                        )}
+                      </div>
+                      <DocumentCard document={doc} />
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                    {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */} 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity cursor-pointer"
-                      onClick={(e) => handleSettingsClick(doc, e)}
-                      disabled={doc.status !== "ready"}
-                      aria-label="Open chunking settings"
-                      title={`Open chunking settings for ${doc.original_name}`}
-                    >
-                      <Settings className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0 cursor-pointer"
-                      onClick={(e) => handleDelete(doc.id, e)}
-                      disabled={deleting === doc.id}
-                      aria-label="Delete document"
-                      title={`Delete ${doc.original_name}`}
-                    >
-                      {deleting === doc.id ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3 h-3 text-destructive" />
-                      )}
-                    </Button>
+                      {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity cursor-pointer"
+                        onClick={(e) => handleSettingsClick(doc, e)}
+                        disabled={doc.status !== "ready"}
+                        aria-label="Open chunking settings"
+                        title={`Open chunking settings for ${doc.original_name}`}
+                      >
+                        <Settings className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                        onClick={(e) => handleDelete(doc.id, e)}
+                        disabled={deleting === doc.id}
+                        aria-label="Delete document"
+                        title={`Delete ${doc.original_name}`}
+                      >
+                        {deleting === doc.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3 h-3 text-destructive" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </div>
               );
             })}
-
-
           </div>
         )}
       </ScrollArea>
@@ -470,10 +539,12 @@ export default function DocumentSidebar({
         <DocumentSettings
           document={settingsDoc} // Pass the selected document to the document settings component
           open={!!settingsDoc} // Open when settingsDoc is not null
-          onOpenChange={(open) => { // Close the modal when open is false
+          onOpenChange={(open) => {
+            // Close the modal when open is false
             if (!open) setSettingsDoc(null); // Clear the settingsDoc state to close the modal
           }}
-          onSettingsSaved={() => { // Refresh documents after saving settings
+          onSettingsSaved={() => {
+            // Refresh documents after saving settings
             onDocumentsChange(); // Refresh the document list to reflect any changes
             setSettingsDoc(null); // Close the settings modal after saving
           }}

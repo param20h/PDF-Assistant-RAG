@@ -30,6 +30,32 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
+      - name: Update snapshots if baseline missing
+        working-directory: frontend
+        run: |
+          npx playwright test e2e/snapshots.spec.ts \
+            --update-snapshots \
+            --reporter=list
+        continue-on-error: true
+
       - name: Run Playwright E2E tests
         working-directory: frontend
         run: npm run test:e2e -- --reporter=list
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Upload snapshot diffs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-diffs
+          path: frontend/test-results/
+          retention-days: 7

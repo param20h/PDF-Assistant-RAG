@@ -7,7 +7,11 @@ from app.rag.agent import get_llm_client
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-def generate_document_summary(filePath: str, max_sentences: int = 3) -> str | None:
+def generate_document_summary(
+    filePath: str | None = None, 
+    max_sentences: int = 3, 
+    chunks: list[dict] | None = None
+) -> str | None:
     """
     Extract text from the first few chunks of the document and ask LLM to summarise.
     Returns a short summary string, or None on failure.
@@ -26,17 +30,29 @@ def generate_document_summary(filePath: str, max_sentences: int = 3) -> str | No
     from app.rag.chunker import chunk_document
 
     try:
-        chunks = chunk_document(filePath)
+        # Fall back to file parsing only if chunks are not pre-extracted
+        if chunks is None:
+            if not filePath:
+                logger.error("Neither 'chunks' nor 'filePath' was provided.")
+                return None
+            chunks = chunk_document(filePath)
 
         if not chunks:
-            logger.warning(f"No chunks extracted from {filePath}, cannot summarise.")
+            identifier = filePath if filePath else "provided chunks"
+            logger.warning(f"No chunks available for {identifier}, cannot summarise.")
             return None
         
         # Extract text from each chunk and concatenate for summarisation
         chunk_texts = []
         for chunk in chunks[:10]:  # Use first 10 chunks to limit input size
             text = chunk.get("text")
-            chunk_texts.append(text) 
+            # Ensure text is explicitly a string instance and not just whitespace
+            if isinstance(text, str) and text.strip():
+                chunk_texts.append(text) 
+
+        if not chunk_texts:
+            logger.warning("Extracted chunks contained no valid text content.")
+            return None
 
         text_to_summarise = " ".join(chunk_texts)
 
@@ -52,8 +68,9 @@ def generate_document_summary(filePath: str, max_sentences: int = 3) -> str | No
         )
         summary = response.choices[0].message.content.strip() if response.choices else None
 
-        return summary if summary else None
+        return summary or None
 
     except Exception as e:
-        logger.error(f"Summary generation failed for {filePath}: {e}")
+        identifier = filePath if filePath else "pre-extracted chunks"
+        logger.error(f"Summary generation failed for {identifier}: {e}")
         return None
