@@ -313,9 +313,14 @@ export default function DocumentSidebar({
                         </p>
                       )}
 
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {doc.summary || "📄 No summary available"}
-                    </p>
+                    {doc.summary ? (
+                      <details className="text-xs text-muted-foreground mt-1">
+                        <summary className="cursor-pointer">AI Summary</summary>
+                        <p className="mt-1 leading-relaxed">{doc.summary}</p>
+                      </details>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-1">📄 No summary available</p>
+                    )}
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] text-muted-foreground">
                         {formatSize(doc.file_size)}
