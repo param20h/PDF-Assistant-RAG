@@ -101,11 +101,12 @@ export default function DocumentSidebar({
     }
   }, []);
 
-  useEffect(() => {
-    if (activeTab === "trash") {
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    if (value === "trash") {
       void fetchTrash();
     }
-  }, [activeTab, fetchTrash]);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -417,7 +418,7 @@ export default function DocumentSidebar({
       </div>
 
       {/* ── Documents List ──────────────────────────── */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col min-h-0">
         <div className="px-3 pt-3 pb-1 flex items-center justify-between">
           <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             {activeTab === "active"
