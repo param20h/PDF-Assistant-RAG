@@ -20,11 +20,10 @@ from app.database import get_db
 from app.exceptions import (
     NotFoundException,
     UnauthorizedException,
-    ValidationException,
-)
+    ValidationException, )
 from app.metrics import record_query_response_time
 from app.models import User, ChatMessage, Document, SharedMessage, ChatSession
-from app.rate_limit import CHAT_QUERY_RATE_LIMIT, limiter
+from app.rate_limit import CHAT_QUERY_RATE_LIMIT, check_chat_ws_rate_limit, limiter
 from app.rag.security import UnsafePromptError, validate_user_input
 from app.schemas import (
     ChatRequest,
@@ -98,6 +97,17 @@ async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
 
         if not user:
             await websocket.send_json({"type": "error", "data": "User not found"})
+            await websocket.close()
+            return
+
+        # /chat/ask and /chat/ask/stream enforce CHAT_QUERY_RATE_LIMIT via
+        # @limiter.limit, but that decorator only works on HTTP routes — it
+        # never runs for this WebSocket handler. Without this check, a client
+        # could call the same generate_answer_stream(...) RAG/LLM pipeline an
+        # unbounded number of times per minute by sending requests over /chat/ws
+        # (or opening multiple connections), completely bypassing the limit.
+        if not check_chat_ws_rate_limit(user.id):
+            await websocket.send_json({"type": "error", "data": "Rate limit exceeded"})
             await websocket.close()
             return
 
