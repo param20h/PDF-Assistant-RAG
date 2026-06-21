@@ -239,7 +239,64 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
 
-  # ── 4. PR Size Gate ─────────────────────────────────────
+  # ── 4. Render Deploy Config Smoke Test ──────────────────
+  render-config-smoke-test:
+    name: 🚀 Render Config — Build & Boot Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Parse render.yaml
+        id: render_config
+        run: |
+          python -c "
+          import yaml
+          with open('render.yaml') as f:
+              config = yaml.safe_load(f)
+          service = config['services'][0]
+          print(f\"build_command={service['buildCommand']}\")
+          print(f\"start_command={service['startCommand']}\")
+          " >> "$GITHUB_OUTPUT"
+
+      - name: Run render.yaml buildCommand verbatim
+        run: ${{ steps.render_config.outputs.build_command }}
+
+      - name: Boot the app via render.yaml startCommand verbatim and hit /api/health
+        env:
+          SECRET_KEY: ci-dummy-secret
+          FIELD_ENCRYPTION_KEY: ci-dummy-field-encryption-key
+          ENVIRONMENT: development
+          DATABASE_URL: sqlite:///./ci_render_smoke.db
+          DEBUG: "false"
+          HF_TOKEN: ci-dummy-token
+          UPLOAD_DIR: /tmp/uploads
+          CHROMA_PERSIST_DIR: /tmp/chroma
+          PORT: "10000"
+        run: |
+          ${{ steps.render_config.outputs.start_command }} &
+          BOOT_PID=$!
+
+          for i in $(seq 1 30); do
+            if curl -sf "http://localhost:${PORT}/api/health" > /dev/null; then
+              echo "✅ /api/health responded - render.yaml config boots correctly"
+              kill $BOOT_PID
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "❌ render.yaml startCommand did not produce a healthy app within 30s"
+          kill $BOOT_PID 2>/dev/null || true
+          exit 1
+
+  # ── 5. PR Size Gate ─────────────────────────────────────
   pr-size-check:
     name: 📏 PR Size Check
     runs-on: ubuntu-latest

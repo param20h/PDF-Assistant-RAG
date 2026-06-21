@@ -2,18 +2,36 @@ services:
   - type: web
     name: rag-pdf-assistant
     runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn app.main:app --bind 0.0.0.0:$PORT --workers 2 -k uvicorn.workers.UvicornWorker
     envVars:
       - key: SECRET_KEY
         generateValue: true
-      - key: ENCRYPTION_KEY
+      - key: FIELD_ENCRYPTION_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
         sync: false
-      - key: MONGO_URI
+      - key: CELERY_BROKER_URL
+        sync: false
+      - key: CELERY_RESULT_BACKEND
+        sync: false
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: CHROMA_PERSIST_DIR
+        value: ./data/chroma_db
+      - key: UPLOAD_DIR
+        value: ./data/uploads
+      - key: GRAPH_PERSIST_DIR
+        value: ./data/graphs
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: HF_TOKEN
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: PYTHON_VERSION
-        value: 3.10.12
+        value: 3.11.9
