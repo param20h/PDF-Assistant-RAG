@@ -52,7 +52,10 @@ def store_bm25_index(chunks: List[Dict[str, Any]], document_id: str, filename: s
     # Format chunks to match vectorstore output
     formatted_chunks = []
     for chunk in chunks:
+        chunk_idx = chunk.get("chunk_index")
+        chunk_id = f"{document_id}_{chunk_idx}" if chunk_idx is not None else None
         formatted_chunks.append({
+            "id": chunk_id,
             "text": chunk["text"],
             "filename": filename,
             "document_id": document_id,
