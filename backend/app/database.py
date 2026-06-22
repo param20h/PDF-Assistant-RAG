@@ -230,6 +230,85 @@ def _migrate_schema():
                 )
 
 
+    # ── Workspace tables ──────────────────────────────────────────────────
+    existing_tables = set(inspector.get_table_names())
+
+    if "workspaces" not in existing_tables:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    CREATE TABLE workspaces (
+                        id         CHAR(36)     PRIMARY KEY,
+                        name       VARCHAR(255) NOT NULL,
+                        created_by CHAR(36)     NOT NULL REFERENCES users(id),
+                        created_at TIMESTAMP
+                    )
+                """))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_workspaces_created_by "
+                    "ON workspaces (created_by)"
+                ))
+            logger.info("Migration: created table workspaces")
+        except Exception:
+            logger.warning("Migration skipped (may already exist): workspaces")
+
+    if "workspace_members" not in existing_tables:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    CREATE TABLE workspace_members (
+                        id           CHAR(36)    PRIMARY KEY,
+                        workspace_id CHAR(36)    NOT NULL REFERENCES workspaces(id),
+                        user_id      CHAR(36)    NOT NULL REFERENCES users(id),
+                        role         VARCHAR(20) NOT NULL DEFAULT 'viewer',
+                        joined_at    TIMESTAMP,
+                        CONSTRAINT uq_workspace_member UNIQUE (workspace_id, user_id)
+                    )
+                """))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_workspace_members_workspace_id "
+                    "ON workspace_members (workspace_id)"
+                ))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_workspace_members_user_id "
+                    "ON workspace_members (user_id)"
+                ))
+            logger.info("Migration: created table workspace_members")
+        except Exception:
+            logger.warning("Migration skipped (may already exist): workspace_members")
+
+    if "workspace_invitations" not in existing_tables:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    CREATE TABLE workspace_invitations (
+                        id             CHAR(36)     PRIMARY KEY,
+                        email          VARCHAR(120) NOT NULL,
+                        token_hash     VARCHAR(255) NOT NULL UNIQUE,
+                        inviter_id     CHAR(36)     NOT NULL REFERENCES users(id),
+                        workspace_name VARCHAR(255) NOT NULL,
+                        created_at     TIMESTAMP,
+                        expires_at     TIMESTAMP    NOT NULL,
+                        accepted_at    TIMESTAMP
+                    )
+                """))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_workspace_invitations_email "
+                    "ON workspace_invitations (email)"
+                ))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_workspace_invitations_token_hash "
+                    "ON workspace_invitations (token_hash)"
+                ))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_workspace_invitations_inviter_id "
+                    "ON workspace_invitations (inviter_id)"
+                ))
+            logger.info("Migration: created table workspace_invitations")
+        except Exception:
+            logger.warning("Migration skipped (may already exist): workspace_invitations")
+
+
 def advisory_lock(lock_id: int):
     """Context manager that acquires a PostgreSQL advisory lock (xact scope).
 
