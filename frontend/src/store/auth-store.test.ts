@@ -125,12 +125,14 @@ describe("useAuthStore", () => {
     });
 
     it("throws and does not update state when api.post rejects", async () => {
-      vi.mocked(api.post).mockRejectedValueOnce(new Error("Invalid credentials"));
+      vi.mocked(api.post).mockRejectedValueOnce(
+        new Error("Invalid credentials"),
+      );
 
       await expect(
         act(async () => {
           await useAuthStore.getState().login("bad@example.com", "wrong");
-        })
+        }),
       ).rejects.toThrow("Invalid credentials");
 
       const { user, token } = useAuthStore.getState();
@@ -206,9 +208,13 @@ describe("useAuthStore", () => {
       localStorage.setItem("token", "old-token");
       localStorage.setItem("refresh_token", "old-refresh");
 
-      let result: { message: string; email: string; verification_url?: string | null } | undefined;
+      let result:
+        | { message: string; email: string; verification_url?: string | null }
+        | undefined;
       await act(async () => {
-        result = await useAuthStore.getState().register("newuser", "new@example.com", "Password1!");
+        result = await useAuthStore
+          .getState()
+          .register("newuser", "new@example.com", "Password1!");
       });
 
       expect(result).toEqual(registrationResponse);
@@ -223,7 +229,9 @@ describe("useAuthStore", () => {
       });
 
       await act(async () => {
-        await useAuthStore.getState().register("newuser", "new@example.com", "Password1!");
+        await useAuthStore
+          .getState()
+          .register("newuser", "new@example.com", "Password1!");
       });
 
       const { user, token, initialized } = useAuthStore.getState();
@@ -238,7 +246,11 @@ describe("useAuthStore", () => {
   describe("logout", () => {
     it("clears user, token, and localStorage on logout", async () => {
       // Set up a logged-in state first
-      useAuthStore.setState({ user: mockUser, token: "access-abc", initialized: true });
+      useAuthStore.setState({
+        user: mockUser,
+        token: "access-abc",
+        initialized: true,
+      });
       localStorage.setItem("token", "access-abc");
       localStorage.setItem("refresh_token", "refresh-xyz");
 
@@ -258,7 +270,11 @@ describe("useAuthStore", () => {
     });
 
     it("clears state even when the logout API call fails", async () => {
-      useAuthStore.setState({ user: mockUser, token: "access-abc", initialized: true });
+      useAuthStore.setState({
+        user: mockUser,
+        token: "access-abc",
+        initialized: true,
+      });
       localStorage.setItem("token", "access-abc");
 
       vi.mocked(api.post).mockRejectedValueOnce(new Error("Network error"));
@@ -366,7 +382,9 @@ describe("useAuthStore", () => {
       useAuthStore.setState({ token: "existing-token", user: mockUser });
 
       act(() => {
-        useAuthStore.getState().syncTokensRefreshed({ accessToken: "new-token" });
+        useAuthStore
+          .getState()
+          .syncTokensRefreshed({ accessToken: "new-token" });
       });
 
       expect(useAuthStore.getState().user).toEqual(mockUser);
@@ -388,7 +406,11 @@ describe("useAuthStore", () => {
 
   describe("syncLoggedOut", () => {
     it("clears user and token", () => {
-      useAuthStore.setState({ user: mockUser, token: "tok", initialized: true });
+      useAuthStore.setState({
+        user: mockUser,
+        token: "tok",
+        initialized: true,
+      });
 
       act(() => {
         useAuthStore.getState().syncLoggedOut();
@@ -437,7 +459,7 @@ describe("useAuthStore", () => {
       await expect(
         act(async () => {
           await useAuthStore.getState().setHfToken("bad-token");
-        })
+        }),
       ).rejects.toThrow("Server error");
     });
   });
