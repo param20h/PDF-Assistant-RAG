@@ -9,7 +9,7 @@ import logging
 import asyncio
 import concurrent.futures
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 from pathlib import Path
 import shutil
 import socket
