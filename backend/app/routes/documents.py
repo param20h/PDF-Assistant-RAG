@@ -38,6 +38,7 @@ from app.schemas import (
     DocumentUpdate,
     ChunkSettings,
     UploadUrl,
+    BatchUploadResponse,
 )
 from app.auth import get_current_user
 from app.config import get_settings
@@ -301,6 +302,124 @@ async def upload_document(
         task_id = f"local_{uuid.uuid4().hex}"
 
     return DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
+
+@router.post("/upload/batch", response_model=BatchUploadResponse, status_code=status.HTTP_202_ACCEPTED)
+async def batch_upload_documents(
+    files: List[UploadFile] = File(...),
+    chunk_size: int = Form(1000),
+    chunk_overlap: int = Form(200),
+    background_tasks: BackgroundTasks = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Accept multiple files and enqueue parallel ingestion tasks.
+
+    Each file is validated and saved independently. Successfully saved files
+    are committed to the database and dispatched to Celery (or the in-process
+    fallback). Files that fail validation are recorded in the ``failed`` list
+    and do not block the remaining uploads.
+
+    Args:
+        files:            One or more uploaded files (PDF, DOCX, TXT, MD).
+        chunk_size:       Text chunk size for RAG ingestion (100–2000).
+        chunk_overlap:    Overlap between consecutive chunks (0 < chunk_size).
+        background_tasks: FastAPI hook for in-process fallback execution.
+        user:             Authenticated user injected by get_current_user.
+        db:               Database session injected by get_db.
+
+    Returns:
+        BatchUploadResponse with the list of created documents, their task
+        IDs, total accepted count, and any filenames that were rejected.
+    """
+    if not files:
+        raise ValidationException("No files provided")
+
+    if chunk_size < 100 or chunk_size > 2000:
+        raise ValidationException("Chunk size must be between 100 and 2000")
+    if chunk_overlap < 0 or chunk_overlap >= chunk_size:
+        raise ValidationException("Chunk overlap must be non-negative and less than chunk_size")
+
+    user_dir = os.path.join(settings.UPLOAD_DIR, user.id)
+    os.makedirs(user_dir, exist_ok=True)
+
+    created_documents: List[DocumentResponse] = []
+    task_ids: List[str] = []
+    failed: List[str] = []
+
+    for file in files:
+        filename = file.filename or "unknown"
+        try:
+            if not file.filename:
+                raise ValidationException("No filename provided")
+
+            ext = file.filename.rsplit(".", 1)[-1].lower()
+            if ext not in settings.ALLOWED_EXTENSIONS:
+                raise ValidationException(
+                    f"File type '.{ext}' not supported. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}"
+                )
+
+            temp_path = await validate_upload(file)
+
+            stored_filename = f"{uuid.uuid4().hex}.{ext}"
+            filepath = os.path.join(user_dir, stored_filename)
+            shutil.move(temp_path, filepath)
+            file_size = Path(filepath).stat().st_size
+
+            document = Document(
+                user_id=user.id,
+                filename=stored_filename,
+                original_name=file.filename,
+                file_size=file_size,
+                status="pending",
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+            )
+            db.add(document)
+            db.commit()
+            db.refresh(document)
+
+            task_id = None
+            try:
+                task = process_document.delay(
+                    document_id=document.id,
+                    filepath=filepath,
+                    original_name=file.filename,
+                    user_id=user.id,
+                )
+                task_id = task.id
+            except Exception as e:
+                logger.warning(f"Celery queue failed for {file.filename}, falling back to background task: {e}")
+                if background_tasks:
+                    background_tasks.add_task(
+                        ingest_document,
+                        document_id=document.id,
+                        filepath=filepath,
+                        original_name=file.filename,
+                        user_id=user.id,
+                    )
+                task_id = f"local_{uuid.uuid4().hex}"
+
+            created_documents.append(
+                DocumentResponse.model_validate(document).model_copy(update={"task_id": task_id})
+            )
+            task_ids.append(task_id)
+
+        except (ValidationException, ExternalServiceException) as e:
+            logger.warning(f"Batch upload: skipping '{filename}' — {e}")
+            failed.append(filename)
+        except Exception as e:
+            logger.error(f"Batch upload: unexpected error for '{filename}' — {e}")
+            failed.append(filename)
+
+    if not created_documents and failed:
+        raise ValidationException(f"All files failed validation: {', '.join(failed)}")
+
+    return BatchUploadResponse(
+        documents=created_documents,
+        task_ids=task_ids,
+        total=len(created_documents),
+        failed=failed,
+    )
 
 @router.post("/urlupload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document_url(
