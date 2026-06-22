@@ -27,12 +27,12 @@ def test_workspace_invite_creates_invitation_and_sends_email(client, db_session,
 
     sent = {}
 
-    def fake_send_email(to, subject, body, html=None):
+    def fake_send_workspace_invite_email(to, workspace_name, invite_link, expires_in_hours, personal_message=None):
         sent["to"] = to
-        sent["subject"] = subject
-        sent["body"] = body
+        sent["workspace_name"] = workspace_name
+        sent["invite_link"] = invite_link
 
-    monkeypatch.setattr("app.routes.workspaces.send_email", fake_send_email)
+    monkeypatch.setattr("app.routes.workspaces.send_workspace_invite_email", fake_send_workspace_invite_email)
 
     token = create_access_token(admin.id)
     response = client.post(
@@ -49,7 +49,8 @@ def test_workspace_invite_creates_invitation_and_sends_email(client, db_session,
     assert payload["invite_link"].startswith("http")
     assert "token=" in payload["invite_link"]
     assert sent["to"] == "invitee@example.com"
-    assert "Invitation to join workspace" in sent["subject"]
+    assert sent["workspace_name"] == payload["workspace_name"]
+    assert token in sent["invite_link"]
 
     invitation = db_session.query(WorkspaceInvitation).filter_by(email="invitee@example.com").first()
     assert invitation is not None
