@@ -11,8 +11,6 @@ VISION_PROVIDER=openai and OPENAI_API_KEY in settings.
 """
 import base64
 import logging
-import app.vision.providers  # noqa: F401 — triggers self-registration
-from app.vision.registry import get_vision_provider
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 
@@ -213,9 +211,9 @@ def caption_image(
         return [caption_image(img, pg) for img, pg in zip(image_bytes, pages)]
 
     # Strategy: try the configured VLM provider
-    provider = get_vision_provider(getattr(settings, "VISION_PROVIDER", None))
-    if provider is not None:
-        result = provider.caption(image_bytes)
+    vision_provider = getattr(settings, "VISION_PROVIDER", None)
+    if vision_provider == "openai":
+        result = _openai_caption(image_bytes)
         if result:
             return result
 
