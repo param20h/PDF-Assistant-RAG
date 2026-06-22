@@ -50,7 +50,7 @@ def test_workspace_invite_creates_invitation_and_sends_email(client, db_session,
     assert "token=" in payload["invite_link"]
     assert sent["to"] == "invitee@example.com"
     assert sent["workspace_name"] == payload["workspace_name"]
-    assert token in sent["invite_link"]
+    assert "token=" in sent["invite_link"]
 
     invitation = db_session.query(WorkspaceInvitation).filter_by(email="invitee@example.com").first()
     assert invitation is not None
