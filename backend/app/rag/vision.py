@@ -12,9 +12,65 @@ from io import BytesIO
 
 from app.config import get_settings
 
-logger = logging.getLogger(__name__)
-settings = get_settings()
+from abc import ABC, abstractmethod
 
+# --- VLM Strategy Pattern Core ---
+
+class BaseVisionProvider(ABC):
+    """Abstract interface for all Vision-Language Model providers."""
+    @abstractmethod
+    def caption(self, image_bytes: bytes) -> str | None:
+        """Takes image bytes and returns a descriptive caption string or None if it fails."""
+        pass
+
+
+class OpenAIVisionProvider(BaseVisionProvider):
+    """Concrete Strategy implementing OpenAI's multimodal vision capabilities."""
+    def __init__(self, settings):
+        self.settings = settings
+
+    def caption(self, image_bytes: bytes) -> str | None:
+        try:
+            import openai
+            import base64
+            
+            api_key = getattr(self.settings, "OPENAI_API_KEY", None)
+            if not api_key:
+                return None
+            
+            # Use modern client initialization or configure global API key based on project convention
+            openai.api_key = api_key
+            
+            # Production-ready execution utilizing OpenAI's chat completions API with vision capability
+            base64_image = base64.b64encode(image_bytes).decode("utf-8")
+            model = getattr(self.settings, "LLM_MODEL", "gpt-4o")
+            
+            response = openai.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Describe this image in one concise sentence."},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                            },
+                        ],
+                    }
+                ],
+                max_tokens=100,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.debug(f"OpenAIVisionProvider execution failed: {e}")
+            return None
+
+
+# Simply extend this dictionary registry to add future VLM engines (e.g., Gemini, Claude)
+VISION_PROVIDER_REGISTRY = {
+    "openai": OpenAIVisionProvider,
+}
 
 def _ocr_caption(image_bytes: bytes) -> str:
     """Try to produce a caption using pytesseract OCR; returns empty string if not available."""
@@ -42,29 +98,18 @@ def caption_image(image_bytes: bytes, page: int | None = None) -> str:
     - Fall back to local OCR (pytesseract) if available.
     - Otherwise return a simple placeholder caption including the page number.
     """
-    # Placeholder for provider-based captioning (e.g., OpenAI / LLaVA hooks)
-    provider = getattr(settings, "VISION_PROVIDER", None)
-    if provider == "openai":
+   # Dynamically resolve and execute configured strategy from registry
+    provider_name = getattr(settings, "VISION_PROVIDER", None)
+    if provider_name and provider_name.lower() in VISION_PROVIDER_REGISTRY:
         try:
-            import openai
-            # Minimal integration: attempt a text-only caption via responses if available.
-            # This is a best-effort hook; users should adapt to their provider's API.
-            api_key = getattr(settings, "OPENAI_API_KEY", None)
-            if api_key:
-                openai.api_key = api_key
-                # Use a generic prompt: "Describe the following image"
-                # Note: concrete multimodal API usage may vary across SDK versions.
-                resp = openai.Image.create(
-                    prompt="Describe this image in one concise sentence.",
-                    n=1,
-                    # We do not re-upload image bytes here; this is a placeholder to show
-                    # where provider code would be invoked. For production, follow
-                    # provider docs for sending image data.
-                )
-                # openai.Image.create returns generated images, not captions — so skip.
-        except Exception:
-            # If provider integration fails, fall back to OCR below
-            logger.debug("OpenAI vision provider failed, falling back to OCR")
+            provider_class = VISION_PROVIDER_REGISTRY[provider_name.lower()]
+            provider_instance = provider_class(settings)
+            
+            vlm_caption = provider_instance.caption(image_bytes)
+            if vlm_caption:
+                return vlm_caption
+        except Exception as e:
+            logger.debug(f"Configured vision provider '{provider_name}' failed: {e}. Falling back to OCR.")
 
     # Try OCR caption
     ocr = _ocr_caption(image_bytes)
