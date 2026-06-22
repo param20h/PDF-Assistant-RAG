@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText,
   Upload,
@@ -21,6 +22,7 @@ import {
   Loader2,
   FolderOpen,
   Cloud,
+  RefreshCw,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
@@ -79,10 +81,34 @@ export default function DocumentSidebar({
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("active");
+  const [trashDocuments, setTrashDocuments] = useState<DocInfo[]>([]);
+  const [loadingTrash, setLoadingTrash] = useState(false);
   const [driveConnected, setDriveConnected] = useState(false);
   const [driveLoading, setDriveLoading] = useState(true);
   const [driveConnecting, setDriveConnecting] = useState(false);
   const [driveError, setDriveError] = useState("");
+
+  const fetchTrash = useCallback(async () => {
+    setLoadingTrash(true);
+    try {
+      const res = await api.get<{ items: DocInfo[] }>(
+        "/api/v1/documents/trash",
+      );
+      setTrashDocuments(res.items || []);
+    } catch (err) {
+      console.error("Failed to fetch trash:", err);
+    } finally {
+      setLoadingTrash(false);
+    }
+  }, []);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    if (value === "trash") {
+      void fetchTrash();
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +131,19 @@ export default function DocumentSidebar({
       cancelled = true;
     };
   }, []);
+
+  const handleRestore = async (docId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.post(`/api/v1/documents/${docId}/restore`);
+      toast.success("Document restored");
+      void fetchTrash();
+      onDocumentsChange();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Restore failed";
+      toast.error(`❌ ${message}`);
+    }
+  };
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -381,158 +420,236 @@ export default function DocumentSidebar({
       </div>
 
       {/* ── Documents List ──────────────────────────── */}
-      <div className="px-3 pt-3 pb-1">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          {loading
-            ? t("documents.documentsTitle", { count: "..." })
-            : t("documents.documentsTitle", { count: documents.length })}
-        </h3>
-      </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={handleTabChange}
+        className="flex-1 flex flex-col min-h-0"
+      >
+        <div className="px-3 pt-3 pb-1 flex items-center justify-between">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {activeTab === "active"
+              ? loading
+                ? t("documents.documentsTitle", { count: "..." })
+                : t("documents.documentsTitle", { count: documents.length })
+              : loadingTrash
+                ? "TRASH (...)"
+                : `TRASH (${trashDocuments.length})`}
+          </h3>
+          <TabsList className="h-7 bg-sidebar-accent">
+            <TabsTrigger value="active" className="text-[10px] px-2 py-0.5">
+              Active
+            </TabsTrigger>
+            <TabsTrigger value="trash" className="text-[10px] px-2 py-0.5">
+              Trash
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-      <ScrollArea className="flex-1 px-3 overflow-auto" aria-busy={loading}>
-        {loading ? (
-          <DocumentListSkeleton />
-        ) : documents.length === 0 ? (
-          <div className="text-center py-12">
-            <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="text-sm text-muted-foreground">
-              {t("documents.noDocuments")}
-            </p>
-            <p className="text-xs text-muted-foreground/60 mt-1">
-              {t("documents.getStarted")}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-1 pb-3">
-            {documents.map((doc) => {
-              const isEditing = editingDocId === doc.id;
-              const isRenaming = renamingDocId === doc.id;
+        <TabsContent
+          value="active"
+          className="flex-1 min-h-0 m-0 data-[state=active]:flex flex-col"
+        >
+          <ScrollArea className="flex-1 px-3 overflow-auto" aria-busy={loading}>
+            {loading ? (
+              <DocumentListSkeleton />
+            ) : documents.length === 0 ? (
+              <div className="text-center py-12">
+                <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  {t("documents.noDocuments")}
+                </p>
+                <p className="text-xs text-muted-foreground/60 mt-1">
+                  {t("documents.getStarted")}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1 pb-3">
+                {documents.map((doc) => {
+                  const isEditing = editingDocId === doc.id;
+                  const isRenaming = renamingDocId === doc.id;
 
-              return (
-                <div
-                  key={doc.id}
-                  role="button"
-                  tabIndex={doc.status === "ready" ? 0 : -1}
-                  aria-disabled={doc.status !== "ready"}
-                  aria-current={activeDoc?.id === doc.id ? "true" : undefined}
-                  aria-label={`Select document ${doc.original_name}. Status: ${doc.status}`}
-                  onClick={() =>
-                    doc.status === "ready" && !isEditing && onSelectDoc(doc)
-                  }
-                  onKeyDown={(e) => handleDocumentKeyDown(doc, e)}
-                  className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
+                  return (
+                    <div
+                      key={doc.id}
+                      role="button"
+                      tabIndex={doc.status === "ready" ? 0 : -1}
+                      aria-disabled={doc.status !== "ready"}
+                      aria-current={
+                        activeDoc?.id === doc.id ? "true" : undefined
+                      }
+                      aria-label={`Select document ${doc.original_name}. Status: ${doc.status}`}
+                      onClick={() =>
+                        doc.status === "ready" && !isEditing && onSelectDoc(doc)
+                      }
+                      onKeyDown={(e) => handleDocumentKeyDown(doc, e)}
+                      className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
                     ${
                       activeDoc?.id === doc.id
                         ? "bg-primary/15 border border-primary/30"
                         : "hover:bg-sidebar-accent border border-transparent"
                     }
                     ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    {statusIcon(doc.status)}
-                    <div className="flex-1 min-w-0">
-                      {isEditing ? (
-                        <Input
-                          value={draftName}
-                          onChange={(e) => setDraftName(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => handleRenameKeyDown(doc, e)}
-                          disabled={isRenaming}
-                          autoFocus
-                          className="h-7 px-2 text-sm font-medium"
-                        />
-                      ) : (
-                        <p
-                          className="text-sm font-medium truncate leading-tight"
-                          onDoubleClick={(e) => startRename(doc, e)}
-                          title="Double-click to rename"
-                        >
+                    >
+                      <div className="flex items-start gap-2.5">
+                        {statusIcon(doc.status)}
+                        <div className="flex-1 min-w-0">
+                          {isEditing ? (
+                            <Input
+                              value={draftName}
+                              onChange={(e) => setDraftName(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => handleRenameKeyDown(doc, e)}
+                              disabled={isRenaming}
+                              autoFocus
+                              className="h-7 px-2 text-sm font-medium"
+                            />
+                          ) : (
+                            <p
+                              className="text-sm font-medium truncate leading-tight"
+                              onDoubleClick={(e) => startRename(doc, e)}
+                              title="Double-click to rename"
+                            >
+                              {doc.original_name}
+                            </p>
+                          )}
+
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {doc.summary || "📄 No summary available"}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatSize(doc.file_size)}
+                            </span>
+                            {doc.status === "ready" && (
+                              <>
+                                <span className="text-[10px] text-muted-foreground">
+                                  •
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {t("documents.pagesShort", {
+                                    count: doc.page_count,
+                                  })}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  •
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {t("documents.chunks", {
+                                    count: doc.chunk_count,
+                                  })}
+                                </span>
+                              </>
+                            )}
+                            {doc.status === "processing" && (
+                              <Badge
+                                variant="secondary"
+                                className="text-[9px] h-4 px-1.5"
+                              >
+                                {t("documents.processing")}
+                              </Badge>
+                            )}
+                            {doc.status === "failed" && (
+                              <Badge
+                                variant="destructive"
+                                className="text-[9px] h-4 px-1.5"
+                              >
+                                {t("documents.failed")}
+                              </Badge>
+                            )}
+                          </div>
+                          <DocumentCard document={doc} />
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity cursor-pointer"
+                            onClick={(e) => handleSettingsClick(doc, e)}
+                            disabled={doc.status !== "ready"}
+                            aria-label="Open chunking settings"
+                            title={`Open chunking settings for ${doc.original_name}`}
+                          >
+                            <Settings className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                            onClick={(e) => handleDelete(doc.id, e)}
+                            disabled={deleting === doc.id}
+                            aria-label="Delete document"
+                            title={`Delete ${doc.original_name}`}
+                          >
+                            {deleting === doc.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3 h-3 text-destructive" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent
+          value="trash"
+          className="flex-1 min-h-0 m-0 data-[state=active]:flex flex-col"
+        >
+          <ScrollArea
+            className="flex-1 px-3 overflow-auto"
+            aria-busy={loadingTrash}
+          >
+            {loadingTrash ? (
+              <DocumentListSkeleton />
+            ) : trashDocuments.length === 0 ? (
+              <div className="text-center py-12">
+                <Trash2 className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">Trash is empty</p>
+              </div>
+            ) : (
+              <div className="space-y-1 pb-3">
+                {trashDocuments.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="w-full text-left p-2.5 rounded-lg border border-transparent hover:bg-sidebar-accent transition-all duration-200 group"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      {statusIcon(doc.status)}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate leading-tight opacity-60">
                           {doc.original_name}
                         </p>
-                      )}
-
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {doc.summary || "📄 No summary available"}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-muted-foreground">
-                          {formatSize(doc.file_size)}
-                        </span>
-                        {doc.status === "ready" && (
-                          <>
-                            <span className="text-[10px] text-muted-foreground">
-                              •
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {t("documents.pagesShort", {
-                                count: doc.page_count,
-                              })}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              •
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {t("documents.chunks", {
-                                count: doc.chunk_count,
-                              })}
-                            </span>
-                          </>
-                        )}
-                        {doc.status === "processing" && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[9px] h-4 px-1.5"
-                          >
-                            {t("documents.processing")}
-                          </Badge>
-                        )}
-                        {doc.status === "failed" && (
-                          <Badge
-                            variant="destructive"
-                            className="text-[9px] h-4 px-1.5"
-                          >
-                            {t("documents.failed")}
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            {formatSize(doc.file_size)}
+                          </span>
+                        </div>
                       </div>
-                      <DocumentCard document={doc} />
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity cursor-pointer"
-                        onClick={(e) => handleSettingsClick(doc, e)}
-                        disabled={doc.status !== "ready"}
-                        aria-label="Open chunking settings"
-                        title={`Open chunking settings for ${doc.original_name}`}
-                      >
-                        <Settings className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0 cursor-pointer"
-                        onClick={(e) => handleDelete(doc.id, e)}
-                        disabled={deleting === doc.id}
-                        aria-label="Delete document"
-                        title={`Delete ${doc.original_name}`}
-                      >
-                        {deleting === doc.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-3 h-3 text-destructive" />
-                        )}
-                      </Button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          onClick={(e) => handleRestore(doc.id, e)}
+                          title={`Restore ${doc.original_name}`}
+                        >
+                          <RefreshCw className="w-3 h-3 text-primary" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </ScrollArea>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
       {/* Settings Modal */}
       {/* The DocumentSettings component is rendered here and controlled by the settingsDoc state. When a user clicks the settings button for a document, it sets that document in settingsDoc, which opens the modal. The modal can then call onDocumentsChange to refresh the list after saving settings. */}
       {settingsDoc && (
