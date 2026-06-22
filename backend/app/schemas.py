@@ -1,11 +1,32 @@
 """
 Pydantic schemas for API request/response validation.
 """
+import json
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
-from app.models import UserRole
+from app.models import UserRole, WorkspaceRole
 from app.password_validation import validate_password
+
+
+class ErrorDetail(BaseModel):
+    field: str
+    message: str
+
+
+class ErrorEnvelope(BaseModel):
+    code: str
+    message: str
+    details: dict[str, Any] = {}
+    request_id: str | None = None
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorEnvelope
+
+
+class ValidationErrorResponse(BaseModel):
+    error: ErrorEnvelope
 
 
 # ── Auth ─────────────────────────────────────────────
@@ -71,6 +92,16 @@ class UpdatePasswordResponse(BaseModel):
     username: str
     email: EmailStr
     password_changed: bool = True
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        validate_password(value)
+        return value    
 
 
 class WorkspaceInviteRequest(BaseModel):
@@ -160,6 +191,21 @@ class DocumentResponse(BaseModel):
     uploaded_at: datetime
     summary: Optional[str] = None # New field for document summary
     task_id: Optional[str] = None
+    keywords: Optional[List[str]] = []
+    extracted_urls: Optional[List[str]] = None
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def parse_keywords(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        try:
+            return json.loads(v)
+        except (ValueError, TypeError):
+            return []
+
 
     class Config:
         from_attributes = True
@@ -177,12 +223,36 @@ class DocumentRename(BaseModel):
         return stripped
 
 
+class DocumentUpdate(BaseModel):
+    """Schema for updating document metadata via PATCH. All fields are optional
+    so that callers can send a partial update (e.g. only the name or only the
+    summary) without having to include every field."""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    summary: Optional[str] = Field(None, max_length=5000)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None:
+            stripped = value.strip()
+            if not stripped:
+                raise ValueError("Document name cannot be empty")
+            return stripped
+        return value
+
+
 class DocumentStatusResponse(BaseModel):
     id: str
     status: str
     page_count: int
     chunk_count: int
     error_message: Optional[str] = None
+    processing_progress: Optional[int] = None
+    processing_stage: Optional[str] = None
+    retry_count: Optional[int] = None
+    last_error_traceback: Optional[str] = None
+    processing_started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -193,6 +263,9 @@ class DocumentListResponse(BaseModel):
     total: int
     page: int
     pages: int
+    total_pages: int
+    limit: int
+    query: Optional[str] = None
 
 
 # Admin
@@ -263,9 +336,16 @@ class ChatHistoryResponse(BaseModel):
 
 # Chunk settings schema for optional chunk size and overlap parameters in document processing
 class ChunkSettings(BaseModel):
-    chunk_size: int | None
-    chunk_overlap: int | None
-      
+    chunk_size: int = Field(default=1000, ge=100, le=2000)
+    chunk_overlap: int = Field(default=200, ge=0)
+
+    @field_validator("chunk_overlap")
+    @classmethod
+    def validate_overlap(cls, v: int, info: Any) -> int:
+        if "chunk_size" in info.data and v >= info.data["chunk_size"]:
+            raise ValueError("chunk_overlap must be less than chunk_size")
+        return v
+
 class UploadUrl(BaseModel):
     url: str
 
@@ -290,6 +370,9 @@ class FeedbackRequest(BaseModel):
 class ChatSessionCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
 
+class ChatSessionUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+
 
 class ChatSessionResponse(BaseModel):
     id: str
@@ -298,6 +381,54 @@ class ChatSessionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Workspaces ────────────────────────────────────────
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class WorkspaceMemberResponse(BaseModel):
+    id: str
+    workspace_id: str
+    user_id: str
+    role: WorkspaceRole
+    joined_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceResponse(BaseModel):
+    id: str
+    name: str
+    created_by: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceDetailResponse(BaseModel):
+    """Workspace detail including the full member list."""
+    id: str
+    name: str
+    created_by: str
+    created_at: datetime
+    members: List[WorkspaceMemberResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceMemberAdd(BaseModel):
+    user_id: str = Field(..., min_length=1)
+    role: WorkspaceRole = WorkspaceRole.viewer
+
+
+class WorkspaceMemberRoleUpdate(BaseModel):
+    role: WorkspaceRole
 
 
 # Rebuild models for forward references
