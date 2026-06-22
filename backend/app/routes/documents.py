@@ -26,6 +26,7 @@ from app.exceptions import (
     ExternalServiceException,
     NotFoundException,
     ValidationException,
+    ConflictException,
     AppException,
     ForbiddenException,
 )
@@ -753,6 +754,7 @@ def update_chunk_settings(
 
     Raises:
         HTTPException: With status code 404 if the document is not found or does not belong to the authenticated user.
+        HTTPException: With status code 409 if the document is currently processing (re-chunking would race a concurrent ingestion run).
         HTTPException: With status code 400 if the provided chunk size or overlap values are invalid (e.g., chunk size less than 100, or overlap greater than or equal to chunk size).
     """
     # Validate if the document exists and belongs to the user
@@ -764,7 +766,17 @@ def update_chunk_settings(
 
     if not doc:
         raise NotFoundException("Document")
-    
+
+    # Guard against re-queuing ingestion while a prior run for this same document is still actively processing. Without this, two
+    # process_document runs can execute concurrently against the same document_id: store_chunks() in vectorstore.py performs a non-atomic
+    # delete-then-batch-insert sequence, so one run's delete can fire in between the other run's delete-then-insert steps, corrupting the
+    # vector store and leaving Postgres' chunk_count out of sync with whatever vectors actually survive.
+    if doc.status == "processing":
+        raise ConflictException(
+            "Document is still processing. Wait for the current run to "
+            "finish before changing chunk settings."
+        )
+
     if settings_update.chunk_size is not None:
         if settings_update.chunk_size < 100:
             raise ValidationException("Chunk size must be at least 100")
