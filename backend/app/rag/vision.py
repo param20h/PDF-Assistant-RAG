@@ -23,6 +23,25 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# ── Optional OCR backend (PIL + pytesseract) ─────────────────────────────────
+# Imported once at module load instead of inline on every _ocr_caption() call.
+# ``HAS_OCR`` records availability so the hot path (large batch caption loops in
+# generate_captions_for_chunks) can short-circuit with a cheap boolean check
+# rather than re-running an import + try/except on each image.
+try:
+    from PIL import Image
+    import pytesseract
+
+    HAS_OCR = True
+except ImportError:
+    Image = None  # type: ignore[assignment]
+    pytesseract = None  # type: ignore[assignment]
+    HAS_OCR = False
+    logger.info(
+        "OCR backend unavailable (PIL/pytesseract not installed); "
+        "image captioning will fall back to placeholders."
+    )
+
 # Minimum image area (px²) — smaller images are decorative and skipped.
 _MIN_IMAGE_AREA = 1_000
 
@@ -125,11 +144,12 @@ def extract_captions_from_pdf(filepath: str) -> List[Dict[str, Any]]:
 # ── 2. OCR fallback ──────────────────────────────────────────────────────────
 
 def _ocr_caption(image_bytes: bytes) -> str:
-    """Attempt OCR via pytesseract; returns empty string if unavailable."""
-    try:
-        from PIL import Image
-        import pytesseract
-    except Exception:
+    """Attempt OCR via pytesseract; returns empty string if unavailable.
+
+    The PIL/pytesseract import is resolved once at module load (see ``HAS_OCR``),
+    so this only does a boolean check before touching the image bytes.
+    """
+    if not HAS_OCR:
         return ""
 
     try:
@@ -212,14 +232,55 @@ def caption_image(
         )
         return [caption_image(img, pg) for img, pg in zip(image_bytes, pages)]
 
-    # Strategy: try the configured VLM provider
-    provider = get_vision_provider(getattr(settings, "VISION_PROVIDER", None))
-    if provider is not None:
-        result = provider.caption(image_bytes)
-        if result:
-            return result
+    # Placeholder for provider-based captioning (e.g., OpenAI / LLaVA hooks)
+    provider = getattr(settings, "VISION_PROVIDER", None)
 
-    # Fallback 1: local OCR
+    if provider == "openai":
+        try:
+            import base64
+            from openai import OpenAI
+            
+            api_key = getattr(settings, "OPENAI_API_KEY", None)
+            if api_key:
+                # Initialize modern client
+                client = OpenAI(api_key=api_key)
+                
+                # Base64 encode the incoming image bytes
+                base64_image = base64.b64encode(image_bytes).decode('utf-8')
+                
+                # Request a visual caption using Chat Completions payload structure
+                resp = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text", 
+                                    "text": "Describe this image in one concise sentence."
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=150
+                )
+                
+                # Extract and return the caption immediately if successful
+                caption_text = resp.choices[0].message.content
+                if caption_text:
+                    return caption_text.strip()
+                    
+        except Exception as e:
+            # Enhanced error logging to make debugging transparent
+            logger.warning(f"OpenAI vision provider failed: {e}, falling back to OCR")
+
+    # Try OCR caption
     ocr = _ocr_caption(image_bytes)
     if ocr:
         return ocr

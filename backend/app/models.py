@@ -200,11 +200,11 @@ class ApiKey(Base):
 class WorkspaceInvitation(Base):
     __tablename__ = "workspace_invitations"
 
-    id = Column(String, primary_key=True, default=generate_uuid)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     email = Column(String(120), nullable=False, index=True)
     token_hash = Column(String(255), nullable=False, unique=True, index=True)
     inviter_id = Column(
-        String,
+        GUID,
         ForeignKey("users.id"),
         nullable=False,
         index=True,

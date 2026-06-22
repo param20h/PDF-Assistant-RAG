@@ -34,7 +34,7 @@ from app.schemas import (
     DocumentResponse,
     DocumentListResponse,
     DocumentStatusResponse,
-    DocumentRename,
+    DocumentUpdate,
     ChunkSettings,
     UploadUrl,
 )
@@ -76,6 +76,42 @@ def _deserialize_doc(doc: Document) -> DocumentResponse:
         except Exception:
             response = response.model_copy(update={"extracted_urls": []})
     return response
+
+def _get_documents_query(
+    db: Session,
+    user_id: str,
+    q: Optional[str] = None,
+):
+    """
+    Build a filtered SQLAlchemy select query for documents belonging to a user.
+
+    Applies an optional case-insensitive substring filter on ``original_name``.
+    Does NOT apply pagination – callers are responsible for ``.limit()`` /
+    ``.offset()`` so this helper stays reusable.
+
+    Args:
+        db:      Active database session.
+        user_id: ID of the authenticated user whose documents to query.
+        q:       Optional keyword to filter document names (case-insensitive).
+
+    Returns:
+        A SQLAlchemy ``Select`` statement ready for count or paginated execution.
+    """
+    base_query = (
+        select(Document)
+        .where(
+            Document.user_id == user_id,
+            Document.is_deleted.is_(False),
+        )
+    )
+
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        base_query = base_query.where(
+            Document.original_name.ilike(pattern)
+        )
+
+    return base_query
 
 async def validate_upload(file: UploadFile):
     """Validate an uploaded file and save it to a temporary file.
@@ -432,46 +468,38 @@ def list_documents(
     per_page: int = Query(20, ge=1, le=100, description="Results per page"),
     limit: int = Query(None, ge=1, le=100, description="Alias for per_page"),
     q: Optional[str] = Query(None, description="Filter by document name (case-insensitive)"),
+    query: Optional[str] = Query(None, description="Alias for q – filter by document name"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    List documents for the authenticated user with pagination and name search.
+    List documents for the authenticated user with offset pagination and
+    optional keyword search on document names.
 
-    Supports offset pagination via `page` / `per_page` (or `limit` alias)
-    and optional keyword filtering on the original document name.
+    Pagination is controlled by ``page`` and ``per_page`` (or its alias
+    ``limit``).  Search is applied via ``query`` (or its short alias ``q``),
+    which performs a case-insensitive substring match on ``original_name``.
 
     Args:
         page:     Page number to retrieve (1-indexed). Defaults to 1.
         per_page: Number of documents per page. Defaults to 20, max 100.
-        limit:    Alias for per_page — whichever is supplied takes effect.
+        limit:    Alias for per_page – whichever is supplied takes effect.
         q:        Case-insensitive substring filter on original_name.
+        query:    Alias for q – whichever is supplied takes effect.
         user:     Authenticated user injected by get_current_user.
         db:       Database session injected by get_db.
 
     Returns:
         DocumentListResponse with items, total, page, pages, total_pages,
-        and limit fields.
+        limit, and query fields.
     """
-    # Allow `limit` as an alias for `per_page`
+    # Allow `limit` as alias for `per_page`; `query` as alias for `q`
     effective_limit = limit if limit is not None else per_page
+    effective_query = query if query is not None else q
     skip = (page - 1) * effective_limit
 
-    # ── Base query ────────────────────────────────────────────────────────────
-    base_query = (
-        select(Document)
-        .where(
-            Document.user_id == user.id,
-            Document.is_deleted.is_(False),
-        )
-    )
-
-    # ── Keyword filter on document name ───────────────────────────────────────
-    if q and q.strip():
-        pattern = f"%{q.strip()}%"
-        base_query = base_query.where(
-            Document.original_name.ilike(pattern)
-        )
+    # ── Build filtered query via helper ───────────────────────────────────────
+    base_query = _get_documents_query(db, user.id, effective_query)
 
     # ── Total count (before pagination) ──────────────────────────────────────
     total = db.execute(
@@ -495,18 +523,24 @@ def list_documents(
         pages=total_pages,
         total_pages=total_pages,
         limit=effective_limit,
+        query=effective_query,
     )
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)
-def rename_document(
+def update_document(
     document_id: str,
-    rename: DocumentRename,
+    update: DocumentUpdate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Rename an uploaded document without changing its stored file or vector data.
+    Update an uploaded document's metadata (name and/or summary) without
+    changing its stored file or vector data.
+
+    Both fields are optional so callers can send a partial update.  If a field
+    is not present (or is null) it will be left unchanged.  To clear the
+    current summary send an explicit empty string.
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
@@ -517,9 +551,14 @@ def rename_document(
         raise NotFoundException("Document")
 
     if str(doc.user_id) != str(user.id):
-        raise ForbiddenException("You do not have permission to rename this document")
+        raise ForbiddenException("You do not have permission to update this document")
 
-    doc.original_name = rename.name
+    if update.name is not None:
+        doc.original_name = update.name
+    if update.summary is not None:
+        stripped = update.summary.strip()
+        doc.summary = stripped if stripped else None
+
     db.commit()
     db.refresh(doc)
 

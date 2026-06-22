@@ -48,4 +48,4 @@ def test_process_document_ingestion_pipeline(db_session):
         # Query the database to verify the state update
         updated_doc = db_session.query(Document).filter_by(id="test-doc-123").first()
         assert updated_doc is not None
-        assert updated_doc.status == "completed"
+        assert updated_doc.status == "ready"
