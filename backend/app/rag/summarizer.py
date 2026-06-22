@@ -50,7 +50,15 @@ def generate_document_summary(filePath: str, max_sentences: int = 3) -> str | No
             max_tokens=settings.SUMMARY_MAX_TOKENS,
             temperature=settings.LLM_TEMPERATURE,
         )
-        summary = response.choices[0].message.content.strip() if response.choices else None
+        
+        # Defensive check for malformed or empty response structures
+        summary = None
+        if response and getattr(response, "choices", None):
+            first_choice = response.choices[0]
+            message = getattr(first_choice, "message", None)
+            content = getattr(message, "content", None)
+            if content:
+                summary = content.strip()
 
         return summary if summary else None
 
