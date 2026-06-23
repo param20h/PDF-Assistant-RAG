@@ -4,6 +4,8 @@ Mounts all routes, configures CORS, and serves the Next.js frontend build.
 """
 import os
 import uuid
+import signal
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -13,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from app.security import verify_secure_sandbox_path
@@ -41,6 +44,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application startup/shutdown lifecycle."""
     # ── Startup ──────────────────────────────────────
+    app.state.is_shutting_down = False
     logger.info(f"Starting {settings.APP_NAME}")
 
     # Validate production settings
@@ -68,9 +72,13 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # ── Shutdown ─────────────────────────────────────
+    # ── Graceful Shutdown ────────────────────────────
+    logger.info("Shutdown signal received — draining in-flight requests")
+    app.state.is_shutting_down = True
+    # Give in-flight requests a short window to complete
+    await asyncio.sleep(5)
     stop_scheduler()
-    logger.info("Shutting down")
+    logger.info("Shutdown complete")
 
 
 # ── Create App ───────────────────────────────────────
@@ -174,6 +182,61 @@ app.add_middleware(
 )
 logger.info(f"CORS origins: {settings.cors_origins}")
 
+# Security Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security-critical HTTP headers to every API response."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'wasm-unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' https:; "
+            "connect-src 'self' https:;"
+        )
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=()"
+        )
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+# Request Body Size Limit Middleware
+_MAX_BODY_BYTES = settings.MAX_REQUEST_BODY_SIZE_MB * 1024 * 1024
+
+
+@app.middleware("http")
+async def limit_request_body_size(request: Request, call_next):
+    content_type = request.headers.get("content-type", "")
+    if (
+        request.method in ("POST", "PUT", "PATCH")
+        and "multipart/form-data" not in content_type
+    ):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > _MAX_BODY_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "error": {
+                        "code": "REQUEST_TOO_LARGE",
+                        "message": f"Request body exceeds the {settings.MAX_REQUEST_BODY_SIZE_MB}MB limit",
+                        "details": {},
+                    }
+                },
+            )
+    return await call_next(request)
+
+
 # Add structured logging middleware as the outermost middleware
 app.add_middleware(StructuredLoggingMiddleware)
 
@@ -199,6 +262,12 @@ setup_prometheus_metrics(app)
 # ── Health Check ─────────────────────────────────────
 @app.get("/api/health")
 def health_check():
+    # Return 503 during graceful shutdown so load balancers stop routing
+    if getattr(app.state, "is_shutting_down", False):
+        return JSONResponse(
+            status_code=503,
+            content={"status": "shutting_down", "app": settings.APP_NAME},
+        )
     return {
         "status": "healthy",
         "app": settings.APP_NAME,

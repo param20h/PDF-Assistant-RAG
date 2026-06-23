@@ -3,6 +3,7 @@ SQLAlchemy database setup with SQLite.
 Uses synchronous SQLAlchemy for simplicity and compatibility.
 """
 import os
+import time
 import logging
 from contextlib import contextmanager
 from sqlalchemy import create_engine, event, inspect, text
@@ -33,6 +34,7 @@ else:
         pool_size=settings.DATABASE_POOL_SIZE,
         max_overflow=settings.DATABASE_MAX_OVERFLOW,
         pool_pre_ping=settings.DATABASE_POOL_PRE_PING,
+        pool_recycle=settings.DATABASE_POOL_RECYCLE,  # Recycle stale connections
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -78,6 +80,27 @@ def get_db_session():
         raise
     finally:
         session.close()
+
+_SLOW_QUERY_THRESHOLD = settings.DATABASE_SLOW_QUERY_THRESHOLD
+
+
+@event.listens_for(engine, "before_cursor_execute")
+def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    conn.info.setdefault("query_start_time", []).append(time.perf_counter())
+
+
+@event.listens_for(engine, "after_cursor_execute")
+def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    start_times = conn.info.get("query_start_time")
+    if not start_times:
+        return
+    total_time = time.perf_counter() - start_times.pop(-1)
+    if total_time > _SLOW_QUERY_THRESHOLD:
+        logger.warning(
+            "Slow query detected (%.2fs): %s",
+            total_time,
+            statement[:500],
+        )
 
 
 # ── Session Lifecycle Logging (DEBUG only) ───────────

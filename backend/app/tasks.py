@@ -15,8 +15,11 @@ logger = logging.getLogger(__name__)
     bind=True,
     name="app.tasks.process_document",
     max_retries=3,
-    default_retry_delay=30,
-    autoretry_for=(Exception,),
+    default_retry_delay=60,
+    autoretry_for=(IOError, TimeoutError, ConnectionError, OSError),
+    retry_backoff=True, 
+    retry_backoff_max=600,
+    retry_jitter=True,
     acks_late=True,
     reject_on_worker_lost=True,
 )

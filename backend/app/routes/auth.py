@@ -57,6 +57,8 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+from app.audit import audit_log
+
 REGISTRATION_MESSAGE = "Registration successful. Please check your email to verify your account before logging in."
 VERIFICATION_RESEND_MESSAGE = "If the email is registered and unverified, a verification link has been sent."
 VERIFICATION_REQUIRED_MESSAGE = "Please verify your email before logging in"
@@ -219,6 +221,13 @@ async def register(payload: UserRegister, db: Session = Depends(get_db)):
 
     await _send_verification_email(user, token)
 
+    audit_log(
+        action="user.register",
+        user_id=str(user.id),
+        result="success",
+        details={"email": user.email},
+    )
+
     return RegistrationResponse(
         message=REGISTRATION_MESSAGE,
         email=user.email,
@@ -252,14 +261,32 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
 
     if not user or not verify_password(payload.password, user.hashed_password):
+        audit_log(
+            action="user.login",
+            result="failure",
+            details={"email": payload.email, "reason": "invalid_credentials"},
+        )
         raise UnauthorizedException("Invalid email or password")
 
     if not user.is_verified:
+        audit_log(
+            action="user.login",
+            user_id=str(user.id),
+            result="failure",
+            details={"reason": "email_not_verified"},
+        )
         raise AppException("FORBIDDEN", VERIFICATION_REQUIRED_MESSAGE, 403)
 
     user.last_login = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
+
+    audit_log(
+        action="user.login",
+        user_id=str(user.id),
+        result="success",
+        details={"method": "password"},
+    )
 
     return _create_token_response(user)
 
@@ -564,6 +591,12 @@ def change_password(
         db.rollback()
         raise ValidationException("Database error")
 
+    audit_log(
+        action="user.change_password",
+        user_id=str(user.id),
+        result="success",
+    )
+
     return MessageResponse(message="Password updated successfully")
 
 
@@ -588,6 +621,14 @@ def create_api_key(
     db.add(api_key)
     db.commit()
     db.refresh(api_key)
+
+    audit_log(
+        action="api_key.create",
+        user_id=str(user.id),
+        result="success",
+        resource=str(api_key.id),
+        details={"name": name},
+    )
 
     return ApiKeyCreateResponse(
         id=str(api_key.id),
@@ -620,6 +661,14 @@ def delete_api_key(key_id: str, user: User = Depends(get_current_user), db: Sess
 
     db.delete(api_key)
     db.commit()
+
+    audit_log(
+        action="api_key.delete",
+        user_id=str(user.id),
+        result="success",
+        resource=key_id,
+    )
+
     return None
 
 @router.get("/config")
