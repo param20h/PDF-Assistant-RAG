@@ -14,6 +14,7 @@ import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatSessionSidebar from "@/components/chat/ChatSessionSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
+import CompareView from "@/components/document/CompareView";
 
 function PDFViewerSkeleton() {
   return (
@@ -90,6 +91,7 @@ export default function DashboardPage() {
   const [graphOpen, setGraphOpen] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const handleDocumentRenamed = useCallback((renamedDocument: DocInfo) => {
     setDocuments((current) =>
@@ -216,14 +218,8 @@ export default function DashboardPage() {
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         viewerOpen={viewerOpen}
         onToggleViewer={() => setViewerOpen(!viewerOpen)}
-        graphOpen={graphOpen}
-        onToggleGraph={() => {
-          if (!activeDoc) {
-            toast.info("Select a document first to view its knowledge graph.");
-            return;
-          }
-          setGraphOpen((v) => !v);
-        }}
+        compareOpen={compareOpen}
+        onToggleCompare={() => setCompareOpen(!compareOpen)}
         mobileSheetContent={sidebarContent}
       />
 
@@ -262,9 +258,16 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* ── Right: PDF Viewer — hidden on mobile ─────────────────────── */}
-        {viewerOpen &&
-          !graphOpen &&
+        {/* ── Right: Compare View or Single PDF Viewer ────────────── */}
+        {compareOpen ? (
+          <div className="hidden md:flex flex-1 min-w-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
+            <CompareView
+              documents={documents}
+              onClose={() => setCompareOpen(false)}
+            />
+          </div>
+        ) : (
+          viewerOpen &&
           activeDoc &&
           activeDoc.original_name.endsWith(".pdf") && (
             <div className="hidden md:block w-[480px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
@@ -281,16 +284,7 @@ export default function DashboardPage() {
                 highlightTarget={pdfHighlightTarget}
               />
             </div>
-          )}
-
-        {/* ── Right: Knowledge Graph panel ─────────────────────────────── */}
-        {graphOpen && activeDoc && (
-          <div className="hidden md:flex w-[520px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
-            <KnowledgeGraph
-              documentId={activeDoc.id}
-              onClose={() => setGraphOpen(false)}
-            />
-          </div>
+          )
         )}
       </div>
     </div>

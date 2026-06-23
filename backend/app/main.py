@@ -228,9 +228,15 @@ def db_health():
     except Exception:
         chroma_status = "down"
 
-    overall_status = "ok" if db_status == "up" and chroma_status == "up" else "degraded"
-    return{
-        "status": db_status,
+    if db_status == "up" and chroma_status == "up":
+        overall_status = "healthy"
+    elif db_status == "down" and chroma_status == "down":
+        overall_status = "unhealthy"
+    else:
+        overall_status = "degraded"
+
+    return {
+        "status": overall_status,
         "chroma": chroma_status,
         "db": db_status
     }

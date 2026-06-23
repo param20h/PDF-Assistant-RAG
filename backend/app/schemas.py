@@ -210,6 +210,11 @@ class DocumentResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class BatchUploadResponse(BaseModel):
+    documents: List[DocumentResponse]
+    task_ids: List[str]
+    total: int
+    failed: List[str] = []
 
 class DocumentRename(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)

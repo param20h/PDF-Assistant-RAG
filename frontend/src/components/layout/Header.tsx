@@ -30,6 +30,7 @@ import {
   Settings,
   Eye,
   EyeOff,
+  Columns2,
 } from "lucide-react";
 import { KeyRound } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -53,8 +54,8 @@ interface HeaderProps {
   onToggleSidebar: () => void;
   viewerOpen: boolean;
   onToggleViewer: () => void;
-  graphOpen: boolean;
-  onToggleGraph: () => void;
+  compareOpen: boolean;
+  onToggleCompare: () => void;
   /** Pass DocumentSidebar JSX so the mobile sheet can render it */
   mobileSheetContent?: React.ReactNode;
 }
@@ -68,6 +69,8 @@ export default function Header({
   onToggleSidebar,
   viewerOpen,
   onToggleViewer,
+  compareOpen,
+  onToggleCompare,
   mobileSheetContent,
 }: HeaderProps) {
   const { user, logout } = useAuth();
@@ -194,6 +197,23 @@ export default function Header({
             ) : (
               <PanelRightOpen className="w-4 h-4" />
             )}
+          </Button>
+          <Button
+            variant={compareOpen ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={onToggleCompare}
+            title={
+              compareOpen
+                ? "Close compare view"
+                : "Compare two PDFs side-by-side"
+            }
+            aria-label={
+              compareOpen ? "Close compare view" : "Open compare view"
+            }
+            aria-pressed={compareOpen}
+          >
+            <Columns2 className="w-4 h-4" />
           </Button>
           <Button
             variant="ghost"

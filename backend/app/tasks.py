@@ -1,15 +1,12 @@
-"""Celery tasks for document processing with Advanced Layout Parsing."""
+"""Celery tasks for document processing."""
 import logging
 import traceback
+from datetime import datetime, timezone
 
 from app.celery_app import celery_app
 from app.database import get_db_session
 from app.models import Document
-from app.services.layout_parser import AdvancedPDFParser
-
-# NOTE: If you need to map your extracted layouts to their existing embeddings logic,
-# retain their original ingest imports as fallback or utility helpers:
-# from app.services.document_ingestion import ingest_document 
+from app.services.document_ingestion import ingest_document as _ingest_document
 
 logger = logging.getLogger(__name__)
 
