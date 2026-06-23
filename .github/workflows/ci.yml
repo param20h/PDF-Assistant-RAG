@@ -64,7 +64,7 @@ jobs:
       - name: Install pytest-cov
         run: pip install pytest-cov
 
-      - name: Run backend pytest suite with coverage
+            - name: Run backend pytest suite with coverage
         env:
           SECRET_KEY: ci-dummy-secret
           DATABASE_URL: sqlite:///./ci_test.db
@@ -72,6 +72,8 @@ jobs:
           HF_TOKEN: ci-dummy-token
           UPLOAD_DIR: /tmp/uploads
           CHROMA_PERSIST_DIR: /tmp/chroma
+          PYTHONPATH: backend
+          
         run: |
           pytest backend/tests -v \
             --cov=backend/app \

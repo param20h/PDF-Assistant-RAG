@@ -4,6 +4,7 @@ import pytest
 
 from app.vision.base import BaseVisionProvider
 from app.vision.registry import _REGISTRY, get_vision_provider, register_provider
+from app.rag.vision import caption_image
 
 
 class TestBaseVisionProvider:
@@ -56,8 +57,6 @@ class TestRegistry:
 
 class TestCaptionImage:
     def test_uses_provider_when_configured(self):
-        from app.rag.vision import caption_image
-
         class StubProvider(BaseVisionProvider):
             def caption(self, image_bytes: bytes) -> str:
                 return "stub caption"
@@ -66,8 +65,6 @@ class TestCaptionImage:
             assert caption_image(b"img", page=1) == "stub caption"
 
     def test_falls_back_to_ocr(self):
-        from app.rag.vision import caption_image
-
         class EmptyProvider(BaseVisionProvider):
             def caption(self, image_bytes: bytes) -> str:
                 return ""
@@ -77,16 +74,12 @@ class TestCaptionImage:
                 assert caption_image(b"img", page=1) == "ocr text"
 
     def test_falls_back_to_placeholder(self):
-        from app.rag.vision import caption_image
-
         with patch("app.rag.vision.get_vision_provider", return_value=None):
             with patch("app.rag.vision._ocr_caption", return_value=""):
                 result = caption_image(b"img", page=3)
         assert "page 3" in result
 
     def test_batch_mode(self):
-        from app.rag.vision import caption_image
-
         with patch("app.rag.vision.get_vision_provider", return_value=None):
             with patch("app.rag.vision._ocr_caption", return_value=""):
                 results = caption_image([b"img1", b"img2"], page=[1, 2])

@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 import fitz  # PyMuPDF
 
 from app.config import get_settings
+from app.vision.registry import get_vision_provider
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -201,98 +202,50 @@ def _openai_caption(image_bytes: bytes) -> str:
         return response.choices[0].message.content.strip()
 
     except Exception as exc:
-        logger.warning(
-            "OpenAI vision caption failed — falling back to OCR/placeholder. "
-            "This may be a transient API error (rate-limit, timeout). Error: %s",
-            exc,
-            exc_info=True,
-        )
+        logger.debug("OpenAI vision caption failed: %s", exc)
         return ""
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def caption_image(
-    image_bytes: "bytes | List[bytes]",
-    page: "int | List[int] | None" = None,
+    image_bytes: "bytes | List[bytes]", page: "int | List[int] | None" = None
 ) -> "str | List[str]":
     """Generate a caption for a single image or a batch of images.
 
-    Resolution order:
-      1. Configured VLM provider (set VISION_PROVIDER in .env)
-      2. Local OCR via pytesseract
-      3. Placeholder string with page number and dimensions
+    Order of operations:
+    - If a list of image bytes is passed, returns a list of captions.
+    - Look up a configured VLM provider via the registry (``VISION_PROVIDER``
+      setting) and use it if it returns a non-empty caption.
+    - Fall back to local OCR (pytesseract) if available.
+    - Otherwise return a simple placeholder caption including the page number.
     """
     if isinstance(image_bytes, list):
         pages = (
-            page if isinstance(page, list)
+            page
+            if isinstance(page, list)
             else ([page] * len(image_bytes) if page is not None else [None] * len(image_bytes))
         )
         return [caption_image(img, pg) for img, pg in zip(image_bytes, pages)]
 
-
-    # Strategy: try the configured VLM provider
-    vision_provider = getattr(settings, "VISION_PROVIDER", None)
-    if vision_provider == "openai":
-        result = _openai_caption(image_bytes)
-        if result:
-            return result
-
-    # Placeholder for provider-based captioning (e.g., OpenAI / LLaVA hooks)
-    provider = getattr(settings, "VISION_PROVIDER", None)
-
-
-    if provider == "openai":
+    # Try a registered VLM provider (e.g. OpenAI) if one is configured.
+    provider_name = getattr(settings, "VISION_PROVIDER", None)
+    provider = get_vision_provider(provider_name)
+    if provider is not None:
         try:
-            import base64
-            from openai import OpenAI
-            
-            api_key = getattr(settings, "OPENAI_API_KEY", None)
-            if api_key:
-                # Initialize modern client
-                client = OpenAI(api_key=api_key)
-                
-                # Base64 encode the incoming image bytes
-                base64_image = base64.b64encode(image_bytes).decode('utf-8')
-                
-                # Request a visual caption using Chat Completions payload structure
-                resp = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text", 
-                                    "text": "Describe this image in one concise sentence."
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{base64_image}"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    max_tokens=150
-                )
-                
-                # Extract and return the caption immediately if successful
-                caption_text = resp.choices[0].message.content
-                if caption_text:
-                    return caption_text.strip()
-                    
-        except Exception as e:
-            # Enhanced error logging to make debugging transparent
-            logger.warning(f"OpenAI vision provider failed: {e}, falling back to OCR")
+            caption = provider.caption(image_bytes)
+        except Exception as exc:
+            logger.warning("Vision provider %r failed: %s, falling back to OCR", provider_name, exc)
+            caption = ""
+        if caption:
+            return caption
 
     # Try OCR caption
     ocr = _ocr_caption(image_bytes)
     if ocr:
         return ocr
 
-    # Fallback 2: placeholder
+    # Derive dimensions for the placeholder
     try:
         pix = fitz.Pixmap(image_bytes)
         dims = f"{pix.width}x{pix.height} px"
@@ -325,18 +278,9 @@ def generate_captions_for_chunks(chunks: List[Dict[str, Any]]) -> None:
             chunk["is_image"] = True
             chunk["image_caption"] = caption
         except Exception as exc:
-            page = chunk.get("page", "?")
-            logger.warning(
-                "Caption generation failed for image on page %s — image_bytes will be "
-                "permanently discarded. This may indicate a transient network error "
-                "(e.g. API rate-limit or timeout). If this repeats, check your VLM "
-                "provider configuration. Error: %s",
-                page,
-                exc,
-                exc_info=True,
-            )
+            logger.debug("Failed to caption image chunk: %s", exc)
             chunk["is_image"] = True
-            fallback = f"Image on page {page}"
+            fallback = f"Image on page {chunk.get('page', '?')}"
             chunk.setdefault("text", fallback)
             chunk["image_caption"] = chunk["text"]
         finally:
