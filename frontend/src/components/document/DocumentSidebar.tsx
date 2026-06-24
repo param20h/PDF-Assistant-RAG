@@ -147,7 +147,9 @@ export default function DocumentSidebar({
       );
     }
     if (failed > 0) {
-      toast.error(`${failed} document${failed > 1 ? "s" : ""} could not be deleted`);
+      toast.error(
+        `${failed} document${failed > 1 ? "s" : ""} could not be deleted`,
+      );
     }
 
     clearSelection();
@@ -174,7 +176,9 @@ export default function DocumentSidebar({
       );
     }
     if (failed > 0) {
-      toast.error(`${failed} document${failed > 1 ? "s" : ""} could not be restored`);
+      toast.error(
+        `${failed} document${failed > 1 ? "s" : ""} could not be restored`,
+      );
     }
 
     clearSelection();
