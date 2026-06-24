@@ -28,6 +28,7 @@ import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
 import DocumentCard from "./DocumentCard";
+import BulkActionBar from "./BulkActionBar";
 import { toast } from "sonner";
 
 interface Props {
@@ -89,6 +90,103 @@ export default function DocumentSidebar({
   const [driveConnecting, setDriveConnecting] = useState(false);
   const [driveError, setDriveError] = useState("");
 
+  // ── Multi-select state ───────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkRestoring, setBulkRestoring] = useState(false);
+
+  // Clear selection when switching tabs
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setSelectedIds(new Set());
+    if (value === "trash") {
+      void fetchTrash();
+    }
+  };
+
+  const toggleSelect = (
+    docId: string,
+    e: React.MouseEvent | React.ChangeEvent,
+  ) => {
+    e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) {
+        next.delete(docId);
+      } else {
+        next.add(docId);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // ── Bulk delete (active tab) ─────────────────────────────────────────────
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (
+      !confirm(
+        `Delete ${selectedIds.size} document${selectedIds.size > 1 ? "s" : ""}? They will be moved to trash.`,
+      )
+    )
+      return;
+
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(
+      ids.map((id) => api.delete(`/api/v1/documents/${id}`)),
+    );
+
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const succeeded = results.length - failed;
+
+    if (succeeded > 0) {
+      toast.success(
+        `${succeeded} document${succeeded > 1 ? "s" : ""} moved to trash`,
+      );
+    }
+    if (failed > 0) {
+      toast.error(
+        `${failed} document${failed > 1 ? "s" : ""} could not be deleted`,
+      );
+    }
+
+    clearSelection();
+    setBulkDeleting(false);
+    await onDocumentsChange();
+  };
+
+  // ── Bulk restore (trash tab) ─────────────────────────────────────────────
+  const handleBulkRestore = async () => {
+    if (selectedIds.size === 0) return;
+
+    setBulkRestoring(true);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(
+      ids.map((id) => api.post(`/api/v1/documents/${id}/restore`)),
+    );
+
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const succeeded = results.length - failed;
+
+    if (succeeded > 0) {
+      toast.success(
+        `${succeeded} document${succeeded > 1 ? "s" : ""} restored`,
+      );
+    }
+    if (failed > 0) {
+      toast.error(
+        `${failed} document${failed > 1 ? "s" : ""} could not be restored`,
+      );
+    }
+
+    clearSelection();
+    setBulkRestoring(false);
+    void fetchTrash();
+    await onDocumentsChange();
+  };
+
   const fetchTrash = useCallback(async () => {
     setLoadingTrash(true);
     try {
@@ -102,13 +200,6 @@ export default function DocumentSidebar({
       setLoadingTrash(false);
     }
   }, []);
-
-  const handleTabChange = (value: string) => {
-    setActiveTab(value);
-    if (value === "trash") {
-      void fetchTrash();
-    }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -209,7 +300,7 @@ export default function DocumentSidebar({
   };
 
   const handleSettingsClick = (doc: DocInfo, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent triggering document selection
+    e.stopPropagation();
     setSettingsDoc(doc);
   };
 
@@ -445,6 +536,17 @@ export default function DocumentSidebar({
           </TabsList>
         </div>
 
+        {/* ── Bulk Action Bar ──────────────────────── */}
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          onDelete={handleBulkDelete}
+          onRestore={handleBulkRestore}
+          onClear={clearSelection}
+          deleting={bulkDeleting}
+          restoring={bulkRestoring}
+          mode={activeTab as "active" | "trash"}
+        />
+
         <TabsContent
           value="active"
           className="flex-1 min-h-0 m-0 data-[state=active]:flex flex-col"
@@ -467,6 +569,7 @@ export default function DocumentSidebar({
                 {documents.map((doc) => {
                   const isEditing = editingDocId === doc.id;
                   const isRenaming = renamingDocId === doc.id;
+                  const isSelected = selectedIds.has(doc.id);
 
                   return (
                     <div
@@ -483,14 +586,27 @@ export default function DocumentSidebar({
                       }
                       onKeyDown={(e) => handleDocumentKeyDown(doc, e)}
                       className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
-                    ${
-                      activeDoc?.id === doc.id
-                        ? "bg-primary/15 border border-primary/30"
-                        : "hover:bg-sidebar-accent border border-transparent"
-                    }
-                    ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}`}
+                        ${
+                          activeDoc?.id === doc.id
+                            ? "bg-primary/15 border border-primary/30"
+                            : isSelected
+                              ? "bg-primary/8 border border-primary/20"
+                              : "hover:bg-sidebar-accent border border-transparent"
+                        }
+                        ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}`}
                     >
                       <div className="flex items-start gap-2.5">
+                        {/* ── Checkbox ── */}
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${doc.original_name}`}
+                          checked={isSelected}
+                          onChange={(e) => toggleSelect(doc.id, e)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border border-muted-foreground/40 accent-primary cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                          style={isSelected ? { opacity: 1 } : undefined}
+                        />
+
                         {statusIcon(doc.status)}
                         <div className="flex-1 min-w-0">
                           {isEditing ? (
@@ -560,7 +676,6 @@ export default function DocumentSidebar({
                           <DocumentCard document={doc} />
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -614,56 +729,71 @@ export default function DocumentSidebar({
               </div>
             ) : (
               <div className="space-y-1 pb-3">
-                {trashDocuments.map((doc) => (
-                  <div
-                    key={doc.id}
-                    className="w-full text-left p-2.5 rounded-lg border border-transparent hover:bg-sidebar-accent transition-all duration-200 group"
-                  >
-                    <div className="flex items-start gap-2.5">
-                      {statusIcon(doc.status)}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate leading-tight opacity-60">
-                          {doc.original_name}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] text-muted-foreground">
-                            {formatSize(doc.file_size)}
-                          </span>
+                {trashDocuments.map((doc) => {
+                  const isSelected = selectedIds.has(doc.id);
+
+                  return (
+                    <div
+                      key={doc.id}
+                      className={`w-full text-left p-2.5 rounded-lg border transition-all duration-200 group
+                        ${isSelected ? "bg-primary/8 border-primary/20" : "border-transparent hover:bg-sidebar-accent"}`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        {/* ── Checkbox ── */}
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${doc.original_name}`}
+                          checked={isSelected}
+                          onChange={(e) => toggleSelect(doc.id, e)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border border-muted-foreground/40 accent-primary cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                          style={isSelected ? { opacity: 1 } : undefined}
+                        />
+
+                        {statusIcon(doc.status)}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate leading-tight opacity-60">
+                            {doc.original_name}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatSize(doc.file_size)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            onClick={(e) => handleRestore(doc.id, e)}
+                            title={`Restore ${doc.original_name}`}
+                            aria-label={`Restore ${doc.original_name}`}
+                          >
+                            <RefreshCw className="w-3 h-3 text-primary" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                          onClick={(e) => handleRestore(doc.id, e)}
-                          title={`Restore ${doc.original_name}`}
-                        >
-                          <RefreshCw className="w-3 h-3 text-primary" />
-                        </Button>
-                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </ScrollArea>
         </TabsContent>
       </Tabs>
-      {/* Settings Modal */}
-      {/* The DocumentSettings component is rendered here and controlled by the settingsDoc state. When a user clicks the settings button for a document, it sets that document in settingsDoc, which opens the modal. The modal can then call onDocumentsChange to refresh the list after saving settings. */}
+
+      {/* ── Settings Modal ───────────────────────────── */}
       {settingsDoc && (
         <DocumentSettings
-          document={settingsDoc} // Pass the selected document to the document settings component
-          open={!!settingsDoc} // Open when settingsDoc is not null
+          document={settingsDoc}
+          open={!!settingsDoc}
           onOpenChange={(open) => {
-            // Close the modal when open is false
-            if (!open) setSettingsDoc(null); // Clear the settingsDoc state to close the modal
+            if (!open) setSettingsDoc(null);
           }}
           onSettingsSaved={() => {
-            // Refresh documents after saving settings
-            onDocumentsChange(); // Refresh the document list to reflect any changes
-            setSettingsDoc(null); // Close the settings modal after saving
+            onDocumentsChange();
+            setSettingsDoc(null);
           }}
         />
       )}
