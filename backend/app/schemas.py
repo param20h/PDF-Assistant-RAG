@@ -2,6 +2,7 @@
 Pydantic schemas for API request/response validation.
 """
 import json
+import re
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime
@@ -129,8 +130,7 @@ class RefreshRequest(BaseModel):
 
 
 class HFTokenUpdate(BaseModel):
-    """Request schema for updating the user's HuggingFace token."""
-    hf_token: str
+    hf_token: str = Field(..., min_length=1, max_length=500)
 
 
 class GoogleDriveAuthUrlResponse(BaseModel):
@@ -303,6 +303,16 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     top_k: int = Field(default=5, ge=1, le=20)
 
+    @field_validator("question")
+    @classmethod
+    def sanitize_question(cls, v: str) -> str:
+        """Strip control characters (null bytes, ANSI escapes, etc.) from user input."""
+        cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", v)
+        stripped = cleaned.strip()
+        if not stripped:
+            raise ValueError("Question cannot be empty after sanitization")
+        return stripped
+
 
 class SourceChunk(BaseModel):
     text: str
@@ -367,7 +377,7 @@ class ShareLinkResponse(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    feedback: Optional[str] = None
+    feedback: Optional[str] = Field(None, pattern="^(up|down)?$")
 
 
 # ── Chat Session ──────────────────────────────────────
