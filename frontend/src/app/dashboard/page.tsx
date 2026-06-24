@@ -15,6 +15,8 @@ import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatSessionSidebar from "@/components/chat/ChatSessionSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
 import CompareView from "@/components/document/CompareView";
+import DashboardDropOverlay from "@/components/document/DashboardDropOverlay";
+import { useDashboardDrop } from "@/hooks/useDashboardDrop";
 
 function PDFViewerSkeleton() {
   return (
@@ -150,6 +152,29 @@ export default function DashboardPage() {
     })();
   }, [user, loadDocuments]);
 
+  // ── Full-page drag-and-drop ──────────────────────────────────────────────
+  const handlePageDrop = useCallback(
+    async (files: File[]) => {
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          await api.postForm("/api/v1/documents/upload", formData);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Upload failed";
+          console.error(`Upload failed for ${file.name}:`, message);
+        }
+      }
+      void loadDocuments();
+    },
+    [loadDocuments],
+  );
+
+  const { isDraggingOver, dropZoneProps } = useDashboardDrop({
+    onDrop: handlePageDrop,
+    disabled: !user,
+  });
+
   // Ingest status change toast notification handler
   useEffect(() => {
     const prev = prevDocsRef.current;
@@ -213,6 +238,10 @@ export default function DashboardPage() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden min-w-[375px]">
+      <DashboardDropOverlay
+        isDraggingOver={isDraggingOver}
+        dropZoneProps={dropZoneProps}
+      />
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
