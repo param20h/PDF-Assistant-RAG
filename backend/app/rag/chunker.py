@@ -214,10 +214,12 @@ def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
             logger.warning(f"pdfplumber extraction failed, falling back: {e2}")
 
     if not pages:
-        pages = extract_pdf_with_pymupdf(filepath)
+        try:
+            pages = extract_pdf_with_pymupdf(filepath)
+        except Exception as e3:
+            logger.warning(f"PyMuPDF extraction failed, falling back to OCR: {e3}")
 
-    # If still no text, or some pages yielded nothing, run OCR per-page
-    # to catch scanned/image-only pages missed by the extractors above.
+    # If still no text, run a full OCR pass for scanned/image-only PDFs.
     if not pages:
         logger.info(
             "All text extractors returned empty for '%s' — running full OCR pass",
