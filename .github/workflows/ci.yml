@@ -253,6 +253,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install PyYAML
+        run: pip install PyYAML
+
       - name: Parse render.yaml
         id: render_config
         run: |
