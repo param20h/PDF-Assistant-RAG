@@ -87,3 +87,11 @@ Begin!
 {chat_history}
 Question: {input}
 Thought: {agent_scratchpad}"""
+
+MULTI_DOC_COMPARISON_GUIDANCE = """
+MULTI-DOCUMENT MODE:
+You are answering across multiple documents at once. When findings differ or overlap between documents:
+- Attribute each finding to its specific source document using [Source: filename, Page X].
+- Explicitly note where documents agree and where they disagree or report different figures.
+- Do not blend numbers or claims from different documents without making the source of each clear.
+"""

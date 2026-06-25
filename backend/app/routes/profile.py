@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from pathlib import Path
 import shutil
 import uuid
@@ -28,12 +29,27 @@ def update_profile(
     current_user: User = Depends(get_current_user),
 ):
     if payload.username:
+        existing_user = (
+            db.query(User)
+            .filter(
+                User.username == payload.username,
+                User.id != current_user.id,
+            )
+            .first()
+        )
+        if existing_user:
+            raise ValidationException("Username already exists")
         current_user.username = payload.username
 
     if payload.display_name:
         current_user.display_name = payload.display_name
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ValidationException("Username already exists")
+
     db.refresh(current_user)
 
     return current_user

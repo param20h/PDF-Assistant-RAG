@@ -75,7 +75,7 @@ class EncryptedString(TypeDecorator):
         from app.config import get_settings
         settings = get_settings()
         key = base64.urlsafe_b64encode(
-            hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+            hashlib.sha256(settings.FIELD_ENCRYPTION_KEY.encode()).digest()
         )
         return Fernet(key)
 

@@ -211,7 +211,7 @@ def _merge_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 @trace_function(
     "retrieve",
-    metadata_factory=lambda query, user_id, document_id=None, top_k=None: {
+    metadata_factory=lambda query, user_id, document_id=None, document_ids=None, top_k=None: {
         "user_id": user_id,
         "document_id": document_id,
         "embedding_model": settings.EMBEDDING_MODEL,
@@ -226,6 +226,7 @@ def retrieve(
     query: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     top_k: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
@@ -250,6 +251,7 @@ def retrieve(
             query_embedding=query_vector,
             user_id=user_id,
             document_id=document_id,
+            document_ids=document_ids,
             top_k=effective_top_k,
         )
 
@@ -260,6 +262,7 @@ def retrieve(
                     query=search_query,
                     user_id=user_id,
                     document_id=document_id,
+                    document_ids=document_ids,
                     top_k=effective_top_k,
                 )
             except Exception as exc:

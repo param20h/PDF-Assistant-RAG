@@ -14,6 +14,9 @@ import Header from "@/components/layout/Header";
 import DocumentSidebar from "@/components/document/DocumentSidebar";
 import ChatSessionSidebar from "@/components/chat/ChatSessionSidebar";
 import ChatPanel from "@/components/chat/ChatPanel";
+import CompareView from "@/components/document/CompareView";
+import DashboardDropOverlay from "@/components/document/DashboardDropOverlay";
+import { useDashboardDrop } from "@/hooks/useDashboardDrop";
 
 function PDFViewerSkeleton() {
   return (
@@ -90,6 +93,7 @@ export default function DashboardPage() {
   const [graphOpen, setGraphOpen] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const handleDocumentRenamed = useCallback((renamedDocument: DocInfo) => {
     setDocuments((current) =>
@@ -147,6 +151,29 @@ export default function DashboardPage() {
       await loadDocuments();
     })();
   }, [user, loadDocuments]);
+
+  // ── Full-page drag-and-drop ──────────────────────────────────────────────
+  const handlePageDrop = useCallback(
+    async (files: File[]) => {
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          await api.postForm("/api/v1/documents/upload", formData);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Upload failed";
+          console.error(`Upload failed for ${file.name}:`, message);
+        }
+      }
+      void loadDocuments();
+    },
+    [loadDocuments],
+  );
+
+  const { isDraggingOver, dropZoneProps } = useDashboardDrop({
+    onDrop: handlePageDrop,
+    disabled: !user,
+  });
 
   // Ingest status change toast notification handler
   useEffect(() => {
@@ -211,19 +238,17 @@ export default function DashboardPage() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden min-w-[375px]">
+      <DashboardDropOverlay
+        isDraggingOver={isDraggingOver}
+        dropZoneProps={dropZoneProps}
+      />
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         viewerOpen={viewerOpen}
         onToggleViewer={() => setViewerOpen(!viewerOpen)}
-        graphOpen={graphOpen}
-        onToggleGraph={() => {
-          if (!activeDoc) {
-            toast.info("Select a document first to view its knowledge graph.");
-            return;
-          }
-          setGraphOpen((v) => !v);
-        }}
+        compareOpen={compareOpen}
+        onToggleCompare={() => setCompareOpen(!compareOpen)}
         mobileSheetContent={sidebarContent}
       />
 
@@ -262,9 +287,16 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* ── Right: PDF Viewer — hidden on mobile ─────────────────────── */}
-        {viewerOpen &&
-          !graphOpen &&
+        {/* ── Right: Compare View or Single PDF Viewer ────────────── */}
+        {compareOpen ? (
+          <div className="hidden md:flex flex-1 min-w-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
+            <CompareView
+              documents={documents}
+              onClose={() => setCompareOpen(false)}
+            />
+          </div>
+        ) : (
+          viewerOpen &&
           activeDoc &&
           activeDoc.original_name.endsWith(".pdf") && (
             <div className="hidden md:block w-[480px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
@@ -281,16 +313,7 @@ export default function DashboardPage() {
                 highlightTarget={pdfHighlightTarget}
               />
             </div>
-          )}
-
-        {/* ── Right: Knowledge Graph panel ─────────────────────────────── */}
-        {graphOpen && activeDoc && (
-          <div className="hidden md:flex w-[520px] flex-shrink-0 border-l border-border/50 overflow-hidden animate-fade-in-up">
-            <KnowledgeGraph
-              documentId={activeDoc.id}
-              onClose={() => setGraphOpen(false)}
-            />
-          </div>
+          )
         )}
       </div>
     </div>

@@ -472,6 +472,7 @@ def generate_answer(
     question: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[list] = None,
@@ -482,6 +483,7 @@ def generate_answer(
         question=question,
         user_id=user_id,
         document_id=document_id,
+        document_ids=document_ids,
         hf_token=hf_token,
         top_k=top_k,
         chat_history=chat_history,
@@ -492,6 +494,7 @@ def generate_answer_stream(
     question: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[list] = None,
@@ -502,6 +505,7 @@ def generate_answer_stream(
         question=question,
         user_id=user_id,
         document_id=document_id,
+        document_ids=document_ids,
         hf_token=hf_token,
         top_k=top_k,
         chat_history=chat_history,
@@ -569,6 +573,33 @@ def ask_question(
             doc.last_accessed_at = datetime.now(timezone.utc)
             db.commit()
 
+        # Validate documents if multiple specified
+        elif payload.document_ids:
+            docs = (
+                db.query(Document)
+                .filter(
+                    Document.id.in_(payload.document_ids),
+                    Document.user_id == user.id,
+                    Document.is_deleted.is_(False),
+                )
+                .all()
+            )
+
+            found_ids = {doc.id for doc in docs}
+            missing = [doc_id for doc_id in payload.document_ids if doc_id not in found_ids]
+            if missing:
+                raise NotFoundException("Document")
+
+            not_ready = [doc.original_name for doc in docs if doc.status != "ready"]
+            if not_ready:
+                raise ValidationException(
+                    f"Some documents are still processing: {', '.join(not_ready)}. Please wait."
+                )
+
+            for doc in docs:
+                doc.last_accessed_at = datetime.now(timezone.utc)
+            db.commit()
+
         # Resolve or create session
         session_id = payload.session_id
         if not session_id:
@@ -594,10 +625,13 @@ def ask_question(
         recent_messages.reverse()
         chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
 
+        cache_doc_key = str(payload.document_id or "")
+        if payload.document_ids:
+            cache_doc_key = "multi:" + ",".join(sorted(payload.document_ids))
         # Cache check — return instantly if this (user, document, question) was answered before
         cached_answer = get_cached_response(
             user_id=user.id,
-            document_id=str(payload.document_id or ""),
+            document_id=cache_doc_key,
             question=payload.question,
         )
         if cached_answer is not None:
@@ -612,6 +646,7 @@ def ask_question(
             question=payload.question,
             user_id=user.id,
             document_id=payload.document_id,
+            document_ids=payload.document_ids,
             hf_token=user.hf_token,
             top_k=payload.top_k,
             chat_history=chat_history,
@@ -628,15 +663,15 @@ def ask_question(
         # Store result in cache for future identical questions
         set_cached_response(
             user_id=user.id,
-            document_id=str(payload.document_id or ""),
+            document_id=cache_doc_key,
             question=payload.question,
             answer=result["answer"],
         )
 
         # Save to chat history
-        _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
+        _save_message(db, user.id, cache_doc_key, "user", payload.question, session_id=session_id)
         _save_message(
-            db, user.id, payload.document_id, "assistant", result["answer"], result["sources"], session_id=session_id
+            db, user.id, cache_doc_key, "assistant", result["answer"], result["sources"], session_id=session_id
         )
 
         return ChatResponse(
@@ -705,6 +740,33 @@ def ask_question_stream(
         doc.last_accessed_at = datetime.now(timezone.utc)
         db.commit()
 
+    # Validate documents if multiple specified
+    elif payload.document_ids:
+        docs = (
+            db.query(Document)
+            .filter(
+                Document.id.in_(payload.document_ids),
+                Document.user_id == user.id,
+                Document.is_deleted.is_(False),
+            )
+            .all()
+        )
+
+        found_ids = {doc.id for doc in docs}
+        missing = [doc_id for doc_id in payload.document_ids if doc_id not in found_ids]
+        if missing:
+            raise NotFoundException("Document")
+
+        not_ready = [doc.original_name for doc in docs if doc.status != "ready"]
+        if not_ready:
+            raise ValidationException(
+                f"Some documents are still processing: {', '.join(not_ready)}. Please wait."
+            )
+
+        for doc in docs:
+            doc.last_accessed_at = datetime.now(timezone.utc)
+        db.commit()
+
     started_at = time.perf_counter()
 
     # Resolve or create session
@@ -732,13 +794,17 @@ def ask_question_stream(
     recent_messages.reverse()
     chat_history = [{"role": m.role, "content": m.content} for m in recent_messages]
 
+    cache_doc_key = str(payload.document_id or "")
+    if payload.document_ids:
+        cache_doc_key = "multi:" + ",".join(sorted(payload.document_ids))
+    
     # Save user message immediately
-    _save_message(db, user.id, payload.document_id, "user", payload.question, session_id=session_id)
+    _save_message(db, user.id, cache_doc_key, "user", payload.question, session_id=session_id)
 
     # Cache check before starting the stream
     cached_answer = get_cached_response(
-        user_id=user.d,
-        document_id=str(payload.document_id or ""),
+        user_id=user.id,
+        document_id=cache_doc_key,
         question=payload.question,
     )
     if cached_answer is not None:
@@ -769,7 +835,8 @@ def ask_question_stream(
             for chunk in generate_answer_stream(
                 question=payload.question,
                 user_id=user.id,
-                document_id=payload.document_id,
+                document_id=cache_doc_key,
+                document_ids=payload.document_ids,
                 hf_token=user.hf_token,
                 top_k=payload.top_k,
                 chat_history=chat_history,
@@ -791,7 +858,7 @@ def ask_question_stream(
             if full_answer:
                 set_cached_response(
                     user_id=user.id,
-                    document_id=str(payload.document_id or ""),
+                    document_id=cache_doc_key,
                     question=payload.question,
                     answer=full_answer,
                 )
@@ -801,7 +868,7 @@ def ask_question_stream(
 
             with get_db_session() as save_db:
                 _save_message(
-                    save_db, user.id, payload.document_id, "assistant", full_answer, sources, session_id=session_id
+                    save_db, user.id, cache_doc_key, "assistant", full_answer, sources, session_id=session_id
                 )
 
             # Log streaming response RAG completion

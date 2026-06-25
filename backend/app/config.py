@@ -5,7 +5,7 @@ All config is loaded from environment variables with sensible defaults.
 import os
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-
+from pydantic import model_validator
 
 class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────
@@ -152,26 +152,67 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
 
+    # ── Database Tuning ─────────────────────────────────
+    DATABASE_POOL_RECYCLE: int = 3600
+    DATABASE_SLOW_QUERY_THRESHOLD: float = 1.0
+
+    # ── Request Limits ───────────────────────────────────
+    MAX_REQUEST_BODY_SIZE_MB: int = 50
+
     @property
     def cors_origins(self) -> list[str]:
         if self.ENVIRONMENT == "production":
             return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
         return ["*"]
 
-    def validate_production(self):
-        """Raises ValueError if dangerous defaults are active in production."""
-        if self.ENVIRONMENT != "production":
-            return
-        if self.SECRET_KEY in ("change-me-in-production-please", "dev-secret-key-change-me"):
+    @model_validator(mode="after")
+    def validate_vision_provider_keys(self) -> "Settings":
+        provider = self.VISION_PROVIDER.lower() if self.VISION_PROVIDER else None
+        if provider == "openai" and not self.OPENAI_API_KEY:
             raise ValueError(
-                "SECRET_KEY must be overridden in production. "
+                "ValidationError: OPENAI_API_KEY is required when VISION_PROVIDER is set to 'openai'."
+            )
+        return self
+
+    def validate_production(self) -> None:
+        """Validate that critical secrets are overridden in production.
+
+        Called during application startup (see ``main.py`` lifespan). In
+        non-production environments it only logs warnings; in production it
+        raises ``ValueError`` to prevent the app from starting with insecure
+        defaults.
+        """
+        import logging
+        _logger = logging.getLogger(__name__)
+
+        _INSECURE_DEFAULTS = {
+            "SECRET_KEY": "change-me-in-production-please",
+            "FIELD_ENCRYPTION_KEY": "change-me-in-production-field-encryption-key",
+        }
+
+        issues: list[str] = []
+        for field, default_value in _INSECURE_DEFAULTS.items():
+            current = getattr(self, field, None)
+            if current == default_value:
+                issues.append(
+                    f"{field} is set to the insecure default. "
+                    f"Override it via environment variable or .env file."
+                )
+
+        # Minimum key length check
+        if len(self.SECRET_KEY) < 32:
+            issues.append(
+                "SECRET_KEY is too short — use at least 32 characters. "
                 "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
             )
-        if not self.FIELD_ENCRYPTION_KEY:
+
+        if self.ENVIRONMENT == "production" and issues:
             raise ValueError(
-                "FIELD_ENCRYPTION_KEY must be set in production. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                "Production configuration errors:\n  • " + "\n  • ".join(issues)
             )
+        elif issues:
+            for issue in issues:
+                _logger.warning("Non-production config warning: %s", issue)
 
     class Config:
         env_file = ".env"

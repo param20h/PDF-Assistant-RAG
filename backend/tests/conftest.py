@@ -41,6 +41,12 @@ fake_vectorstore.get_chroma_client = lambda: _FakeChromaClient()
 fake_vectorstore.store_chunks = lambda chunks, document_id, filename, user_id: len(chunks)
 fake_vectorstore.delete_document_chunks = lambda document_id, user_id: None
 fake_vectorstore.query_chunks = lambda query_embedding, user_id, document_id=None, top_k=10: []
+
+if "sentence_transformers" not in sys.modules:
+    fake_sentence_transformers = types.ModuleType("sentence_transformers")
+    fake_sentence_transformers.CrossEncoder = lambda *args, **kwargs: None
+    sys.modules["sentence_transformers"] = fake_sentence_transformers
+    
 sys.modules.setdefault("app.rag.vectorstore", fake_vectorstore)
 
 slowapi_module = types.ModuleType("slowapi")
