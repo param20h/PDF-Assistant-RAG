@@ -4,7 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertCircle, RotateCw } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
+  ZoomOut,
+  Loader2,
+  AlertCircle,
+  RotateCw,
+} from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import { usePdfSearch } from "@/hooks/usePdfSearch";
 import { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
@@ -16,7 +24,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 // Configure PDF.js worker locally using Next.js/Webpack asset bundling
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
+  import.meta.url,
 ).toString();
 
 interface SearchRect {
@@ -73,7 +81,14 @@ export default function PDFViewer({
 
   // --- NEW: Search State ---
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
-  const { searchTerm, setSearchTerm, matches, currentIndex, setCurrentIndex, performSearch } = usePdfSearch();
+  const {
+    searchTerm,
+    setSearchTerm,
+    matches,
+    currentIndex,
+    setCurrentIndex,
+    performSearch,
+  } = usePdfSearch();
 
   // Sync page input state with current page prop updates during render phase
   if (currentPage !== prevCurrentPage) {
@@ -83,13 +98,17 @@ export default function PDFViewer({
   }
 
   const pdfUrl = `${API_BASE}/api/v1/documents/${documentId}/pdf`;
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   // Configure file object with Authorization headers (memoized to prevent re-renders)
-  const fileConfig = useMemo(() => ({
-    url: pdfUrl,
-    httpHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
-  }), [pdfUrl, token]);
+  const fileConfig = useMemo(
+    () => ({
+      url: pdfUrl,
+      httpHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
+    }),
+    [pdfUrl, token],
+  );
 
   useEffect(() => {
     if (viewerRef.current && highlightTarget?.page === currentPage) {
@@ -124,6 +143,7 @@ export default function PDFViewer({
     if (!highlightTarget || highlightTarget.page !== currentPage) return [];
 
     return (highlightTarget.rects ?? []).map((rect) => {
+      // Percent-based rects scale naturally with the rendered page size
       if (rect.unit === "percent" || isNormalizedRect(rect)) {
         return {
           left: `${rect.left * 100}%`,
@@ -132,16 +152,14 @@ export default function PDFViewer({
           height: `${rect.height * 100}%`,
         };
       }
-
-      if (rect.unit === "pixels" || rect.unit == null) {
+      if (rect.unit === "pdf") {
         return {
-          left: `${rect.left}px`,
-          top: `${rect.top}px`,
-          width: `${rect.width}px`,
-          height: `${rect.height}px`,
+          left: `${rect.left * scale}px`,
+          top: `${rect.top * scale}px`,
+          width: `${rect.width * scale}px`,
+          height: `${rect.height * scale}px`,
         };
       }
-
       return {
         left: `${rect.left}px`,
         top: `${rect.top}px`,
@@ -149,22 +167,27 @@ export default function PDFViewer({
         height: `${rect.height}px`,
       };
     });
-  }, [highlightTarget, currentPage]);
+  }, [highlightTarget, currentPage, scale]);
 
   // --- NEW: Search Highlights Logic ---
   const searchHighlights = useMemo(() => {
-    if (!matches[currentIndex] || matches[currentIndex].page !== currentPage) return [];
+    if (!matches[currentIndex] || matches[currentIndex].page !== currentPage)
+      return [];
     return matches[currentIndex].rects.map((r: SearchRect) => ({
       left: `${r.left}px`,
       top: `${r.top}px`,
       width: `${r.width}px`,
-      height: `${r.height}px`
+      height: `${r.height}px`,
     }));
   }, [matches, currentIndex, currentPage]);
 
   const handlePageJump = (value: string) => {
     const pageNumber = parseInt(value.trim(), 10);
-    if (!Number.isNaN(pageNumber) && pageNumber >= 1 && pageNumber <= totalPages) {
+    if (
+      !Number.isNaN(pageNumber) &&
+      pageNumber >= 1 &&
+      pageNumber <= totalPages
+    ) {
       setPageInputError(false);
       onPageChange(pageNumber);
     } else {
@@ -228,7 +251,10 @@ export default function PDFViewer({
                   size="icon"
                   className="h-7 w-7"
                   onClick={() => {
-                    const nextIdx = Math.min(matches.length - 1, currentIndex + 1);
+                    const nextIdx = Math.min(
+                      matches.length - 1,
+                      currentIndex + 1,
+                    );
                     setCurrentIndex(nextIdx);
                     onPageChange(matches[nextIdx].page);
                   }}
@@ -248,7 +274,9 @@ export default function PDFViewer({
             className="flex items-center gap-1 text-xs"
             aria-label="PDF page navigation"
           >
-            <span className="text-muted-foreground text-[10px] hidden sm:inline">Page</span>
+            <span className="text-muted-foreground text-[10px] hidden sm:inline">
+              Page
+            </span>
             <Input
               value={pageInput}
               onChange={(e) => {
@@ -264,7 +292,9 @@ export default function PDFViewer({
               title={`Enter page number between 1 and ${totalPages}`}
               inputMode="numeric"
             />
-            <span className="text-muted-foreground text-[10px]">of {totalPages}</span>
+            <span className="text-muted-foreground text-[10px]">
+              of {totalPages}
+            </span>
           </form>
 
           <Button
