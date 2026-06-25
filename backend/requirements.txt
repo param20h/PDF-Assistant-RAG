@@ -70,6 +70,12 @@ celery[redis]
 #brew install libmagic // for OSX
 python-magic-bin; sys_platform == "win32" # for windows
 python-magic; sys_platform != "win32"
+
+# OCR support for scanned/image-based PDFs
+pytesseract>=0.3.10
+easyocr>=1.7.1; extra == "easyocr"
+Pillow>=10.0.0
+
 python-docx
 pypdf
 reportlab

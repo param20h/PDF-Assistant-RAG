@@ -189,33 +189,111 @@ def _table_to_markdown(rows: List[List[Any]]) -> str:
 
 
 def extract_pdf(filepath: str) -> List[Dict[str, Any]]:
-    """Extract PDF text while preserving tables as separate chunks."""
+    """Extract PDF text while preserving tables as separate chunks.
+
+    Extraction is attempted in order of richness:
+    1. Unstructured (tables + layout)
+    2. pdfplumber (tables + multi-column)
+    3. PyMuPDF native text
+    4. OCR fallback for image-only pages (pytesseract or easyocr)
+
+    Each stage only runs if the previous one raises an exception OR
+    produces no text at all (e.g. a purely scanned PDF).
+    """
+    pages: List[Dict[str, Any]] = []
+
     try:
-        return extract_pdf_with_unstructured(filepath)
+        pages = extract_pdf_with_unstructured(filepath)
     except Exception as e:
         logger.warning(f"Unstructured extraction failed, falling back: {e}")
+
+    if not pages:
         try:
-            return extract_pdf_with_tables(filepath)
+            pages = extract_pdf_with_tables(filepath)
         except Exception as e2:
             logger.warning(f"pdfplumber extraction failed, falling back: {e2}")
-            return extract_pdf_with_pymupdf(filepath)
+
+    if not pages:
+        pages = extract_pdf_with_pymupdf(filepath)
+
+    # If still no text, or some pages yielded nothing, run OCR per-page
+    # to catch scanned/image-only pages missed by the extractors above.
+    if not pages:
+        logger.info(
+            "All text extractors returned empty for '%s' — running full OCR pass",
+            filepath,
+        )
+        try:
+            from app.rag.ocr import extract_pdf_with_ocr
+            pages = extract_pdf_with_ocr(filepath)
+        except Exception as exc:
+            logger.warning("OCR pass failed for '%s': %s", filepath, exc)
+
+    return pages
 
 
 def extract_pdf_with_pymupdf(filepath: str) -> List[Dict[str, Any]]:
-    """Fallback PDF extraction with page numbers using PyMuPDF."""
+    """Fallback PDF extraction with page numbers using PyMuPDF.
+
+    For pages with no selectable text (scanned/image-only pages) OCR is
+    attempted automatically using the configured OCR backend.
+    """
+    from app.rag.ocr import MIN_TEXT_CHARS, OCR_BACKEND, ocr_page
+
     doc = fitz.open(filepath)
     pages = []
 
-    for page_num, page in enumerate(doc):
-        text = page.get_text()
-        if text.strip():
-            pages.append({
-                "text": text,
-                "page": page_num + 1,
-                "chunk_type": "text",
-            })
+    try:
+        for page_num, page in enumerate(doc):
+            text = page.get_text().strip()
 
-    doc.close()
+            if len(text) >= MIN_TEXT_CHARS:
+                pages.append({
+                    "text": text,
+                    "page": page_num + 1,
+                    "chunk_type": "text",
+                    "ocr": False,
+                })
+                continue
+
+            # No selectable text — attempt OCR
+            logger.info(
+                "Page %d of '%s' is image-only — running OCR (backend=%s)",
+                page_num + 1,
+                filepath,
+                OCR_BACKEND,
+            )
+            try:
+                ocr_text = ocr_page(page)
+                if ocr_text:
+                    pages.append({
+                        "text": ocr_text,
+                        "page": page_num + 1,
+                        "chunk_type": "text",
+                        "ocr": True,
+                    })
+                else:
+                    logger.warning(
+                        "OCR returned no text for page %d of '%s'",
+                        page_num + 1,
+                        filepath,
+                    )
+            except ImportError:
+                logger.warning(
+                    "OCR backend '%s' not installed — skipping image-only page %d",
+                    OCR_BACKEND,
+                    page_num + 1,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "OCR failed for page %d of '%s': %s",
+                    page_num + 1,
+                    filepath,
+                    exc,
+                )
+    finally:
+        doc.close()
+
     return pages
 
 
