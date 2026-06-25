@@ -121,35 +121,34 @@ export default function PDFViewer({
   }, []);
 
   const overlayRects = useMemo(() => {
-    if (!highlightTarget || highlightTarget.page !== currentPage) return [];
+  if (!highlightTarget || highlightTarget.page !== currentPage) return [];
 
-    return (highlightTarget.rects ?? []).map((rect) => {
-      if (rect.unit === "percent" || isNormalizedRect(rect)) {
-        return {
-          left: `${rect.left * 100}%`,
-          top: `${rect.top * 100}%`,
-          width: `${rect.width * 100}%`,
-          height: `${rect.height * 100}%`,
-        };
-      }
-
-      if (rect.unit === "pixels" || rect.unit == null) {
-        return {
-          left: `${rect.left}px`,
-          top: `${rect.top}px`,
-          width: `${rect.width}px`,
-          height: `${rect.height}px`,
-        };
-      }
-
+  return (highlightTarget.rects ?? []).map((rect) => {
+    // Percent-based rects scale naturally with the rendered page size
+    if (rect.unit === "percent" || isNormalizedRect(rect)) {
       return {
-        left: `${rect.left}px`,
-        top: `${rect.top}px`,
-        width: `${rect.width}px`,
-        height: `${rect.height}px`,
+        left: `${rect.left * 100}%`,
+        top: `${rect.top * 100}%`,
+        width: `${rect.width * 100}%`,
+        height: `${rect.height * 100}%`,
       };
-    });
-  }, [highlightTarget, currentPage]);
+    }
+    if (rect.unit === "pdf") {
+      return {
+        left: `${rect.left * scale}px`,
+        top: `${rect.top * scale}px`,
+        width: `${rect.width * scale}px`,
+        height: `${rect.height * scale}px`,
+      };
+    }
+    return {
+      left: `${rect.left}px`,
+      top: `${rect.top}px`,
+      width: `${rect.width}px`,
+      height: `${rect.height}px`,
+    };
+  });
+}, [highlightTarget, currentPage, scale]);
 
   // --- NEW: Search Highlights Logic ---
   const searchHighlights = useMemo(() => {
