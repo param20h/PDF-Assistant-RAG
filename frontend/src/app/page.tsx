@@ -72,10 +72,8 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="relative flex-1 flex flex-col items-center justify-center overflow-hidden px-6 py-28">
-
         {/* Ambient glow — top-center */}
         <div
           aria-hidden
@@ -106,11 +104,12 @@ export default function HomePage() {
 
         {/* ── Content ─────────────────────────────────────────────────────── */}
         <div className="relative z-10 text-center max-w-3xl mx-auto space-y-8 animate-fade-in-up">
-
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full
+          <div
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full
                           bg-primary/10 border border-primary/20
-                          text-xs font-medium tracking-wide text-primary uppercase">
+                          text-xs font-medium tracking-wide text-primary uppercase"
+          >
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_6px_theme(colors.green.400)] animate-pulse" />
             Enterprise Agentic RAG System
           </div>
@@ -118,8 +117,10 @@ export default function HomePage() {
           {/* Headline */}
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.08]">
             Chat with your{" "}
-            <span className="bg-gradient-to-r from-primary via-primary/80 to-primary/60
-                             bg-clip-text text-transparent">
+            <span
+              className="bg-gradient-to-r from-primary via-primary/80 to-primary/60
+                             bg-clip-text text-transparent"
+            >
               documents
             </span>
             <br />
@@ -133,9 +134,23 @@ export default function HomePage() {
 
           {/* Sub-copy */}
           <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed font-light">
-            Upload financial reports, legal contracts, or research papers and get
-            accurate, <span className="text-foreground/70 font-normal">cited insights</span> powered
-            by advanced AI retrieval.
+            Upload{" "}
+            <span className="font-semibold text-foreground">
+              financial reports
+            </span>
+            ,{" "}
+            <span className="font-semibold text-foreground">
+              legal contracts
+            </span>
+            , or{" "}
+            <span className="font-semibold text-foreground">
+              research papers
+            </span>{" "}
+            and get accurate,{" "}
+            <span className="text-foreground/70 font-normal">
+              cited insights
+            </span>{" "}
+            powered by advanced AI retrieval.
           </p>
 
           {/* CTAs */}
@@ -181,13 +196,16 @@ export default function HomePage() {
 
           {/* Social proof strip */}
           <p className="text-xs text-muted-foreground/60 tracking-wide pt-1">
-            No credit card required &nbsp;·&nbsp; Open-source &nbsp;·&nbsp; Self-hostable
+            No credit card required &nbsp;·&nbsp; Open-source &nbsp;·&nbsp;
+            Self-hostable
           </p>
         </div>
 
         {/* ── Feature cards ────────────────────────────────────────────────── */}
-        <div className="relative z-10 mt-20 w-full max-w-4xl mx-auto
-                        grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div
+          className="relative z-10 mt-20 w-full max-w-4xl mx-auto
+                        grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+        >
           {FEATURES.map(({ icon: Icon, title, desc }, i) => (
             <div
               key={title}
@@ -199,13 +217,19 @@ export default function HomePage() {
               style={{ animationDelay: `${i * 80}ms` }}
             >
               {/* Icon with subtle glow on hover */}
-              <div className="w-8 h-8 mb-4 rounded-lg bg-primary/10 flex items-center justify-center
-                              group-hover:bg-primary/15 transition-colors duration-300">
+              <div
+                className="w-8 h-8 mb-4 rounded-lg bg-primary/10 flex items-center justify-center
+                              group-hover:bg-primary/15 transition-colors duration-300"
+              >
                 <Icon className="w-4 h-4 text-primary group-hover:scale-110 transition-transform duration-300" />
               </div>
 
-              <h3 className="font-semibold text-sm mb-1.5 text-foreground">{title}</h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+              <h3 className="font-semibold text-sm mb-1.5 text-foreground">
+                {title}
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {desc}
+              </p>
             </div>
           ))}
         </div>
@@ -223,7 +247,7 @@ export default function HomePage() {
                   <span className="mx-1.5 text-muted-foreground/30">·</span>
                 )}
               </span>
-            )
+            ),
           )}
         </p>
       </footer>
