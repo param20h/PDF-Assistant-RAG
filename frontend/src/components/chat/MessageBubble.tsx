@@ -347,7 +347,6 @@ export default function MessageBubble({ message }: Props) {
                 <span className="inline-block w-0.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
               )}
             </div>
-
           </>
         )}
 
@@ -356,7 +355,9 @@ export default function MessageBubble({ message }: Props) {
             isUser ? "justify-end" : "justify-start"
           }`}
         >
-          <div title={new Date(Number(message.id.split("-")[1])).toLocaleString()}>
+          <div
+            title={new Date(Number(message.id.split("-")[1])).toLocaleString()}
+          >
             {formatDistanceToNow(new Date(Number(message.id.split("-")[1])), {
               addSuffix: true,
             })}

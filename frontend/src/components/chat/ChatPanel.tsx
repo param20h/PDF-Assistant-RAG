@@ -353,7 +353,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             } else if (event.type === "done") {
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === assistantId ? { ...m, isStreaming: false, response_time_ms: event.response_time_ms } : m,
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        isStreaming: false,
+                        response_time_ms: event.response_time_ms,
+                      }
+                    : m,
                 ),
               );
               ws.close();
@@ -450,7 +456,13 @@ export default function ChatPanel({ activeDoc, onCitationClick }: Props) {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
-                  ? { ...m, isStreaming: false, response_time_ms: (event as { type: string; response_time_ms?: number }).response_time_ms }
+                  ? {
+                      ...m,
+                      isStreaming: false,
+                      response_time_ms: (
+                        event as { type: string; response_time_ms?: number }
+                      ).response_time_ms,
+                    }
                   : m,
               ),
             );
