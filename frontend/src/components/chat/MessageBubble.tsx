@@ -351,14 +351,22 @@ export default function MessageBubble({ message }: Props) {
         )}
 
         <div
-          className={`text-xs text-muted-foreground mt-2 ${
-            isUser ? "text-right" : "text-left"
+          className={`flex items-center gap-2 mt-2 text-xs text-muted-foreground ${
+            isUser ? "justify-end" : "justify-start"
           }`}
-          title={new Date(Number(message.id.split("-")[1])).toLocaleString()}
         >
-          {formatDistanceToNow(new Date(Number(message.id.split("-")[1])), {
-            addSuffix: true,
-          })}
+          <div
+            title={new Date(Number(message.id.split("-")[1])).toLocaleString()}
+          >
+            {formatDistanceToNow(new Date(Number(message.id.split("-")[1])), {
+              addSuffix: true,
+            })}
+          </div>
+          {!isUser && message.response_time_ms && (
+            <span className="text-[10px] ml-auto">
+              ⚡ {(message.response_time_ms / 1000).toFixed(1)}s
+            </span>
+          )}
         </div>
       </div>
       {isUser && (

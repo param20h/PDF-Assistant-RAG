@@ -841,18 +841,19 @@ def ask_question_stream(
                 top_k=payload.top_k,
                 chat_history=chat_history,
             ):
-                yield chunk
-
                 # Parse to accumulate full answer for history
                 try:
                     if chunk.startswith("data: "):
                         data = json.loads(chunk[6:].strip())
+                        if data.get("type") == "done":
+                            continue  # We will yield our own done event with response time
                         if data.get("type") == "token":
                             full_answer += data.get("data", "")
                         elif data.get("type") == "sources":
                             sources = data.get("data", [])
                 except Exception:
                     pass
+                yield chunk
 
             # Cache the full answer for future identical questions
             if full_answer:
@@ -878,6 +879,9 @@ def ask_question_stream(
             query_text_var.set(payload.question)
             chunks_retrieved_var.set(chunks_count)
             logger.info(f"Streaming RAG chat query completed, retrieved {chunks_count} chunks")
+
+            elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+            yield f"data: {json.dumps({'type': 'done', 'response_time_ms': elapsed_ms})}\n\n"
         finally:
             record_query_response_time(time.perf_counter() - started_at)
 
