@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Edit2, Trash2, MessageSquare, ChevronLeft, X } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  MessageSquare,
+  ChevronLeft,
+  X,
+} from "lucide-react";
 import { useChatStore, type ChatSession } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +23,9 @@ export default function ChatSessionSidebar() {
   const renameSession = useChatStore((state) => state.renameSession);
   const deleteSession = useChatStore((state) => state.deleteSession);
   const setActiveSessionId = useChatStore((state) => state.setActiveSessionId);
-  const fetchSessionHistory = useChatStore((state) => state.fetchSessionHistory);
+  const fetchSessionHistory = useChatStore(
+    (state) => state.fetchSessionHistory,
+  );
 
   const [isOpen, setIsOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -38,6 +48,7 @@ export default function ChatSessionSidebar() {
       setEditTitle(defaultTitle);
     } catch (err) {
       console.error(err);
+      toast.error("Failed to create a new chat session.");
     } finally {
       setCreating(false);
     }
@@ -51,14 +62,26 @@ export default function ChatSessionSidebar() {
 
   const handleSaveRename = async (id: string, e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!editTitle.trim()) {
+    const trimmedTitle = editTitle.trim();
+    const session = sessions.find((s) => s.id === id);
+
+    if (!trimmedTitle) {
       setEditingId(null);
       return;
     }
+
+    // No-op if the title didn't actually change
+    if (session && trimmedTitle === session.title) {
+      setEditingId(null);
+      return;
+    }
+
     try {
-      await renameSession(id, editTitle.trim());
+      await renameSession(id, trimmedTitle);
+      toast.success("Chat renamed");
     } catch (err) {
       console.error(err);
+      toast.error("Failed to rename chat. Please try again.");
     } finally {
       setEditingId(null);
     }
@@ -69,8 +92,10 @@ export default function ChatSessionSidebar() {
     if (confirm("Are you sure you want to delete this chat session?")) {
       try {
         await deleteSession(id);
+        toast.success("Chat session deleted");
       } catch (err) {
         console.error(err);
+        toast.error("Failed to delete chat session.");
       }
     }
   };
@@ -81,7 +106,10 @@ export default function ChatSessionSidebar() {
     setMobileOpen(false);
   };
 
-  const handleSessionKeyDown = (session: ChatSession, e: React.KeyboardEvent) => {
+  const handleSessionKeyDown = (
+    session: ChatSession,
+    e: React.KeyboardEvent,
+  ) => {
     if (editingId === session.id) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -93,7 +121,9 @@ export default function ChatSessionSidebar() {
     <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Sidebar Header */}
       <div className="flex items-center justify-between p-3 border-b border-border/50 shrink-0 bg-card/45">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Chat Sessions</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Chat Sessions
+        </span>
         <div className="flex items-center gap-1.5">
           <Button
             onClick={handleCreate}
@@ -123,7 +153,9 @@ export default function ChatSessionSidebar() {
       <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin">
         {sessions.length === 0 ? (
           <div className="text-center py-8 px-4">
-            <p className="text-xs text-muted-foreground">No chat sessions. Click &quot;+&quot; to start a new chat.</p>
+            <p className="text-xs text-muted-foreground">
+              No chat sessions. Click &quot;+&quot; to start a new chat.
+            </p>
           </div>
         ) : (
           sessions.map((session) => {
@@ -143,12 +175,15 @@ export default function ChatSessionSidebar() {
                   "group flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-all duration-200 cursor-pointer border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   isActive
                     ? "bg-accent/80 border-accent text-accent-foreground shadow-sm"
-                    : "border-transparent hover:bg-card/60 hover:text-foreground text-muted-foreground"
+                    : "border-transparent hover:bg-card/60 hover:text-foreground text-muted-foreground",
                 )}
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <MessageSquare
-                    className={cn("w-4 h-4 shrink-0", isActive ? "text-primary" : "text-muted-foreground")}
+                    className={cn(
+                      "w-4 h-4 shrink-0",
+                      isActive ? "text-primary" : "text-muted-foreground",
+                    )}
                   />
 
                   {isEditing ? (
@@ -163,11 +198,19 @@ export default function ChatSessionSidebar() {
                         className="h-6 text-xs px-1 py-0 bg-background/50 border-input w-full"
                         autoFocus
                         onBlur={() => handleSaveRename(session.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setEditingId(null);
+                          }
+                        }}
                         aria-label={`Rename chat session ${session.title}`}
                       />
                     </form>
                   ) : (
-                    <span className="truncate text-xs font-medium">{session.title}</span>
+                    <span className="truncate text-xs font-medium">
+                      {session.title}
+                    </span>
                   )}
                 </div>
 
@@ -207,13 +250,13 @@ export default function ChatSessionSidebar() {
       <div
         className={cn(
           "relative hidden h-full border-r border-border/50 bg-card/20 select-none transition-all duration-300 md:flex",
-          isOpen ? "w-64" : "w-0"
+          isOpen ? "w-64" : "w-0",
         )}
       >
         <div
           className={cn(
             "flex h-full w-full flex-col overflow-hidden transition-opacity duration-200",
-            isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+            isOpen ? "opacity-100" : "opacity-0 pointer-events-none",
           )}
         >
           {sessionsContent()}
@@ -226,9 +269,13 @@ export default function ChatSessionSidebar() {
           size="icon"
           className={cn(
             "absolute -right-3 top-1/2 -translate-y-1/2 z-40 h-6 w-6 rounded-full border border-border bg-background shadow-md hover:bg-accent hover:text-accent-foreground",
-            !isOpen && "right-auto -left-3 rotate-180"
+            !isOpen && "right-auto -left-3 rotate-180",
           )}
-          aria-label={isOpen ? "Collapse chat sessions sidebar" : "Expand chat sessions sidebar"}
+          aria-label={
+            isOpen
+              ? "Collapse chat sessions sidebar"
+              : "Expand chat sessions sidebar"
+          }
           aria-expanded={isOpen}
         >
           <ChevronLeft className="w-3.5 h-3.5" />
@@ -266,7 +313,7 @@ export default function ChatSessionSidebar() {
         id="mobile-chat-sessions"
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-border/50 bg-card shadow-xl transition-transform duration-300 ease-out md:hidden",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
         aria-label="Chat sessions"
         aria-hidden={!mobileOpen}
