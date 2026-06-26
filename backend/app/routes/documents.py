@@ -701,14 +701,12 @@ def update_document(
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
+        Document.user_id == user.id,
         Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
         raise NotFoundException("Document")
-
-    if str(doc.user_id) != str(user.id):
-        raise ForbiddenException("You do not have permission to update this document")
 
     if update.name is not None:
         doc.original_name = update.name
