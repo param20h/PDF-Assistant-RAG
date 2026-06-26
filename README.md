@@ -91,57 +91,116 @@ The system uses **hybrid search (vector + BM25) with Reciprocal Rank Fusion** an
 > Contributor note: see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a route-by-route system map, request-flow diagrams, and Swagger/OpenAPI documentation guidance.
 
 ```mermaid
-graph TD
-    subgraph Frontend["Frontend (Next.js 16)"]
-        UI["Dashboard UI (React + Zustand)"]
-        Chat["Chat Panel (SSE Streaming)"]
-        Viewer["PDF Viewer"]
-    end
+flowchart TD
 
-    subgraph Backend["Backend (FastAPI 0.115+)"]
-        API["API Router (/api/v1)"]
-        Auth["Auth (JWT + bcrypt)"]
-        DB[(PostgreSQL / SQLite)]
-        Redis[(Redis)]
+subgraph group_backend["Backend"]
+  node_backend_main["App entry<br/>FastAPI app<br/>[main.py]"]
+  node_backend_routes["Routes<br/>API layer"]
+  node_backend_auth["Auth<br/>JWT/bcrypt<br/>[auth.py]"]
+  node_backend_documents["Documents<br/>doc lifecycle<br/>[documents.py]"]
+  node_backend_chat["Chat<br/>streaming RAG<br/>[chat.py]"]
+  node_backend_workspaces["Workspaces<br/>tenant scope<br/>[workspaces.py]"]
+  node_backend_graph_api["Graph API<br/>knowledge graph<br/>[graph.py]"]
+  node_backend_health["Health<br/>checks<br/>[health.py]"]
+  node_backend_admin["Admin<br/>ops API<br/>[admin.py]"]
+  node_backend_ingestion["Ingestion<br/>async pipeline"]
+  node_backend_rag_retrieval["Retrieval<br/>hybrid RAG<br/>[retriever.py]"]
+  node_backend_rag_generation["Generation<br/>prompt/LLM<br/>[prompts.py]"]
+  node_backend_graph_rag["Graph RAG<br/>entity graph<br/>[graph_builder.py]"]
+  node_backend_storage_db[("Database<br/>SQLAlchemy/PG<br/>[database.py]")]
+  node_backend_storage_vector[("Vector store<br/>ChromaDB<br/>[vectorstore.py]")]
+  node_backend_storage_cache[("Cache<br/>Redis/LRU<br/>[cache.py]")]
+  node_backend_queue["Queue<br/>Celery/Redis<br/>[celery_app.py]"]
+end
 
-        subgraph RAG["RAG Pipeline"]
-            Upload["Celery Ingestion Task"]
-            Embed["Local Embeddings (all-MiniLM-L6-v2)"]
-            EmbedCache["Embedding Cache (Redis + LRU)"]
-            BM25["BM25 Index"]
-            Retriever["Hybrid Retriever (Vector + BM25 + RRF)"]
-            Rerank["Cross-Encoder Reranker (BGE-v2-m3)"]
-            Agent["Agent / Generator"]
-        end
-    end
+subgraph group_frontend["Frontend"]
+  node_frontend_app["Next app<br/>App Router"]
+  node_frontend_chat["Chat UI<br/>stream client"]
+  node_frontend_documents["Docs UI<br/>document workspace"]
+  node_frontend_graph["Graph view<br/>knowledge graph<br/>[KnowledgeGraph.tsx]"]
+  node_frontend_state["State<br/>Zustand stores"]
+  node_frontend_api["API client<br/>fetch layer<br/>[api.ts]"]
+end
 
-    subgraph Storage["Storage"]
-        Chroma[(ChromaDB)]
-        Uploads[("File Storage")]
-    end
+subgraph group_ops["Ops & Integrations"]
+  node_integrations_bot["Discord bot<br/>integration<br/>[bot.py]"]
+  node_ops_obs["Observability<br/>metrics/tracing<br/>[observability.py]"]
+  node_ops_deploy["Deploy stack<br/>containers<br/>[docker-compose.yml]"]
+end
 
-    subgraph External["External Services"]
-        HF["HuggingFace Inference API (Qwen2.5-72B)"]
-    end
+node_frontend_app -->|"uses"| node_frontend_api
+node_frontend_api -->|"requests"| node_backend_main
+node_frontend_chat -->|"reads/writes"| node_frontend_state
+node_frontend_documents -->|"reads/writes"| node_frontend_state
+node_frontend_graph -->|"loads"| node_frontend_api
+node_backend_main -->|"mounts"| node_backend_routes
+node_backend_routes -->|"exposes"| node_backend_auth
+node_backend_routes -->|"exposes"| node_backend_documents
+node_backend_routes -->|"exposes"| node_backend_chat
+node_backend_routes -->|"exposes"| node_backend_workspaces
+node_backend_routes -->|"exposes"| node_backend_graph_api
+node_backend_routes -->|"exposes"| node_backend_health
+node_backend_routes -->|"exposes"| node_backend_admin
+node_backend_documents -->|"enqueues"| node_backend_queue
+node_backend_queue -->|"runs"| node_backend_ingestion
+node_backend_ingestion -->|"persists"| node_backend_storage_db
+node_backend_ingestion -->|"indexes"| node_backend_storage_vector
+node_backend_ingestion -->|"caches"| node_backend_storage_cache
+node_backend_chat -->|"retrieves"| node_backend_rag_retrieval
+node_backend_rag_retrieval -->|"searches"| node_backend_storage_vector
+node_backend_rag_retrieval -->|"filters"| node_backend_storage_db
+node_backend_rag_retrieval -->|"supplies context"| node_backend_rag_generation
+node_backend_rag_generation -->|"streams"| node_backend_chat
+node_backend_graph_api -->|"queries"| node_backend_graph_rag
+node_backend_graph_rag -->|"persists"| node_backend_storage_db
+node_backend_auth -->|"authenticates"| node_backend_storage_db
+node_backend_workspaces -->|"scopes"| node_backend_storage_db
+node_backend_health -->|"checks"| node_backend_storage_db
+node_backend_health -->|"checks"| node_backend_storage_cache
+node_backend_health -->|"checks"| node_backend_queue
+node_backend_health -->|"checks"| node_backend_storage_vector
+node_ops_obs -->|"observes"| node_backend_main
+node_ops_deploy -->|"runs"| node_backend_main
+node_ops_deploy -->|"runs"| node_frontend_app
+node_integrations_bot -.->|"integrates"| node_backend_routes
 
-    UI <-->|REST / Auth| API
-    Chat <-->|SSE Streaming| API
-    Viewer -->|Serve PDF| API
-    API <--> Auth
-    API <--> DB
-    API --> Upload
-    Upload --> Embed
-    Embed --> EmbedCache
-    Embed -->|Store Vectors| Chroma
-    Upload --> BM25
-    API <--> Retriever
-    Retriever -->|Semantic Search| Chroma
-    Retriever -->|Keyword Search| BM25
-    Retriever --> Rerank
-    Rerank --> Agent
-    Agent <-->|LLM Generation| HF
-    Upload -->|Store Files| Uploads
-    Redis <-->|Task Queue| Upload
+click node_backend_main "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/main.py"
+click node_backend_routes "https://github.com/param20h/pdf-assistant-rag/tree/dev/backend/app/routes"
+click node_backend_auth "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/routes/auth.py"
+click node_backend_documents "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/routes/documents.py"
+click node_backend_chat "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/routes/chat.py"
+click node_backend_workspaces "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/routes/workspaces.py"
+click node_backend_graph_api "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/routes/graph.py"
+click node_backend_health "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/routes/health.py"
+click node_backend_admin "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/routes/admin.py"
+click node_backend_ingestion "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/services/document_ingestion.py"
+click node_backend_rag_retrieval "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/rag/retriever.py"
+click node_backend_rag_generation "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/rag/prompts.py"
+click node_backend_graph_rag "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/rag/graph_builder.py"
+click node_backend_storage_db "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/database.py"
+click node_backend_storage_vector "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/rag/vectorstore.py"
+click node_backend_storage_cache "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/cache.py"
+click node_backend_queue "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/celery_app.py"
+click node_frontend_app "https://github.com/param20h/pdf-assistant-rag/tree/dev/frontend/src/app"
+click node_frontend_chat "https://github.com/param20h/pdf-assistant-rag/tree/dev/frontend/src/components/chat"
+click node_frontend_documents "https://github.com/param20h/pdf-assistant-rag/tree/dev/frontend/src/components/document"
+click node_frontend_graph "https://github.com/param20h/pdf-assistant-rag/blob/dev/frontend/src/components/graph/KnowledgeGraph.tsx"
+click node_frontend_state "https://github.com/param20h/pdf-assistant-rag/tree/dev/frontend/src/store"
+click node_frontend_api "https://github.com/param20h/pdf-assistant-rag/blob/dev/frontend/src/lib/api.ts"
+click node_integrations_bot "https://github.com/param20h/pdf-assistant-rag/blob/dev/bots/discord/bot.py"
+click node_ops_obs "https://github.com/param20h/pdf-assistant-rag/blob/dev/backend/app/observability.py"
+click node_ops_deploy "https://github.com/param20h/pdf-assistant-rag/blob/dev/docker-compose.yml"
+
+classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a
+classDef toneBlue fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#172554
+classDef toneAmber fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
+classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337
+classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
+classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
+class node_backend_main,node_backend_routes,node_backend_auth,node_backend_documents,node_backend_chat,node_backend_workspaces,node_backend_graph_api,node_backend_health,node_backend_admin,node_backend_ingestion,node_backend_rag_retrieval,node_backend_rag_generation,node_backend_graph_rag,node_backend_storage_db,node_backend_storage_vector,node_backend_storage_cache,node_backend_queue toneBlue
+class node_frontend_app,node_frontend_chat,node_frontend_documents,node_frontend_graph,node_frontend_state,node_frontend_api toneAmber
+class node_integrations_bot,node_ops_obs,node_ops_deploy toneMint
 ```
 
 <br/>
