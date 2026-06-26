@@ -51,6 +51,13 @@ async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
     Authenticate via `token` query param or expect first JSON message
     containing `{token, question, document_id?, session_id?}`.
     """
+    from app.config import get_settings as _get_settings
+    origin = websocket.headers.get("origin", "")
+    allowed = _get_settings().cors_origins
+    if origin and allowed and origin not in allowed:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
 
     # Simple DB-backed auth similar to get_current_user
