@@ -7,11 +7,13 @@ from limits.storage import storage_from_string
 from limits.strategies import FixedWindowRateLimiter
 from slowapi import Limiter
 from slowapi.util import get_remote_address
- 
- 
+
+from app.config import get_settings
+
+
 CHAT_QUERY_RATE_LIMIT = "15/minute"
- 
- 
+
+
 def rate_limit_key_func(request: Request) -> str:
     """Use authenticated user id when available, otherwise fall back to client IP."""
     authorization = request.headers.get("authorization", "")
@@ -33,11 +35,15 @@ limiter = Limiter(key_func=rate_limit_key_func)
 # SlowAPI's @limiter.limit decorator only wraps standard HTTP route handlers
 # (e.g. POST /chat/ask, /chat/ask/stream in app/routes/chat.py) — it has no
 # WebSocket support, so it can't be applied to the /chat/ws endpoint. This
-# dedicated strategy + in-memory storage backs a manual check that enforces
+# dedicated strategy + shared storage backs a manual check that enforces
 # the same CHAT_QUERY_RATE_LIMIT, keyed the same way ("user:<id>") that
 # rate_limit_key_func uses for the HTTP routes.
 _chat_ws_rate_limit_item = parse(CHAT_QUERY_RATE_LIMIT)
-_chat_ws_storage = storage_from_string("memory://")
+_settings = get_settings()
+if _settings.CELERY_BROKER_URL and _settings.CELERY_BROKER_URL.startswith("redis://"):
+    _chat_ws_storage = storage_from_string(_settings.CELERY_BROKER_URL)
+else:
+    _chat_ws_storage = storage_from_string("memory://")
 _chat_ws_limiter = FixedWindowRateLimiter(_chat_ws_storage)
 
 
