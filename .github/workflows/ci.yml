@@ -41,6 +41,11 @@ jobs:
           # Install project deps (skip heavy ML libs with stub extras)
           pip install -r backend/requirements.txt --quiet || true
 
+      - name: Pre-download HF model
+        run: |
+          python -m pip install --upgrade pip huggingface-hub
+          python backend/scripts/prefetch_model.py
+
       - name: Flake8 lint (errors only, no style noise)
         run: |
           flake8 backend/app \

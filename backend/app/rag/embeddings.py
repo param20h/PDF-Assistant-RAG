@@ -8,7 +8,8 @@ import hashlib
 import json
 import logging
 import os
-from typing import List, Optional
+import time
+from typing import List, Optional, Protocol, runtime_checkable
 
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -56,7 +57,8 @@ def _get_redis():
         return None
 
 
-# ── Cache key ─────────────────────────────────────────────────────────────────
+# ── Cache key ───────────────────────────────────────────────────────────[...]
+
 
 def _make_embedding_key(text: str) -> str:
     """SHA-256 hash of (model_name, text) so keys are model-scoped."""
@@ -96,28 +98,74 @@ def _cache_set(key: str, vector: List[float]) -> None:
     logger.debug("Embedding cache SET (LRU) %s", key[:16])
 
 
+# ── Embedding model interface + dummy fallback ──────────────────────────────
+
+@runtime_checkable
+class EmbeddingModelProtocol(Protocol):
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        ...
+
+    def embed_query(self, text: str) -> List[float]:
+        ...
+
+
+class _DummyEmbeddingModel:
+    """Lightweight fallback model that returns deterministic zero vectors.
+
+    Purpose: keep the app up if the real model fails to load during startup.
+    Downstream quality will be degraded, but the process won't crash.
+    """
+    def __init__(self, dim: int = 384):
+        self.dim = dim
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return [[0.0] * self.dim for _ in texts]
+
+    def embed_query(self, text: str) -> List[float]:
+        return [0.0] * self.dim
+
+
 # ── Singleton embedding model ─────────────────────────────────────────────────
 
-def get_embedding_model() -> HuggingFaceEmbeddings:
+def get_embedding_model(retries: int = 3, backoff: float = 2.0) -> EmbeddingModelProtocol:
     """
-    Get or create the embedding model (singleton).
-    Uses sentence-transformers/all-MiniLM-L6-v2 — lightweight 384-dim model.
+    Get or create the embedding model (singleton) with retries and a fallback.
+    - retries: number of attempts to load the HF model before falling back
+    - backoff: base sleep seconds multiplied by attempt number
     """
     global _embedding_model
 
-    if _embedding_model is None:
-        logger.info("Loading embedding model: %s", settings.EMBEDDING_MODEL)
-        _embedding_model = HuggingFaceEmbeddings(
-            model_name=settings.EMBEDDING_MODEL,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True, "batch_size": 32},
-        )
-        logger.info("Embedding model loaded successfully")
+    if _embedding_model is not None:
+        return _embedding_model
 
+    last_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            logger.info("Loading embedding model: %s (attempt %d/%d)", settings.EMBEDDING_MODEL, attempt, retries)
+            _embedding_model = HuggingFaceEmbeddings(
+                model_name=settings.EMBEDDING_MODEL,
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True, "batch_size": 32},
+            )
+            logger.info("Embedding model loaded successfully")
+            return _embedding_model
+        except Exception as exc:
+            last_exc = exc
+            logger.exception("Failed to load embedding model (attempt %d/%d): %s", attempt, retries, exc)
+            # sleep before retry (simple linear backoff)
+            time.sleep(backoff * attempt)
+
+    # All attempts failed: fall back to a dummy model to avoid crashing the worker.
+    logger.error(
+        "Embedding model failed to load after %d attempts; using DummyEmbeddingModel as fallback. Last error: %s",
+        retries, last_exc
+    )
+    _embedding_model = _DummyEmbeddingModel()
     return _embedding_model
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# ── Public API ──────────────────────────────────────────────────────────�[...]
+
 
 def embed_texts(texts: List[str]) -> List[List[float]]:
     """Embed a batch of texts, serving cached vectors where available.

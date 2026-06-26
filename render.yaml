@@ -3,7 +3,9 @@ services:
     name: rag-pdf-assistant
     runtime: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && gunicorn app.main:app --bind 0.0.0.0:$PORT --workers 2 -k uvicorn.workers.UvicornWorker
+    startCommand: bash backend/scripts/start_and_wait.sh
+    healthCheckPath: /health
+    numInstances: 1
     envVars:
       - key: SECRET_KEY
         generateValue: true
