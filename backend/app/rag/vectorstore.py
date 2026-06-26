@@ -3,8 +3,21 @@ ChromaDB vector store operations.
 Per-user collections for data isolation.
 """
 import logging
+import threading
 from typing import List, Dict, Any, Optional
 from app.config import get_settings
+
+
+_ingestion_locks: Dict[str, threading.Lock] = {}
+_ingestion_locks_lock = threading.Lock()
+
+
+def _get_ingestion_lock(document_id: str, user_id: str) -> threading.Lock:
+    key = f"{user_id}:{document_id}"
+    with _ingestion_locks_lock:
+        if key not in _ingestion_locks:
+            _ingestion_locks[key] = threading.Lock()
+        return _ingestion_locks[key]
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -55,75 +68,76 @@ def store_chunks(
     if not chunks:
         return 0
 
-    # Delete existing chunks for this document and user before inserting new ones
-    # to avoid stale/orphaned chunks in ChromaDB and BM25.
-    delete_document_chunks(document_id, user_id)
+    # Serialize the entire delete+insert under a per-document lock so
+    # concurrent ingestion tasks cannot interleave and cause chunk loss
+    # or inconsistent state between ChromaDB and the DB chunk_count.
+    lock = _get_ingestion_lock(document_id, user_id)
+    with lock:
+        delete_document_chunks(document_id, user_id)
 
-    # Build and store BM25 index
-    from app.rag.bm25 import store_bm25_index
-    try:
-        store_bm25_index(chunks, document_id, filename, user_id)
-    except Exception as e:
-        logger.error(f"Could not build BM25 index: {e}")
+        # Build and store BM25 index
+        from app.rag.bm25 import store_bm25_index
+        try:
+            store_bm25_index(chunks, document_id, filename, user_id)
+        except Exception as e:
+            logger.error(f"Could not build BM25 index: {e}")
 
-    # Generate captions for any extracted images before embedding
-    try:
-        from app.rag.vision import generate_captions_for_chunks
+        # Generate captions for any extracted images before embedding
+        try:
+            from app.rag.vision import generate_captions_for_chunks
 
-        generate_captions_for_chunks(chunks)
-    except Exception as e:
-        logger.warning(f"Could not generate image captions: {e}")
+            generate_captions_for_chunks(chunks)
+        except Exception as e:
+            logger.warning(f"Could not generate image captions: {e}")
 
-    client = get_chroma_client()
-    from app.rag.embeddings import get_embedding_model
+        client = get_chroma_client()
+        from app.rag.embeddings import get_embedding_model
 
-    embedding_model = get_embedding_model()
+        embedding_model = get_embedding_model()
 
-    collection_name = get_collection_name(user_id)
-    collection = client.get_or_create_collection(
-        name=collection_name,
-        metadata={"hnsw:space": "cosine"},
-    )
-
-    # ── Prepare batch data ───────────────────────────
-    texts = [chunk["text"] for chunk in chunks]
-    ids = [f"{document_id}_{chunk['chunk_index']}" for chunk in chunks]
-    metadatas = [
-        {
-            "text": chunk["text"],
-            "filename": filename,
-            "document_id": document_id,
-            "page": chunk["page"],
-            "chunk_index": chunk["chunk_index"],
-            "chunk_type": chunk.get("chunk_type", "text"),
-            **({"bbox": chunk.get("bbox", "")} if chunk.get("bbox") else {}),
-            **({"table_index": chunk.get("table_index", 0)} if chunk.get("chunk_type") == "table" else {}),
-            # Indicate whether this chunk was originally an image and include a short caption
-            **({"is_image": True, "image_caption": chunk.get("image_caption", "")}
-               if chunk.get("is_image") else {}),
-        }
-        for chunk in chunks
-    ]
-
-    # ── Embed and upsert in batches ──────────────────
-    batch_size = 50
-    total_stored = 0
-
-    for i in range(0, len(texts), batch_size):
-        batch_texts = texts[i:i + batch_size]
-        batch_ids = ids[i:i + batch_size]
-        batch_metadatas = metadatas[i:i + batch_size]
-
-        # Generate embeddings
-        embeddings = embedding_model.embed_documents(batch_texts)
-
-        collection.add(
-            ids=batch_ids,
-            embeddings=embeddings,
-            metadatas=batch_metadatas,
-            documents=batch_texts,
+        collection_name = get_collection_name(user_id)
+        collection = client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"},
         )
-        total_stored += len(batch_texts)
+
+        # ── Prepare batch data ───────────────────────────
+        texts = [chunk["text"] for chunk in chunks]
+        ids = [f"{document_id}_{chunk['chunk_index']}" for chunk in chunks]
+        metadatas = [
+            {
+                "text": chunk["text"],
+                "filename": filename,
+                "document_id": document_id,
+                "page": chunk["page"],
+                "chunk_index": chunk["chunk_index"],
+                "chunk_type": chunk.get("chunk_type", "text"),
+                **({"bbox": chunk.get("bbox", "")} if chunk.get("bbox") else {}),
+                **({"table_index": chunk.get("table_index", 0)} if chunk.get("chunk_type") == "table" else {}),
+                **({"is_image": True, "image_caption": chunk.get("image_caption", "")}
+                   if chunk.get("is_image") else {}),
+            }
+            for chunk in chunks
+        ]
+
+        # ── Embed and upsert in batches ──────────────────
+        batch_size = 50
+        total_stored = 0
+
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i + batch_size]
+            batch_ids = ids[i:i + batch_size]
+            batch_metadatas = metadatas[i:i + batch_size]
+
+            embeddings = embedding_model.embed_documents(batch_texts)
+
+            collection.add(
+                ids=batch_ids,
+                embeddings=embeddings,
+                metadatas=batch_metadatas,
+                documents=batch_texts,
+            )
+            total_stored += len(batch_texts)
 
     logger.info(f"Stored {total_stored} chunks for document {document_id}")
     return total_stored
