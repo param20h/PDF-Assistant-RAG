@@ -19,7 +19,6 @@ from app.cache import get_cached_response, set_cached_response
 from app.database import get_db
 from app.exceptions import (
     NotFoundException,
-    UnauthorizedException,
     ValidationException, )
 from app.metrics import record_query_response_time
 from app.models import User, ChatMessage, Document, SharedMessage, ChatSession
@@ -51,6 +50,13 @@ async def chat_ws(websocket: WebSocket, token: Optional[str] = Query(None)):
     Authenticate via `token` query param or expect first JSON message
     containing `{token, question, document_id?, session_id?}`.
     """
+    from app.config import get_settings as _get_settings
+    origin = websocket.headers.get("origin", "")
+    allowed = _get_settings().cors_origins
+    if origin and allowed and origin not in allowed:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
 
     # Simple DB-backed auth similar to get_current_user
@@ -946,26 +952,17 @@ def get_chat_history(
     summary="Export document chat history",
     description=(
         "Downloads one document's chat history as Markdown, plain text, or PDF. "
-        "The browser download flow authenticates with a query token."
+        "Uses standard authentication — no query tokens."
     ),
 )
 def export_chat_history(
     document_id: str,
     format: str = "md",
-    token: Optional[str] = None,
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Export the chat history for a document as a downloadable file."""
-    from app.auth import decode_token as _decode
-
-    resolved_user = None
-    if token:
-        user_id = _decode(token)
-        if user_id:
-            resolved_user = db.query(User).filter(User.id == user_id).first()
-
-    if resolved_user is None:
-        raise UnauthorizedException("Authentication required")
+    resolved_user = user
 
     if format not in ("md", "txt", "pdf"):
         raise ValidationException("Format must be 'md', 'txt', or 'pdf'")

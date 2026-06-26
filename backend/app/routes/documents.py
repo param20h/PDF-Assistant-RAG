@@ -198,10 +198,22 @@ async def validate_upload(file: UploadFile):
         pass
 
 
-def _crawl_in_new_loop(url: str) -> str:
+def _crawl_in_new_loop(url: str, validated_hostname: str = "") -> str:
     """Run the async crawler in a fresh event loop on a worker thread.
-    On Windows this must be a ProactorEventLoop to support subprocesses.
+
+    Re-resolves the hostname to an IP immediately before crawling to
+    narrow the DNS-rebinding TOCTOU window. On Windows this must be a
+    ProactorEventLoop to support subprocesses.
     """
+    if validated_hostname:
+        try:
+            addr = socket.getaddrinfo(validated_hostname, 80)[0][4][0]
+            ip = ipaddress.ip_address(addr)
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                raise ValidationException("URL resolves to an internal or private address")
+        except (socket.gaierror, ValueError, IndexError):
+            raise ValidationException("Could not resolve URL host")
+
     if sys.platform == "win32":
         loop = asyncio.ProactorEventLoop()
     else:
@@ -465,7 +477,7 @@ async def upload_document_url(
         # NotImplementedError on Windows (SelectorEventLoop can't spawn subprocesses)
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             markdown = await asyncio.get_event_loop().run_in_executor(
-                pool, _crawl_in_new_loop, payload.url
+                pool, _crawl_in_new_loop, payload.url, hostname
             )
 
         if not markdown:
@@ -701,14 +713,12 @@ def update_document(
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
+        Document.user_id == user.id,
         Document.is_deleted.is_(False),
     ).first()
 
     if not doc:
         raise NotFoundException("Document")
-
-    if str(doc.user_id) != str(user.id):
-        raise ForbiddenException("You do not have permission to update this document")
 
     if update.name is not None:
         doc.original_name = update.name
