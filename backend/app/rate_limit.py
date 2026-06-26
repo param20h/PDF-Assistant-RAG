@@ -7,11 +7,13 @@ from limits.storage import storage_from_string
 from limits.strategies import FixedWindowRateLimiter
 from slowapi import Limiter
 from slowapi.util import get_remote_address
- 
- 
+
+
 CHAT_QUERY_RATE_LIMIT = "15/minute"
- 
- 
+LOGIN_RATE_LIMIT = "5/minute"
+REGISTER_RATE_LIMIT = "3/minute"
+
+
 def rate_limit_key_func(request: Request) -> str:
     """Use authenticated user id when available, otherwise fall back to client IP."""
     authorization = request.headers.get("authorization", "")
@@ -23,7 +25,7 @@ def rate_limit_key_func(request: Request) -> str:
             if user_id:
                 return f"user:{user_id}"
         except Exception:
-           pass
+            pass
     return f"ip:{get_remote_address(request)}"
 
 

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import jwt
-from fastapi import APIRouter, Depends, Query, status, Cookie, Response, Body
+from fastapi import APIRouter, Depends, Query, Request, status, Cookie, Response, Body
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from google_auth_oauthlib.flow import Flow
@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.config import get_settings
 from app.database import get_db
+from app.rate_limit import limiter, LOGIN_RATE_LIMIT, REGISTER_RATE_LIMIT
 from app.exceptions import (
     AppException,
     ConflictException,
@@ -179,7 +180,8 @@ def _unique_google_username(email: str, db: Session) -> str:
 
 
 @router.post("/register", response_model=RegistrationResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: UserRegister, db: Session = Depends(get_db)):
+@limiter.limit(REGISTER_RATE_LIMIT)
+async def register(request: Request, payload: UserRegister, db: Session = Depends(get_db)):
     """
     Register a new user account and send a verification email.
 
@@ -236,7 +238,8 @@ async def register(payload: UserRegister, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit(LOGIN_RATE_LIMIT)
+def login(request: Request, payload: UserLogin, db: Session = Depends(get_db)):
     """
     Authenticate a user with email and password.
 
@@ -292,7 +295,8 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 
 
 @router.post("/google", response_model=TokenResponse)
-def login_with_google(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
+@limiter.limit(LOGIN_RATE_LIMIT)
+def login_with_google(request: Request, payload: GoogleLoginRequest, db: Session = Depends(get_db)):
     """
     Authenticate with a Google Identity Services ID token.
 

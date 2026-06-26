@@ -14,6 +14,8 @@ from slowapi.errors import RateLimitExceeded
 from app.auth import create_access_token
 from app.rate_limit import CHAT_QUERY_RATE_LIMIT, rate_limit_key_func
 from app.routes.chat import ask_question, ask_question_stream
+from app.rate_limit import LOGIN_RATE_LIMIT, REGISTER_RATE_LIMIT
+from app.routes.auth import login, register, login_with_google
 from app.main import app
 
 
@@ -46,6 +48,12 @@ def test_chat_endpoints_use_required_rate_limit():
     assert ask_question.__rate_limits__ == [CHAT_QUERY_RATE_LIMIT]
     assert ask_question_stream.__rate_limits__ == [CHAT_QUERY_RATE_LIMIT]
 
+def test_auth_endpoints_use_required_rate_limit():
+    assert LOGIN_RATE_LIMIT == "5/minute"
+    assert REGISTER_RATE_LIMIT == "3/minute"
+    assert login.__rate_limits__ == [LOGIN_RATE_LIMIT]
+    assert register.__rate_limits__ == [REGISTER_RATE_LIMIT]
+    assert login_with_google.__rate_limits__ == [LOGIN_RATE_LIMIT]
 
 # ── Middleware 429 Response Verification ──────────────────────────────────────
 
