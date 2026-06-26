@@ -255,14 +255,18 @@ async def upload_document(
 
     # ── Validate and save file to disk ───────────────
     temp_path = await validate_upload(file)
+    try:
+        user_dir = os.path.join(settings.UPLOAD_DIR, user.id)
+        os.makedirs(user_dir, exist_ok=True)
 
-    user_dir = os.path.join(settings.UPLOAD_DIR, user.id)
-    os.makedirs(user_dir, exist_ok=True)
+        stored_filename = f"{uuid.uuid4().hex}.{ext}"
+        filepath = os.path.join(user_dir, stored_filename)
 
-    stored_filename = f"{uuid.uuid4().hex}.{ext}"
-    filepath = os.path.join(user_dir, stored_filename)
+        shutil.move(temp_path, filepath)
+    except Exception:
+        Path(temp_path).unlink(missing_ok=True)
+        raise
 
-    shutil.move(temp_path, filepath)
     file_size = Path(filepath).stat().st_size
 
     # ── Create database record ───────────────────────
@@ -359,10 +363,13 @@ async def batch_upload_documents(
                 )
 
             temp_path = await validate_upload(file)
-
-            stored_filename = f"{uuid.uuid4().hex}.{ext}"
-            filepath = os.path.join(user_dir, stored_filename)
-            shutil.move(temp_path, filepath)
+            try:
+                stored_filename = f"{uuid.uuid4().hex}.{ext}"
+                filepath = os.path.join(user_dir, stored_filename)
+                shutil.move(temp_path, filepath)
+            except Exception:
+                Path(temp_path).unlink(missing_ok=True)
+                raise
             file_size = Path(filepath).stat().st_size
 
             document = Document(
