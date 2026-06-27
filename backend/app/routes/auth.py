@@ -517,7 +517,8 @@ def update_password(payload: UpdatePassword,
     Requires the user's current password to be supplied and verified
     against the stored hash before allowing the change. This prevents
     a stolen or leaked access token from being used to take over an
-    account by changing its password without knowing the original one.
+    account by changing its password without ever knowing the original
+    one.
 
     Args:
         payload: UpdatePassword object containing `current_password`,
@@ -530,37 +531,39 @@ def update_password(payload: UpdatePassword,
         UpdatePasswordResponse: The updated user object.
 
     Raises:
-        HTTPException: 400 if:
+        ValidationException: 400 if:
+            - `current_password` is missing.
             - `current_password` does not match the stored hash.
             - `password` or `confirm_password` is missing or empty.
             - The two new password fields do not match.
+            - The new password is the same as the current password.
             - A database error (SQLAlchemyError) occurs during commit.
     """
     if not payload.current_password:
-        raise HTTPException(status_code=400, detail="Current password is required")
+        raise ValidationException("Current password is required")
 
     if not verify_password(payload.current_password, user.hashed_password):
-        raise HTTPException(status_code=400, detail="Current password is incorrect")
+        raise ValidationException("Current password is incorrect")
 
     if not payload.password or not payload.confirm_password:
-        raise HTTPException(status_code=400, detail="Password and confirm_password are required")
+        raise ValidationException("Password and confirm_password are required")
 
     if payload.password != payload.confirm_password:
-        raise HTTPException(status_code=400, detail="Password and confirm_password are different")
+        raise ValidationException("Password and confirm_password are different")
 
     if payload.password == payload.current_password:
-        raise HTTPException(status_code=400, detail="New password must be different from the current password")
+        raise ValidationException("New password must be different from the current password")
 
     try:
         user.hashed_password = hash_password(payload.password)
         db.commit()
         db.refresh(user)
         return user
-    except HTTPException:
+    except ValidationException:
         raise
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Database error")
+        raise ValidationException("Database error")
 
 
 @router.post("/change-password", response_model=MessageResponse)
