@@ -79,6 +79,7 @@ class UserUpdateResponse(BaseModel):
     email: EmailStr
 
 class UpdatePassword(BaseModel):
+    current_password: str
     password: str
     confirm_password: str
 

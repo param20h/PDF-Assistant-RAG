@@ -509,50 +509,58 @@ def update_user_info(payload:UserUpdate,
         raise ValidationException("Database error")
 
 @router.put("/password")
-def update_password(payload:UpdatePassword,
+def update_password(payload: UpdatePassword,
                     user: User = Depends(get_current_user),
-                    db: Session = Depends(get_db))-> UpdatePasswordResponse:
+                    db: Session = Depends(get_db)) -> UpdatePasswordResponse:
     """Update the authenticated user's password.
 
-    Validates that both the new password and confirmation are provided and
-    match each other. If valid, the password is hashed and stored. The user
-    record is then committed to the database.
+    Requires the user's current password to be supplied and verified
+    against the stored hash before allowing the change. This prevents
+    a stolen or leaked access token from being used to take over an
+    account by changing its password without knowing the original one.
 
     Args:
-        payload: UpdatePassword object containing `password` and `confirm_password` fields.
-        user: The currently authenticated user, obtained from the `get_current_user` dependency.
+        payload: UpdatePassword object containing `current_password`,
+            `password`, and `confirm_password` fields.
+        user: The currently authenticated user, obtained from the
+            `get_current_user` dependency.
         db: SQLAlchemy database session, obtained from the dependency.
 
     Returns:
-        UpdatePasswordResponse: The updated user object (typically containing 
-        user details excluding the password hash).
+        UpdatePasswordResponse: The updated user object.
 
     Raises:
         HTTPException: 400 if:
-            - Either `password` or `confirm_password` is missing or empty.
-            - The two password fields do not match.
+            - `current_password` does not match the stored hash.
+            - `password` or `confirm_password` is missing or empty.
+            - The two new password fields do not match.
             - A database error (SQLAlchemyError) occurs during commit.
-
-    Note:
-        The function hashes the password using `hash_password()` before
-        saving. Any `SQLAlchemyError` triggers a rollback and raises a 400
-        response.
     """
-    if not payload.password and not payload.confirm_password:
-        raise ValidationException("Password and confirm_password are required")
-    if len(payload.password) == 0 and len(payload.confirm_password) == 0:
-        raise ValidationException("Password and confirm_password are required")
+    if not payload.current_password:
+        raise HTTPException(status_code=400, detail="Current password is required")
+
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    if not payload.password or not payload.confirm_password:
+        raise HTTPException(status_code=400, detail="Password and confirm_password are required")
+
     if payload.password != payload.confirm_password:
-        raise ValidationException("Password and confirm_password are different")
+        raise HTTPException(status_code=400, detail="Password and confirm_password are different")
+
+    if payload.password == payload.current_password:
+        raise HTTPException(status_code=400, detail="New password must be different from the current password")
+
     try:
-        hashed_password = hash_password(payload.password)
-        user.hashed_password = hashed_password
+        user.hashed_password = hash_password(payload.password)
         db.commit()
         db.refresh(user)
         return user
+    except HTTPException:
+        raise
     except SQLAlchemyError:
         db.rollback()
-        raise ValidationException("Database error")
+        raise HTTPException(status_code=400, detail="Database error")
 
 
 @router.post("/change-password", response_model=MessageResponse)
