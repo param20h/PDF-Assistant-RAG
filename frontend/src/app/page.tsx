@@ -56,6 +56,8 @@ export default function HomePage() {
   const router = useRouter();
   const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
 
+  const docsUrl = (process.env.NEXT_PUBLIC_API_URL || "https://param20h-pdf-assit-rag.hf.space") + "/docs";
+
   useEffect(() => {
     if (!loading && user) {
       router.replace("/dashboard");
@@ -163,7 +165,7 @@ export default function HomePage() {
             </Link>
 
             <a
-              href="/docs"
+              href={docsUrl}
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Open Developer API Swagger documentation"
@@ -238,7 +240,7 @@ export default function HomePage() {
                 <Link href="/register" className="hover:text-foreground transition-colors">Create Account</Link>
               </li>
               <li>
-                <a href="/docs" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Developer API</a>
+                <a href={docsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Developer API</a>
               </li>
             </ul>
           </div>
