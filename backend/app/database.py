@@ -198,6 +198,7 @@ def _migrate_schema():
         ("documents", "processing_started_at", "ALTER TABLE documents ADD COLUMN processing_started_at TIMESTAMP"),
         ("documents", "completed_at", "ALTER TABLE documents ADD COLUMN completed_at TIMESTAMP"),
         ("documents", "extracted_urls", "ALTER TABLE documents ADD COLUMN extracted_urls TEXT"),
+        ("documents", "keywords", "ALTER TABLE documents ADD COLUMN keywords TEXT"),
     ]
     for table, column, ddl in docs_migrations:
         if column not in existing_docs_columns:
