@@ -161,9 +161,17 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        if self.ENVIRONMENT == "production":
-            return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
-        return ["*"]
+        origins = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://pdf-assistant-rag.vercel.app",
+        ]
+        if self.ALLOWED_ORIGINS:
+            for o in self.ALLOWED_ORIGINS.split(","):
+                o_strip = o.strip()
+                if o_strip and o_strip not in origins:
+                    origins.append(o_strip)
+        return origins
 
     @model_validator(mode="after")
     def validate_vision_provider_keys(self) -> "Settings":
