@@ -13,8 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -310,63 +309,15 @@ def db_health():
         "db": db_status
     }
 
-# ── Serve Next.js Frontend (production) ──────────────
-# In local development, frontend build is at ../../frontend/out relative to backend/app/main.py
-# In Docker container (where app is copied to /app/app), frontend build is at /app/frontend/out (which is ../frontend/out relative to /app/app/main.py)
-_local_build_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "out"))
-_docker_build_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "out"))
+# ── API Root ──────────────────────────────────────────
+# Frontend is hosted separately on Vercel/Netlify.
+# This backend serves only the API.
+@app.get("/")
+def root():
+    return {
+        "message": f"Welcome to {settings.APP_NAME} API",
+        "docs": "/docs",
+        "health": "/api/health",
+    }
 
-if os.path.exists(_docker_build_dir):
-    FRONTEND_BUILD_DIR = _docker_build_dir
-else:
-    FRONTEND_BUILD_DIR = _local_build_dir
-
-if os.path.exists(FRONTEND_BUILD_DIR):
-    # Serve static assets (JS, CSS, images)
-    app.mount("/_next", StaticFiles(directory=os.path.join(FRONTEND_BUILD_DIR, "_next")), name="next_static")
-
-    # Serve other static files if they exist
-    static_dir = os.path.join(FRONTEND_BUILD_DIR, "static")
-    if os.path.exists(static_dir):
-        app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
-    async def serve_frontend(full_path: str):
-        """Serve Next.js static export — tries exact file, then .html, then index.html."""
-        # Try exact file path
-        file_path = os.path.join(FRONTEND_BUILD_DIR, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-
-        # Try with .html extension
-        html_path = os.path.join(FRONTEND_BUILD_DIR, f"{full_path}.html")
-        if os.path.isfile(html_path):
-            return FileResponse(html_path)
-
-        # Try .txt for RSC payloads (Next.js uses .txt for RSC data)
-        txt_path = os.path.join(FRONTEND_BUILD_DIR, f"{full_path}.txt")
-        if os.path.isfile(txt_path):
-            return FileResponse(txt_path)
-
-        # Try as directory index
-        index_path = os.path.join(FRONTEND_BUILD_DIR, full_path, "index.html")
-        if os.path.isfile(index_path):
-            return FileResponse(index_path)
-
-        # Fallback to root index.html (SPA routing)
-        root_index = os.path.join(FRONTEND_BUILD_DIR, "index.html")
-        if os.path.isfile(root_index):
-            return FileResponse(root_index)
-
-        return FileResponse(root_index) if os.path.exists(root_index) else {"error": "Not found"}
-else:
-    logger.info("No frontend build found — running in API-only mode")
-
-    @app.get("/")
-    def root():
-        return {
-            "message": f"Welcome to {settings.APP_NAME} API",
-            "docs": "/docs",
-            "health": "/api/health",
-        }
 app.include_router(profile_router)
