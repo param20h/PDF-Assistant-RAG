@@ -144,6 +144,8 @@ def _migrate_schema():
             "verification_token_created_at",
             "ALTER TABLE users ADD COLUMN verification_token_created_at TIMESTAMP",
         ),
+        ("users", "display_name", "ALTER TABLE users ADD COLUMN display_name VARCHAR(120)"),
+        ("users", "avatar_url", "ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500)"),
     ]
     for table, column, ddl in users_migrations:
         if column not in existing_users_columns:

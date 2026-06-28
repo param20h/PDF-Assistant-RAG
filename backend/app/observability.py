@@ -216,6 +216,7 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         start_time = time.perf_counter()
+        response = None
         
         # Unique Request ID per request
         request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
