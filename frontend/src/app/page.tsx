@@ -212,20 +212,65 @@ export default function HomePage() {
       </section>
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
-      <footer className="py-6 border-t border-border/40">
-        <p className="text-center text-xs text-muted-foreground/60 tracking-wide">
-          Built with{" "}
-          {["FastAPI", "LangChain", "ChromaDB", "HuggingFace", "Next.js"].map(
-            (tech, i, arr) => (
-              <span key={tech}>
-                <span className="text-muted-foreground">{tech}</span>
-                {i < arr.length - 1 && (
-                  <span className="mx-1.5 text-muted-foreground/30">·</span>
-                )}
+      <footer className="border-t border-border/40 bg-card/10 backdrop-blur-sm mt-auto">
+        <div className="max-w-6xl mx-auto px-6 py-10 md:py-16 grid grid-cols-1 md:grid-cols-4 gap-8">
+          {/* Brand info */}
+          <div className="md:col-span-2 space-y-4">
+            <div className="flex items-center gap-2">
+              <img src="/logo.jpg" alt="Logo" className="w-6 h-6 rounded-md object-cover" />
+              <span className="font-semibold text-sm tracking-wide text-foreground">
+                Document AI Analyst
               </span>
-            )
-          )}
-        </p>
+            </div>
+            <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
+              Enterprise Retrieval-Augmented Generation (RAG) platform. Analyze complex PDF documents and chat with intelligence.
+            </p>
+          </div>
+
+          {/* Links column 1 */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Product</h4>
+            <ul className="space-y-2 text-xs text-muted-foreground">
+              <li>
+                <Link href="/login" className="hover:text-foreground transition-colors">Sign In</Link>
+              </li>
+              <li>
+                <Link href="/register" className="hover:text-foreground transition-colors">Create Account</Link>
+              </li>
+              <li>
+                <a href="/docs" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Developer API</a>
+              </li>
+            </ul>
+          </div>
+
+          {/* Links column 2 */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Legal & Privacy</h4>
+            <ul className="space-y-2 text-xs text-muted-foreground">
+              <li>
+                <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
+              </li>
+              <li>
+                <Link href="/terms" className="hover:text-foreground transition-colors">Terms of Service</Link>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="max-w-6xl mx-auto px-6 py-6 border-t border-border/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-[11px] text-muted-foreground/60">
+            &copy; {new Date().getFullYear()} Document AI Analyst. All rights reserved.
+          </p>
+          <p className="text-[11px] text-muted-foreground/50 flex flex-wrap items-center gap-1.5 justify-center">
+            Built with
+            {["FastAPI", "LangChain", "ChromaDB", "HuggingFace", "Next.js"].map((tech, i, arr) => (
+              <span key={tech} className="flex items-center gap-1.5">
+                <span className="text-muted-foreground/70">{tech}</span>
+                {i < arr.length - 1 && <span className="text-muted-foreground/30">·</span>}
+              </span>
+            ))}
+          </p>
+        </div>
       </footer>
 
       {/* Hall of Fame modal */}

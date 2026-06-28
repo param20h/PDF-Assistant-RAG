@@ -472,42 +472,7 @@ export default function DocumentSidebar({
           )}
         </div>
 
-        <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <Cloud className="w-4 h-4 text-muted-foreground" />
-            <div className="min-w-0">
-              <p className="text-sm font-medium leading-tight">Google Drive</p>
-              <p className="text-xs text-muted-foreground">
-                {driveConnected
-                  ? "Connected for PDF sync"
-                  : "Connect to import PDFs"}
-              </p>
-            </div>
-          </div>
-          {driveError && (
-            <p className="text-xs text-destructive" role="alert">
-              {driveError}
-            </p>
-          )}
-          <Button
-            variant={driveConnected ? "outline" : "secondary"}
-            size="sm"
-            className="w-full"
-            onClick={
-              driveConnected ? handleDisconnectDrive : handleConnectDrive
-            }
-            disabled={driveLoading || driveConnecting}
-          >
-            {driveConnecting || driveLoading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Cloud className="w-3.5 h-3.5" />
-            )}
-            {driveConnected
-              ? "Disconnect Google Drive"
-              : "Connect Google Drive"}
-          </Button>
-        </div>
+
       </div>
 
       {/* ── Documents List ──────────────────────────── */}
