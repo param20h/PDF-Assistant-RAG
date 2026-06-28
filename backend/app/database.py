@@ -217,6 +217,7 @@ def _migrate_schema():
         existing_chat_columns = set()
     chat_migrations = [
         ("chat_messages", "feedback", "ALTER TABLE chat_messages ADD COLUMN feedback VARCHAR(10)"),
+        ("chat_messages", "session_id", "ALTER TABLE chat_messages ADD COLUMN session_id CHAR(36)"),
     ]
     for table, column, ddl in chat_migrations:
         if column not in existing_chat_columns:
@@ -228,6 +229,13 @@ def _migrate_schema():
                 logger.warning(
                     "Migration skipped (may already exist): %s.%s", table, column
                 )
+    
+    # Ensure index exists on session_id
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_chat_messages_session_id ON chat_messages (session_id)"))
+    except Exception:
+        pass
 
 
     # Migrate documents — embedding cache tracking
