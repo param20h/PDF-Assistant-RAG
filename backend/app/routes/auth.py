@@ -987,8 +987,9 @@ async def huggingface_callback(
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
 
-    # 6. Set tokens as HttpOnly cookies and Redirect
-    redirect_dest = f"{settings.FRONTEND_URL}/dashboard" if settings.ENVIRONMENT == "development" else "/dashboard"
+    # 6. Set tokens as HttpOnly cookies and Redirect (appending tokens to query parameters for cross-origin frontend support)
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    redirect_dest = f"{frontend_url}/dashboard?token={access_token}&refresh_token={refresh_token}"
     response = RedirectResponse(
         url=redirect_dest,
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
