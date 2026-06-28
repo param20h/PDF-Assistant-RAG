@@ -172,9 +172,7 @@ export default function Header({
             className="flex items-center gap-2 hover:opacity-75 transition-opacity cursor-pointer"
             aria-label="Go to homepage"
           >
-            <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
-              <Brain className="w-4 h-4 text-primary" />
-            </div>
+            <img src="/logo.jpg" alt="Logo" className="w-7 h-7 rounded-lg object-cover" />
             <span className="font-semibold text-sm hidden sm:inline">
               Document AI Analyst
             </span>
@@ -358,9 +356,7 @@ export default function Header({
             aria-label="Go to homepage"
             onClick={() => setSheetOpen(false)}
           >
-            <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center">
-              <Brain className="w-4 h-4 text-primary" />
-            </div>
+            <img src="/logo.jpg" alt="Logo" className="w-7 h-7 rounded-lg object-cover" />
             <span className="font-semibold text-sm">Document AI Analyst</span>
           </Link>
           <Button
