@@ -30,6 +30,7 @@ export interface ChatMsg {
   feedback?: "up" | "down" | null;
   isStreaming?: boolean;
   response_time_ms?: number;
+  created_at?: string;
 }
 
 export interface ChatSession {
@@ -93,7 +94,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setIsTyping(value) {
-    set((state) => ({ isTyping: resolveValue(value, state.isTyping) }));
+    set((state) => ({
+      isTyping: resolveValue(value, state.isTyping),
+    }));
   },
 
   setHistoryLoading(value) {

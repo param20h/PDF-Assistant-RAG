@@ -73,6 +73,28 @@ const markdownComponents: Components = {
   },
 };
 
+/**
+ * Extracts a valid Date from a message.
+ *
+ * History messages from the DB have real UUIDs as IDs —
+ * splitting on "-" and parsing as a number gives NaN.
+ * We use `created_at` (returned by the history API) when
+ * available, and fall back to the synthetic ID-based
+ * timestamp only for streamed messages (format: role-timestamp).
+ */
+const getMessageDate = (message: ChatMsg): Date | null => {
+  if (message.created_at) {
+    const d = new Date(message.created_at);
+    if (!isNaN(d.getTime())) return d;
+  }
+  const parts = message.id.split("-");
+  if (parts.length >= 2) {
+    const ts = Number(parts[1]);
+    if (!isNaN(ts) && ts > 0) return new Date(ts);
+  }
+  return null;
+};
+
 export default function MessageBubble({ message }: Props) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -108,6 +130,8 @@ export default function MessageBubble({ message }: Props) {
     medium: "text-sm",
     large: "text-base",
   }[activeFontSize];
+
+  const messageDate = getMessageDate(message);
 
   const handleCopy = async () => {
     if (!message.content) return;
@@ -177,7 +201,6 @@ export default function MessageBubble({ message }: Props) {
 
   const handleBranch = () => {
     setCurrentBranchId(message.id);
-
     console.log("Branch created from:", message.id);
   };
 
@@ -355,13 +378,11 @@ export default function MessageBubble({ message }: Props) {
             isUser ? "justify-end" : "justify-start"
           }`}
         >
-          <div
-            title={new Date(Number(message.id.split("-")[1])).toLocaleString()}
-          >
-            {formatDistanceToNow(new Date(Number(message.id.split("-")[1])), {
-              addSuffix: true,
-            })}
-          </div>
+          {messageDate && (
+            <div title={messageDate.toLocaleString()}>
+              {formatDistanceToNow(messageDate, { addSuffix: true })}
+            </div>
+          )}
           {!isUser && message.response_time_ms && (
             <span className="text-[10px] ml-auto">
               ⚡ {(message.response_time_ms / 1000).toFixed(1)}s
@@ -369,6 +390,7 @@ export default function MessageBubble({ message }: Props) {
           )}
         </div>
       </div>
+
       {isUser && (
         <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
           <User className="w-4 h-4 text-primary-foreground" />
