@@ -160,16 +160,6 @@ def _verify_google_token(id_token_value: str) -> dict:
     if not email or not google_payload.get("email_verified"):
         raise UnauthorizedException("Google account email is not verified")
 
-    return google_payload
-
-
-def _unique_google_username(email: str, db: Session) -> str:
-    local_part = email.split("@", 1)[0]
-    base = re.sub(r"[^a-zA-Z0-9_-]+", "-", local_part).strip("-_").lower() or "google-user"
-    base = base[:70]
-    candidate = base
-    suffix = 1
-
     while db.query(User).filter(User.username == candidate).first():
         suffix += 1
         suffix_text = f"-{suffix}"
