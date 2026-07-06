@@ -132,16 +132,14 @@ def build_graph(chunks: List[Dict[str, Any]]) -> nx.Graph:
     _convert_sets_for_json(graph)
     return graph
 
-
 def _convert_sets_for_json(graph: nx.Graph) -> None:
     for _, data in graph.nodes(data=True):
-        data["pages"] = sorted(item for item in data.get("pages", []) if item is not None)
-        data["chunks"] = sorted(item for item in data.get("chunks", []) if item is not None)
+        data["pages"] = sorted((item for item in data.get("pages", []) if item is not None), key=str)
+        data["chunks"] = sorted((item for item in data.get("chunks", []) if item is not None), key=str)
 
     for _, _, data in graph.edges(data=True):
-        data["pages"] = sorted(item for item in data.get("pages", []) if item is not None)
-        data["chunks"] = sorted(item for item in data.get("chunks", []) if item is not None)
-
+        data["pages"] = sorted((item for item in data.get("pages", []) if item is not None), key=str)
+        data["chunks"] = sorted((item for item in data.get("chunks", []) if item is not None), key=str)
 
 def save_graph(graph: nx.Graph, user_id: str, document_id: str) -> Path:
     """Persist a graph to disk as node-link JSON."""
