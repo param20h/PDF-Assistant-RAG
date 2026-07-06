@@ -88,6 +88,29 @@ def extract_entities(text: str) -> List[Entity]:
 
     return list(entities.values())
 
+def extract_relationship_predicate(text_chunk: str, ent1_text: str, ent2_text: str) -> str:
+    """Extract a clean relationship predicate between two entities using local context."""
+    if not text_chunk or not ent1_text or not ent2_text:
+        return "co-occurs with"
+        
+    idx1 = text_chunk.find(ent1_text)
+    idx2 = text_chunk.find(ent2_text)
+    
+    if idx1 == -1 or idx2 == -1:
+        return "co-occurs with"
+        
+    start = min(idx1 + len(ent1_text), idx2 + len(ent2_text))
+    end = max(idx1, idx2)
+    
+    between_text = text_chunk[start:end].strip(" ,.-_()\t\n")
+    clean_predicate = " ".join(between_text.split())
+    
+    if not clean_predicate:
+        return "co-occurs with"
+    if len(clean_predicate.split()) > 8:
+        return "appears in context with"
+        
+    return clean_predicate
 
 def build_graph(chunks: List[Dict[str, Any]]) -> nx.Graph:
     """Build an entity co-occurrence graph from document chunks."""
@@ -115,16 +138,27 @@ def build_graph(chunks: List[Dict[str, Any]]) -> nx.Graph:
                 )
 
         for left_index, left in enumerate(entities):
+            left_id = left.id
+            adj_dict = graph[left_id]
+            
             for right in entities[left_index + 1:]:
-                if graph.has_edge(left.id, right.id):
-                    graph[left.id][right.id]["weight"] += 1
-                    graph[left.id][right.id]["pages"].add(page)
-                    graph[left.id][right.id]["chunks"].add(chunk_index)
+                right_id = right.id
+                
+                # Extract the dynamic semantic relationship context string
+                predicate = extract_relationship_predicate(text, left.text, right.text)
+                
+                if right_id in adj_dict:
+                    edge = adj_dict[right_id]
+                    edge["weight"] += 1
+                    edge["pages"].add(page)
+                    edge["chunks"].add(chunk_index)
+                    edge["relationships"].add(predicate)
                 else:
                     graph.add_edge(
-                        left.id,
-                        right.id,
+                        left_id,
+                        right_id,
                         weight=1,
+                        relationships={predicate},
                         pages={page},
                         chunks={chunk_index},
                     )
@@ -135,12 +169,13 @@ def build_graph(chunks: List[Dict[str, Any]]) -> nx.Graph:
 
 def _convert_sets_for_json(graph: nx.Graph) -> None:
     for _, data in graph.nodes(data=True):
-        data["pages"] = sorted(item for item in data.get("pages", []) if item is not None)
-        data["chunks"] = sorted(item for item in data.get("chunks", []) if item is not None)
+        data["pages"] = sorted((item for item in data.get("pages", []) if item is not None), key=str)
+        data["chunks"] = sorted((item for item in data.get("chunks", []) if item is not None), key=str)
 
     for _, _, data in graph.edges(data=True):
-        data["pages"] = sorted(item for item in data.get("pages", []) if item is not None)
-        data["chunks"] = sorted(item for item in data.get("chunks", []) if item is not None)
+        data["pages"] = sorted((item for item in data.get("pages", []) if item is not None), key=str)
+        data["chunks"] = sorted((item for item in data.get("chunks", []) if item is not None), key=str)
+        data["relationships"] = sorted(list(data.get("relationships", [])))
 
 
 def save_graph(graph: nx.Graph, user_id: str, document_id: str) -> Path:
