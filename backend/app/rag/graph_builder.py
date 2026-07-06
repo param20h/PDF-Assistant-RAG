@@ -93,6 +93,9 @@ def build_graph(chunks: List[Dict[str, Any]]) -> nx.Graph:
     """Build an entity co-occurrence graph from document chunks."""
     graph = nx.Graph()
 
+    # Cache graph reference lookups outside the loop for speed
+    nodes_data = graph.nodes
+
     for chunk in chunks:
         text = chunk.get("text", "")
         page = chunk.get("page")
@@ -100,10 +103,12 @@ def build_graph(chunks: List[Dict[str, Any]]) -> nx.Graph:
         entities = extract_entities(text)
 
         for entity in entities:
-            if graph.has_node(entity.id):
-                graph.nodes[entity.id]["mentions"] += 1
-                graph.nodes[entity.id]["pages"].add(page)
-                graph.nodes[entity.id]["chunks"].add(chunk_index)
+            # Direct dictionary check avoids the function call overhead of graph.has_node()
+            if entity.id in nodes_data:
+                node = nodes_data[entity.id]
+                node["mentions"] += 1
+                node["pages"].add(page)
+                node["chunks"].add(chunk_index)
             else:
                 graph.add_node(
                     entity.id,
@@ -114,22 +119,30 @@ def build_graph(chunks: List[Dict[str, Any]]) -> nx.Graph:
                     chunks={chunk_index},
                 )
 
+        # Optimize co-occurrence edge calculations inside the tight O(N^2) loop
         for left_index, left in enumerate(entities):
+            left_id = left.id
+            # Cache the adjacency dictionary lookup for the source node
+            adj_dict = graph[left_id]
+            
             for right in entities[left_index + 1:]:
-                if graph.has_edge(left.id, right.id):
-                    graph[left.id][right.id]["weight"] += 1
-                    graph[left.id][right.id]["pages"].add(page)
-                    graph[left.id][right.id]["chunks"].add(chunk_index)
+                right_id = right.id
+                
+                # Direct membership lookup inside the adjacency mapping bypasses graph.has_edge()
+                if right_id in adj_dict:
+                    edge = adj_dict[right_id]
+                    edge["weight"] += 1
+                    edge["pages"].add(page)
+                    edge["chunks"].add(chunk_index)
                 else:
                     graph.add_edge(
-                        left.id,
-                        right.id,
+                        left_id,
+                        right_id,
                         weight=1,
                         pages={page},
                         chunks={chunk_index},
                     )
 
-    _convert_sets_for_json(graph)
     return graph
 
 
