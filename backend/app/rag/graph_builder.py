@@ -129,18 +129,9 @@ def build_graph(chunks: List[Dict[str, Any]]) -> nx.Graph:
                         chunks={chunk_index},
                     )
 
-    _convert_sets_for_json(graph)
+    # REMOVED: _convert_sets_for_json(graph) is removed from here 
+    # so the graph keeps its native Python sets in memory.
     return graph
-
-
-def _convert_sets_for_json(graph: nx.Graph) -> None:
-    for _, data in graph.nodes(data=True):
-        data["pages"] = sorted(item for item in data.get("pages", []) if item is not None)
-        data["chunks"] = sorted(item for item in data.get("chunks", []) if item is not None)
-
-    for _, _, data in graph.edges(data=True):
-        data["pages"] = sorted(item for item in data.get("pages", []) if item is not None)
-        data["chunks"] = sorted(item for item in data.get("chunks", []) if item is not None)
 
 
 def save_graph(graph: nx.Graph, user_id: str, document_id: str) -> Path:
@@ -148,7 +139,11 @@ def save_graph(graph: nx.Graph, user_id: str, document_id: str) -> Path:
     graph_path = get_graph_path(user_id, document_id)
     graph_path.parent.mkdir(parents=True, exist_ok=True)
 
-    data = nx.node_link_data(graph)
+    # Create a shallow copy of the graph so we don't mutate the original in memory
+    export_graph = graph.copy()
+    _convert_sets_for_json(export_graph)
+
+    data = nx.node_link_data(export_graph)
     data["metadata"] = {
         "user_id": user_id,
         "document_id": document_id,
