@@ -49,6 +49,7 @@ short_description: Enterprise Agentic RAG — upload PDFs and chat with AI
 > **Upload · Embed · Retrieve · Chat** — A production-grade AI document assistant built end-to-end with an agentic RAG pipeline, streaming responses, and per-user data isolation.
 
 <br/>
+
 ## 🌟 GirlScript Summer of Code 2026
 
 This project is an official participant in **GirlScript Summer of Code 2026 (GSSoC'26)** and welcomes contributions from the community.
@@ -692,7 +693,7 @@ git checkout -b feature/my-feature upstream/dev
 
 ## 📄 License
 
-Distributed under the **MIT License**. See [`LICENSE`](license) for more information.
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
 
 ---
 
