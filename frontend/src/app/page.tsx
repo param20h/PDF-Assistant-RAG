@@ -55,6 +55,7 @@ export default function HomePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
+  const [maintenanceVisible, setMaintenanceVisible] = useState(true);
 
   const docsUrl = (process.env.NEXT_PUBLIC_API_URL || "https://param20h-pdf-assit-rag.hf.space") + "/docs";
 
@@ -282,6 +283,28 @@ export default function HomePage() {
 
       {/* Floating open-source badge */}
       <OpenSourceBadge onOpenHallOfFame={() => setHallOfFameOpen(true)} />
+
+      {/* Maintenance Pop-up Banner */}
+      {maintenanceVisible && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm p-4 rounded-xl border border-amber-500/30 bg-background/95 backdrop-blur-md shadow-2xl shadow-amber-500/5 flex flex-col gap-2.5 animate-fade-in-up">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+              <h4 className="font-semibold text-sm text-foreground">System Maintenance</h4>
+            </div>
+            <button 
+              onClick={() => setMaintenanceVisible(false)}
+              className="text-muted-foreground hover:text-foreground text-xs p-1"
+              aria-label="Dismiss maintenance alert"
+            >
+              ✕
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            We are currently running database updates. Some features may be temporarily offline, but the app will be fully live soon!
+          </p>
+        </div>
+      )}
     </div>
   );
 }
