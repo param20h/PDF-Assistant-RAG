@@ -96,7 +96,15 @@ def get_entity_context(
                             "pages": set(),
                         },
                     )
-                    existing["weight"] = int(existing["weight"]) + int(edge.get("weight", 1))
+                    # Safely extract the raw weight, defaulting to 1 if missing or invalid
+                    raw_weight = edge.get("weight", 1)
+                    try:
+                        # Convert to float first to handle decimals safely, then round/truncate if needed
+                        weight_value = int(float(raw_weight)) if raw_weight is not None else 1
+                    except (ValueError, TypeError):
+                        weight_value = 1
+
+                    existing["weight"] += weight_value
                     existing["pages"].update(edge.get("pages", []))
     except Exception as exc:
         logger.warning("GraphRAG context retrieval failed: %s", exc)
@@ -105,9 +113,10 @@ def get_entity_context(
     if not relationships:
         return ""
 
+    # Clean sorting without redundant typecasting overhead
     ranked = sorted(
         relationships.values(),
-        key=lambda item: int(item["weight"]),
+        key=lambda item: item["weight"],
         reverse=True,
     )[: settings.GRAPH_MAX_RELATIONSHIPS]
 
