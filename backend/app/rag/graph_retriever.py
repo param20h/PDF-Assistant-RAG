@@ -84,18 +84,21 @@ def get_entity_context(
                 )
                 for neighbor_id in neighbors:
                     edge = graph[node_id][neighbor_id]
-                    left = _node_name(graph, node_id)
-                    right = _node_name(graph, neighbor_id)
-                    key = _relationship_key(left.casefold(), right.casefold())
-                    existing = relationships.setdefault(
-                        key,
-                        {
-                            "left": left,
-                            "right": right,
+                    source_name = _node_name(graph, node_id)
+                    target_name = _node_name(graph, neighbor_id)
+                    
+                    # Deduplicate safely using alphabetical keys behind the scenes
+                    dedup_key = tuple(sorted((source_name.casefold(), target_name.casefold())))
+                    
+                    if dedup_key not in relationships:
+                        relationships[dedup_key] = {
+                            "subject": source_name,  # The matched anchor entity
+                            "object": target_name,   # The connected neighbor entity
                             "weight": 0,
                             "pages": set(),
-                        },
-                    )
+                        }
+                    
+                    existing = relationships[dedup_key]
                     existing["weight"] = int(existing["weight"]) + int(edge.get("weight", 1))
                     existing["pages"].update(edge.get("pages", []))
     except Exception as exc:
@@ -115,7 +118,7 @@ def get_entity_context(
     for item in ranked:
         pages = sorted(item["pages"])
         lines.append(
-            f"- {item['left']} is related to {item['right']} "
+            f"- {item['subject']} is related to {item['object']} "
             f"through document co-occurrence on {_format_pages(pages)} "
             f"(strength: {item['weight']})."
         )
