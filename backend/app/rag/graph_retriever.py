@@ -43,13 +43,24 @@ def _match_query_nodes(graph: nx.Graph, query: str) -> Set[str]:
         return matched
 
     query_text = query.casefold()
-    for node_id, data in graph.nodes(data=True):
-        name = data.get("name", "").casefold()
-        if name and name in query_text:
+    
+    # Check if the inverted index is already built and cached on the graph metadata
+    if "_name_to_node_id" not in graph.graph:
+        name_index = {}
+        for node_id, data in graph.nodes(data=True):
+            name = data.get("name", "")
+            if name:
+                name_index[name.casefold()] = node_id
+        graph.graph["_name_to_node_id"] = name_index
+    else:
+        name_index = graph.graph["_name_to_node_id"]
+
+    # O(M) lookup over unique names instead of scanning full node data arrays
+    for name, node_id in name_index.items():
+        if name in query_text:
             matched.add(node_id)
 
     return matched
-
 
 def _format_pages(pages: List[int]) -> str:
     if not pages:
