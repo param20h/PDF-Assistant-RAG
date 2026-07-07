@@ -82,9 +82,11 @@ def get_entity_context(
                     key=lambda neighbor: graph[node_id][neighbor].get("weight", 0),
                     reverse=True,
                 )
+                # Hoisted out of the inner loop to cache the string evaluation
+                left = _node_name(graph, node_id)
+                
                 for neighbor_id in neighbors:
                     edge = graph[node_id][neighbor_id]
-                    left = _node_name(graph, node_id)
                     right = _node_name(graph, neighbor_id)
                     key = _relationship_key(left.casefold(), right.casefold())
                     existing = relationships.setdefault(
