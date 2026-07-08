@@ -73,19 +73,18 @@ class Reranker:
         # Get relevance scores
         scores = model.predict(pairs)
 
-        # Pair scores with documents and sort in descending order
-        scored = list(zip(scores, documents))
-        scored.sort(key=lambda x: x[0], reverse=True)
+       # Create shallow copies of the documents and attach scores to prevent mutating original inputs
+        scored_docs = []
+        for score, doc in zip(scores, documents):
+            doc_copy = doc.copy()  # Create a copy to isolate changes
+            doc_copy["rerank_score"] = float(score)
+            scored_docs.append(doc_copy)
 
-        # Return top_k documents
-        reranked = [doc for _, doc in scored[:top_k]]
+        # Sort the copied documents in descending order of relevance
+        scored_docs.sort(key=lambda x: x["rerank_score"], reverse=True)
 
-        # Attach rerank_score to each returned document
-        for (score, doc) in scored:
-            if doc in reranked:
-                doc["rerank_score"] = float(score)
-
-        return reranked
+        # Return only the top_k requested documents
+        return scored_docs[:top_k]
 
 
 # Singleton instance for global reuse
