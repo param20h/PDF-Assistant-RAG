@@ -12,6 +12,12 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+import threading  # Ensure this is imported at the top of your file if it isn't already
+
+# Threading locks to prevent race conditions during concurrent initialization
+_model_lock = threading.Lock()
+_instance_lock = threading.Lock()
+
 # ── Reranker Class ─────────────────────────────────────
 class Reranker:
     """Reranks documents using a cross-encoder model (BGE reranker)."""
@@ -29,17 +35,31 @@ class Reranker:
         self.device = device
         self._model: Optional[CrossEncoder] = None
 
-    # Lazy-load the model when needed to avoid long startup times
+   # Lazy-load the model when needed to avoid long startup times
     def _load_model(self) -> CrossEncoder:
-        """Lazy-load the cross-encoder model."""
+        """Lazy-load the cross-encoder model safely across multiple concurrent threads."""
         if self._model is None:
-            logger.info(f"Loading reranker: {self.model_name}")
-            self._model = CrossEncoder(
-                self.model_name,
-                max_length=512,
-                device=self.device
-            )
-            logger.info("Reranker loaded successfully")
+            with _model_lock:
+                # Double-check pattern to handle thread synchronization safely
+                if self._model is None:
+                    import torch
+                    
+                    # Detect device fallback if not explicitly set
+                    current_device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
+                    logger.info(f"Loading reranker: {self.model_name} on {current_device}")
+                    
+                    # Optimization: Use float16 on CUDA devices to slash VRAM footprint and speed up inference
+                    model_kwargs = {}
+                    if "cuda" in current_device:
+                        model_kwargs["torch_dtype"] = torch.float16
+
+                    self._model = CrossEncoder(
+                        self.model_name,
+                        max_length=512,
+                        device=current_device,
+                        **model_kwargs
+                    )
+                    logger.info("Reranker loaded successfully")
         return self._model
 
     # Reranking method that takes a query and a list of documents, and returns them sorted by relevance
@@ -73,27 +93,31 @@ class Reranker:
         # Get relevance scores
         scores = model.predict(pairs)
 
-       # Create shallow copies of the documents and attach scores to prevent mutating original inputs
-        scored_docs = []
-        for score, doc in zip(scores, documents):
-            doc_copy = doc.copy()  # Create a copy to isolate changes
-            doc_copy["rerank_score"] = float(score)
-            scored_docs.append(doc_copy)
+        # Pair scores with documents and sort in descending order
+        scored = list(zip(scores, documents))
+        scored.sort(key=lambda x: x[0], reverse=True)
 
-        # Sort the copied documents in descending order of relevance
-        scored_docs.sort(key=lambda x: x["rerank_score"], reverse=True)
+        # Return top_k documents
+        reranked = [doc for _, doc in scored[:top_k]]
 
-        # Return only the top_k requested documents
-        return scored_docs[:top_k]
+        # Attach rerank_score to each returned document
+        for (score, doc) in scored:
+            if doc in reranked:
+                doc["rerank_score"] = float(score)
+
+        return reranked
 
 
 # Singleton instance for global reuse
 _reranker_instance: Optional[Reranker] = None
 
 # Function to get the global reranker instance
+# Function to get the global reranker instance
 def get_reranker(model_name: Optional[str] = None) -> Reranker:
-    """Get or create the global reranker instance."""
+    """Get or create the global reranker instance safely under multi-threaded environments."""
     global _reranker_instance
     if _reranker_instance is None:
-        _reranker_instance = Reranker(model_name=model_name)
+        with _instance_lock:
+            if _reranker_instance is None:
+                _reranker_instance = Reranker(model_name=model_name)
     return _reranker_instance
