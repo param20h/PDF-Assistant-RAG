@@ -31,13 +31,24 @@ class Reranker:
 
     # Lazy-load the model when needed to avoid long startup times
     def _load_model(self) -> CrossEncoder:
-        """Lazy-load the cross-encoder model."""
+        """Lazy-load the cross-encoder model with auto-precision if CUDA is available."""
         if self._model is None:
-            logger.info(f"Loading reranker: {self.model_name}")
+            import torch
+            
+            # Detect device fallback if not explicitly set
+            current_device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
+            logger.info(f"Loading reranker: {self.model_name} on {current_device}")
+            
+            # Optimization: Use float16 on CUDA devices to slash VRAM footprint and speed up inference
+            model_kwargs = {}
+            if "cuda" in current_device:
+                model_kwargs["torch_dtype"] = torch.float16
+
             self._model = CrossEncoder(
                 self.model_name,
                 max_length=512,
-                device=self.device
+                device=current_device,
+                **model_kwargs
             )
             logger.info("Reranker loaded successfully")
         return self._model
@@ -49,6 +60,7 @@ class Reranker:
         documents: List[Dict[str, Any]],
         top_k: int = 5,
         text_key: str = "text",
+        batch_size: int = 32,
     ) -> List[Dict[str, Any]]:
         """
         Rerank documents based on relevance to the query.
@@ -58,6 +70,7 @@ class Reranker:
             documents: List of document dicts (must contain text_key field).
             top_k: Number of top documents to return after reranking.
             text_key: Key in document dict that holds the text content.
+            batch_size: Number of pairs to process simultaneously to prevent memory exhaustion.
 
         Returns:
             List of reranked documents (same dicts, but sorted by relevance).
@@ -70,8 +83,8 @@ class Reranker:
         # Prepare query-document pairs
         pairs = [(query, doc[text_key]) for doc in documents]
 
-        # Get relevance scores
-        scores = model.predict(pairs)
+        # Get relevance scores (utilizing batch_size to prevent OOM errors)
+        scores = model.predict(pairs, batch_size=batch_size)
 
         # Pair scores with documents and sort in descending order
         scored = list(zip(scores, documents))
