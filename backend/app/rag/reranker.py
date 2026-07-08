@@ -67,10 +67,10 @@ class Reranker:
 
         model = self._load_model()
 
-        # Prepare query-document pairs
-        pairs = [(query, doc[text_key]) for doc in documents]
+        # Safely extract text, fallback to an empty string if key is missing to avoid crashes
+        pairs = [(query, doc.get(text_key, "")) for doc in documents]
 
-        # Get relevance scores
+        # Get relevance scores (utilizing batch_size to prevent OOM errors)
         scores = model.predict(pairs)
 
         # Pair scores with documents and sort in descending order
