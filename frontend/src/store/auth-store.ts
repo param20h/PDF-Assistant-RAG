@@ -113,17 +113,39 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const { initialized, token } = get();
     if (initialized) return;
 
-    const storedToken = token ?? getStoredToken();
+    let storedToken = token ?? getStoredToken();
+
+    // 1. Try to extract tokens from URL search params (OAuth redirect)
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get("token");
+      const urlRefreshToken = params.get("refresh_token");
+      if (urlToken && urlRefreshToken) {
+        localStorage.setItem("token", urlToken);
+        localStorage.setItem("refresh_token", urlRefreshToken);
+        storedToken = urlToken;
+        // Clean URL parameters without reloading
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    }
+
+    // 2. If no token, don't request /me (prevents CORS preflight credentials error for anonymous users)
+    if (!storedToken) {
+      set({ user: null, token: null, loading: false, initialized: true });
+      return;
+    }
+
     set({ loading: true });
 
     try {
       const user = await api.get<AuthUser>(
         "/api/v1/auth/me",
-        storedToken ? { token: storedToken } : undefined
+        { token: storedToken }
       );
       set({
         user,
-        token: storedToken || "cookie",
+        token: storedToken,
         loading: false,
         initialized: true,
       });

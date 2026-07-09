@@ -6,23 +6,32 @@ import logging
 import json
 from typing import List, Dict, Any, Optional, Generator
 
-from sympy import python
-
 from huggingface_hub import InferenceClient
 from langchain_classic.agents import create_react_agent, AgentExecutor
 from langchain_core.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEndpoint
+from langchain_huggingface.chat_models import ChatHuggingFace
 
 from app.config import get_settings
 from app.rag.retriever import retrieve
 from app.rag.graph_retriever import get_entity_context
-from app.rag.prompts import AGENT_SYSTEM_PROMPT
+from app.rag.prompts import AGENT_SYSTEM_PROMPT, MULTI_DOC_COMPARISON_GUIDANCE
+from app.exceptions import ExternalServiceException
 from app.rag.security import MALFORMED_OUTPUT_MESSAGE, OutputParserError, parse_agent_output
 from app.rag.tools import PDFSearchTool, MathTool, WebSearchTool
 from app.rag.tracing import trace_function
+from app.rag.keywords import extract_keywords
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def persist_document_keywords(document, chunks, db) -> None:
+    """Extract TF-IDF keywords after indexing and persist on the document row."""
+    raw_texts = [c["text"] for c in chunks]
+    kws = extract_keywords(raw_texts, top_n=10)
+    document.keywords = json.dumps(kws)
+    db.add(document)
 
 
 
@@ -52,6 +61,7 @@ def _format_chat_history(messages: List[Dict[str, str]]) -> str:
 def get_agent_executor(
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[List[Dict[str, str]]] = None,
@@ -59,7 +69,7 @@ def get_agent_executor(
     """Initialize the LangChain ReAct agent executor."""
 
     # Initialize tools
-    pdf_tool = PDFSearchTool(user_id=user_id, document_id=document_id, top_k=top_k)
+    pdf_tool = PDFSearchTool(user_id=user_id, document_id=document_id, document_ids=document_ids, top_k=top_k)
     tools = [pdf_tool, MathTool(), WebSearchTool()]
 
     # Initialize LLM
@@ -78,9 +88,18 @@ def get_agent_executor(
         timeout=300,
     )
 
+    chat_llm = ChatHuggingFace(llm=llm)
+
     # Setup Agent
-    prompt = PromptTemplate.from_template(AGENT_SYSTEM_PROMPT)
-    agent = create_react_agent(llm, tools, prompt)
+    agent_prompt_text = AGENT_SYSTEM_PROMPT
+    if document_ids and len(document_ids) > 1:
+        agent_prompt_text = agent_prompt_text.replace(
+            "Begin!",
+            MULTI_DOC_COMPARISON_GUIDANCE + "\nBegin!",
+            1,
+        )
+    prompt = PromptTemplate.from_template(agent_prompt_text)
+    agent = create_react_agent(chat_llm, tools, prompt)
 
     executor = AgentExecutor(
         agent=agent,
@@ -116,6 +135,7 @@ def generate_answer(
     question: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[List[Dict[str, str]]] = None,
@@ -143,7 +163,7 @@ def generate_answer(
 
     # ── Run Agent ────────────────────────────────────
     try:
-        executor, pdf_tool, formatted_history = get_agent_executor(user_id, document_id, hf_token, top_k, chat_history)
+        executor, pdf_tool, formatted_history = get_agent_executor(user_id, document_id, document_ids, hf_token, top_k, chat_history)
         result = executor.invoke({"input": question, "chat_history": formatted_history})
 
         raw_answer = result.get("output", "")
@@ -168,12 +188,12 @@ def generate_answer(
 
         return {"answer": answer, "sources": sources}
 
+    except (OutputParserError, ValueError) as e:
+        logger.warning(f"Agent output error: {e}")
+        return {"answer": MALFORMED_OUTPUT_MESSAGE, "sources": []}
     except Exception as e:
         logger.error(f"Agent execution error: {e}")
-        return {
-            "answer": f"I encountered an error while processing your request: {str(e)}",
-            "sources": []
-        }
+        raise ExternalServiceException("HuggingFace", str(e)) from e
 
 
 @trace_function(
@@ -188,6 +208,7 @@ def generate_answer_stream(
     question: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     hf_token: Optional[str] = None,
     top_k: Optional[int] = None,
     chat_history: Optional[List[Dict[str, str]]] = None,
@@ -216,7 +237,7 @@ def generate_answer_stream(
 
     # ── Run Agent ────────────────────────────────────
     try:
-        executor, pdf_tool, formatted_history = get_agent_executor(user_id, document_id, hf_token, top_k, chat_history)
+        executor, pdf_tool, formatted_history = get_agent_executor(user_id, document_id, document_ids, hf_token, top_k, chat_history)
 
         sources_sent = False
 

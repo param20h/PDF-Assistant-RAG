@@ -48,8 +48,9 @@ class ApiClient {
 
   private async fetchWithConnectionError(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     try {
+      const isCrossOrigin = typeof window !== "undefined" && this.baseUrl.startsWith("http") && !this.baseUrl.includes(window.location.host);
       const mergedInit = {
-        credentials: "include" as const,
+        credentials: isCrossOrigin ? "same-origin" as const : "include" as const,
         ...init,
       };
       return await fetch(input, mergedInit);
@@ -313,21 +314,23 @@ class ApiClient {
    * Stream a POST request as Server-Sent Events.
    * Yields parsed SSE data objects.
    */
-  async *streamPost(path: string, body: unknown): AsyncGenerator<{ type: string; data?: unknown }> {
+  async *streamPost(path: string, body: unknown, signal?: AbortSignal): AsyncGenerator<{ type: string; data?: unknown }> {
     let res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: this.getHeaders(),
       body: JSON.stringify(body),
+      signal,
     });
 
     // Auto-refresh on 401
     if (res.status === 401) {
       const newToken = await this.tryRefreshToken();
       if (newToken) {
-        res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
+       res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
           method: "POST",
           headers: this.getHeaders(newToken),
           body: JSON.stringify(body),
+          signal,
         });
       }
     }

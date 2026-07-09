@@ -1,97 +1,78 @@
 """
-Two-stage retrieval: Hybrid Ensemble (ChromaDB + BM25) + cross-encoder reranking.
+Two-stage retrieval: Hybrid Search (Vector + BM25 via RRF) + cross-encoder reranking.
 """
 import json
 import logging
 import re
 from typing import List, Dict, Any, Optional
 
-try:
-    # In LangChain 1.3.2+, EnsembleRetriever moved to langchain_classic.
-    from langchain_classic.retrievers import EnsembleRetriever
-except ImportError:
-    class EnsembleRetriever:
-        """Small fallback used when optional LangChain classic deps are absent."""
-
-        def __init__(self, retrievers, weights=None):
-            self.retrievers = retrievers
-            self.weights = weights or [1.0] * len(retrievers)
-
-        def invoke(self, query):
-            docs = []
-            for retriever in self.retrievers:
-                docs.extend(retriever.invoke(query))
-            return docs
-from langchain_core.retrievers import BaseRetriever
-from langchain_core.documents import Document as LangchainDocument
-from langchain_core.callbacks import CallbackManagerForRetrieverRun
-from pydantic import Field
-
 from app.config import get_settings
 from app.rag.embeddings import embed_query
 from app.rag.tracing import trace_function
 from app.rag.vectorstore import query_chunks
+from app.rag.reranker import get_reranker
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 MAX_QUERY_VARIANTS = 4
 
-# ── Singleton reranker ───────────────────────────────
-_reranker = None
+
+# ── RRF core ─────────────────────────────────────────────────────────────────
+
+def rrf_merge(
+    vector_results: List[Dict[str, Any]],
+    bm25_results: List[Dict[str, Any]],
+    k: int = 60,
+) -> List[Dict[str, Any]]:
+    """Merge vector and BM25 ranked lists using Reciprocal Rank Fusion.
+
+    RRF formula:  score(d) = Σ  1 / (k + rank(d, list))
+    where rank is 1-based and k=60 is the standard smoothing constant.
+
+    Args:
+        vector_results: Chunks from ChromaDB, ordered by descending similarity.
+        bm25_results:   Chunks from BM25, ordered by descending BM25 score.
+        k:              RRF smoothing constant (default 60).
+
+    Returns:
+        Deduplicated list of chunks sorted by descending RRF score, each chunk
+        carrying an ``rrf_score`` field.
+    """
+    rrf_scores: Dict[str, float] = {}
+    chunk_store: Dict[str, Dict[str, Any]] = {}
+
+    def _key(chunk: Dict[str, Any]) -> str:
+        """Stable deduplication key — prefer explicit IDs, fall back to content hash."""
+        for field in ("id", "chunk_id"):
+            if chunk.get(field):
+                return str(chunk[field])
+        text = str(chunk.get("text", ""))
+        return "|".join([
+            str(chunk.get("document_id", "")),
+            str(chunk.get("page", "")),
+            text[:200],
+        ])
+
+    def _accumulate(results: List[Dict[str, Any]]) -> None:
+        for rank, chunk in enumerate(results, start=1):
+            key = _key(chunk)
+            rrf_scores[key] = rrf_scores.get(key, 0.0) + 1.0 / (k + rank)
+            if key not in chunk_store or chunk.get("score", 0) > chunk_store[key].get("score", 0):
+                chunk_store[key] = chunk
+
+    _accumulate(vector_results)
+    _accumulate(bm25_results)
+
+    merged = []
+    for key, rrf_score in sorted(rrf_scores.items(), key=lambda t: t[1], reverse=True):
+        chunk = chunk_store[key].copy()
+        chunk["rrf_score"] = round(rrf_score, 6)
+        merged.append(chunk)
+
+    return merged
 
 
-def get_reranker():
-    """Load cross-encoder reranker model (singleton)."""
-    global _reranker
-
-    if _reranker is None:
-        try:
-            from sentence_transformers import CrossEncoder
-            logger.info(f"Loading reranker: {settings.RERANKER_MODEL}")
-            _reranker = CrossEncoder(settings.RERANKER_MODEL, max_length=512)
-            logger.info("Reranker loaded successfully")
-        except Exception as e:
-            logger.warning(f"Failed to load reranker: {e}. Falling back to embedding-only retrieval.")
-            _reranker = "disabled"
-
-    return _reranker if _reranker != "disabled" else None
-
-
-class CustomVectorRetriever(BaseRetriever):
-    user_id: str = Field(description="User ID")
-    document_id: Optional[str] = Field(default=None, description="Document ID")
-    top_k: int = Field(default=10, description="Top K results")
-
-    def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[LangchainDocument]:
-        query_vector = embed_query(query)
-        candidates = query_chunks(
-            query_embedding=query_vector,
-            user_id=self.user_id,
-            document_id=self.document_id,
-            top_k=self.top_k,
-        )
-        return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
-
-
-class CustomBM25Retriever(BaseRetriever):
-    user_id: str = Field(description="User ID")
-    document_id: Optional[str] = Field(default=None, description="Document ID")
-    top_k: int = Field(default=10, description="Top K results")
-
-    def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[LangchainDocument]:
-        from app.rag.bm25 import query_bm25
-        candidates = query_bm25(
-            query=query,
-            user_id=self.user_id,
-            document_id=self.document_id,
-            top_k=self.top_k,
-        )
-        return [LangchainDocument(page_content=c["text"], metadata=c) for c in candidates]
-
+# ── Query helpers ─────────────────────────────────────────────────────────────
 
 def transform_query(query: str) -> List[str]:
     """Rewrite a user question into multiple retrieval-friendly search queries."""
@@ -102,43 +83,61 @@ def transform_query(query: str) -> List[str]:
     try:
         generated_queries = _generate_query_variants(original_query)
     except Exception as e:
-        logger.warning(f"Query transformation failed, using original query only: {e}")
+        logger.warning("Query transformation failed, using original query only: %s", e)
         generated_queries = []
 
     return _dedupe_queries([original_query, *generated_queries])[:MAX_QUERY_VARIANTS]
 
 
 def _generate_query_variants(query: str) -> List[str]:
-    """Use the configured LLM to split/rewrite a user query for semantic search."""
+    """Use the configured LLM to rewrite a user query into 3 semantic variations.
+
+    Each variation rephrases the original from a different angle so that
+    BM25 and ChromaDB retrieve a broader, complementary set of chunks.
+    The original query is always prepended by the caller (transform_query),
+    so we ask for exactly 3 *additional* variants here.
+    """
     if not settings.HF_TOKEN:
         return []
 
     from huggingface_hub import InferenceClient
 
     client = InferenceClient(token=settings.HF_TOKEN)
+
     prompt = (
-        "Rewrite the user question into concise semantic search queries for document retrieval. "
-        "Split independent topics into separate queries. Return a JSON array of strings only. "
-        f"User question: {query}"
+        "Generate exactly 3 semantic variations of the user question below. "
+        "Each variation must preserve the original meaning but use different "
+        "vocabulary, phrasing, or sentence structure to improve document retrieval coverage. "
+        "Do NOT add new topics or change the intent. "
+        "Return ONLY a JSON array of 3 strings, with no extra text, markdown, or explanation.\n\n"
+        f"User question: {query}\n\n"
+        'Example output: ["variation one", "variation two", "variation three"]'
     )
+
     response = client.chat_completion(
         messages=[
             {
                 "role": "system",
-                "content": "You create optimized search queries for a RAG retriever.",
+                "content": (
+                    "You are a query rewriter for a RAG retrieval system. "
+                    "You output only valid JSON arrays of strings, nothing else."
+                ),
             },
             {"role": "user", "content": prompt},
         ],
         model=settings.LLM_MODEL,
         max_tokens=256,
-        temperature=0.2,
+        temperature=0.3,
     )
 
     if not response.choices:
         return []
 
     content = response.choices[0].message.content or ""
-    return _parse_query_variants(content)
+    variants = _parse_query_variants(content)
+
+    # Cap at 3 variants as requested — the original is added by transform_query
+    return variants[:3]
 
 
 def _parse_query_variants(content: str) -> List[str]:
@@ -192,134 +191,136 @@ def _dedupe_queries(queries: List[str]) -> List[str]:
     return deduped
 
 
-def _candidate_key(chunk: Dict[str, Any]) -> str:
-    for key in ("id", "chunk_id"):
-        if chunk.get(key):
-            return str(chunk[key])
-
-    text = str(chunk.get("text", ""))
-    return "|".join(
-        str(part)
-        for part in (
-            chunk.get("document_id", ""),
-            chunk.get("filename", ""),
-            chunk.get("page", ""),
-            text[:200],
-        )
-    )
-
-
 def _merge_candidates(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Deduplicate a flat candidate list, keeping the highest-scored entry per key."""
     merged: Dict[str, Dict[str, Any]] = {}
-
     for candidate in candidates:
         candidate_copy = dict(candidate)
-        key = _candidate_key(candidate_copy)
+        key = "|".join([
+            str(candidate_copy.get("document_id", "")),
+            str(candidate_copy.get("page", "")),
+            str(candidate_copy.get("text", ""))[:200],
+        ])
         existing = merged.get(key)
-
         if existing is None or candidate_copy.get("score", 0) > existing.get("score", 0):
             merged[key] = candidate_copy
-
     return list(merged.values())
 
 
+# ── Main retrieval pipeline ───────────────────────────────────────────────────
+
 @trace_function(
     "retrieve",
-    metadata_factory=lambda query, user_id, document_id=None, top_k=None: {
+    metadata_factory=lambda query, user_id, document_id=None, document_ids=None, top_k=None: {
         "user_id": user_id,
         "document_id": document_id,
         "embedding_model": settings.EMBEDDING_MODEL,
         "reranker_model": settings.RERANKER_MODEL,
         "top_k_retrieval": settings.TOP_K_RETRIEVAL,
         "top_k_rerank": settings.TOP_K_RERANK,
+        "hybrid_search": settings.USE_HYBRID_SEARCH,
+        "rrf_k": settings.RRF_K,
     },
 )
 def retrieve(
     query: str,
     user_id: str,
     document_id: Optional[str] = None,
+    document_ids: Optional[List[str]] = None,
     top_k: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
     Two-stage retrieval pipeline:
-    1. Hybrid Search (Vector + BM25 via EnsembleRetriever with RRF) with Query Transformation
-    2. Cross-encoder reranking (top-K refined)
+    1. Hybrid Search — Vector (ChromaDB) + BM25 merged via Reciprocal Rank Fusion (RRF),
+       applied across all transformed query variants.
+    2. Cross-encoder reranking — top-K refined by a cross-encoder model.
 
+    Falls back to vector-only when USE_HYBRID_SEARCH=False or rank_bm25 is absent.
     Returns chunks with confidence scores.
     """
-    # ── Stage 1: Hybrid Search with Query Transformation ─────────────
     effective_top_k = top_k if top_k is not None else settings.TOP_K_RETRIEVAL
-    vector_retriever = CustomVectorRetriever(
-        user_id=user_id,
-        document_id=document_id,
-        top_k=effective_top_k,
-    )
 
-    bm25_retriever = CustomBM25Retriever(
-        user_id=user_id,
-        document_id=document_id,
-        top_k=effective_top_k,
-    )
+    # ── Stage 1: Hybrid retrieval with query transformation ───────────────────
+    all_candidates: List[Dict[str, Any]] = []
 
-    ensemble_retriever = EnsembleRetriever(
-        retrievers=[vector_retriever, bm25_retriever],
-        weights=[0.6, 0.4]
-    )
-
-    all_candidates = []
     for search_query in transform_query(query):
-        docs = ensemble_retriever.invoke(search_query)
-        for i, doc in enumerate(docs):
-            chunk = doc.metadata.copy()
-            # Preserve a mock score based on rank for fallback if reranker fails
-            # We use 1.0/(i+1) as a base RRF-like score
-            chunk["score"] = 1.0 / (i + 1)
-            all_candidates.append(chunk)
+        query_vector = embed_query(search_query)
+
+        # Vector results (always)
+        vector_results = query_chunks(
+            query_embedding=query_vector,
+            user_id=user_id,
+            document_id=document_id,
+            document_ids=document_ids,
+            top_k=effective_top_k,
+        )
+
+        if settings.USE_HYBRID_SEARCH:
+            try:
+                from app.rag.bm25 import query_bm25
+                bm25_results = query_bm25(
+                    query=search_query,
+                    user_id=user_id,
+                    document_id=document_id,
+                    document_ids=document_ids,
+                    top_k=effective_top_k,
+                )
+            except Exception as exc:
+                logger.warning("BM25 retrieval failed, using vector-only: %s", exc)
+                bm25_results = []
+
+            merged = rrf_merge(
+                vector_results=vector_results,
+                bm25_results=bm25_results,
+                k=settings.RRF_K,
+            )
+
+            for chunk in merged:
+                chunk["score"] = chunk.pop("rrf_score")
+
+            all_candidates.extend(merged)
+        else:
+            all_candidates.extend(vector_results)
 
     if not all_candidates:
         return []
 
     candidates = _merge_candidates(all_candidates)
 
-    # ── Stage 2: Cross-encoder reranking ─────────────
+    # ── Stage 2: Cross-encoder reranking ─────────────────────────────────────
     reranker = get_reranker()
 
-    if reranker is not None and len(candidates) > 1:
-        try:
-            # Build query-document pairs for reranking
-            pairs = [(query, chunk["text"]) for chunk in candidates]
-            rerank_scores = reranker.predict(pairs)
+    if reranker is not None:
+        top_chunks = reranker.rerank(
+            query=query,
+            documents=candidates,
+            top_k=settings.TOP_K_RERANK,
+        )
+    else:
+        candidates.sort(key=lambda x: x.get("score", 0), reverse=True)
+        top_chunks = candidates[:settings.TOP_K_RERANK]
 
-            # Assign rerank scores
-            for i, chunk in enumerate(candidates):
-                chunk["rerank_score"] = float(rerank_scores[i])
-
-            # Sort by rerank score (descending)
-            candidates.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
-
-        except Exception as e:
-            logger.warning(f"Reranking failed, using hybrid scores: {e}")
-
-    # Ensure candidates are sorted by best available score
-    candidates.sort(key=lambda x: x.get("rerank_score", x.get("score", 0)), reverse=True)
-
-    # ── Take top-K after reranking ───────────────────
-    top_chunks = candidates[:effective_top_k]
-
-    # ── Calculate confidence percentages ─────────────
+    # ── Confidence normalisation ──────────────────────────────────────────────
     if top_chunks:
         max_score = max(
             chunk.get("rerank_score", chunk.get("score", 0))
             for chunk in top_chunks
         )
-        max_score = max(max_score, 0.001)  # Avoid division by zero
+        max_score = max(max_score, 0.001)
 
         for chunk in top_chunks:
             raw = chunk.get("rerank_score", chunk.get("score", 0))
             chunk["confidence"] = round((raw / max_score) * 100, 1)
-            # Clean up internal score
             if "rerank_score" in chunk:
                 chunk["score"] = round(chunk["rerank_score"], 4)
                 del chunk["rerank_score"]
+
+    from app.observability import chunks_retrieved_var
+    chunks_retrieved_var.set(len(top_chunks))
+    logger.info(
+        "Retrieved %d relevant chunks for query: '%s'",
+        len(top_chunks),
+        query,
+    )
 
     return top_chunks

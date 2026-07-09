@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { DocInfo } from "@/app/dashboard/page";
 import { api } from "@/lib/api";
@@ -10,12 +10,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  FileText, Upload, Trash2, FileCheck, Clock, AlertCircle, Loader2, FolderOpen,
+  FileText,
+  Upload,
+  UploadCloud,
+  Trash2,
+  FileCheck,
+  Clock,
+  AlertCircle,
+  Loader2,
+  FolderOpen,
+  Cloud,
+  RefreshCw,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { Settings } from "lucide-react";
 import DocumentSettings from "./DocumentSettings";
+import DocumentCard from "./DocumentCard";
+import BulkActionBar from "./BulkActionBar";
 import { toast } from "sonner";
 
 interface Props {
@@ -31,7 +44,10 @@ function DocumentListSkeleton() {
   return (
     <div className="space-y-2 pb-3" aria-hidden="true">
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="rounded-lg border border-sidebar-border/60 p-2.5">
+        <div
+          key={index}
+          className="rounded-lg border border-sidebar-border/60 p-2.5"
+        >
           <div className="flex items-start gap-2.5">
             <Skeleton className="mt-0.5 h-4 w-4 rounded-full bg-sidebar-accent" />
             <div className="min-w-0 flex-1 space-y-2">
@@ -66,6 +82,159 @@ export default function DocumentSidebar({
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("active");
+  const [trashDocuments, setTrashDocuments] = useState<DocInfo[]>([]);
+  const [loadingTrash, setLoadingTrash] = useState(false);
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveLoading, setDriveLoading] = useState(true);
+  const [driveConnecting, setDriveConnecting] = useState(false);
+  const [driveError, setDriveError] = useState("");
+
+  // ── Multi-select state ───────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkRestoring, setBulkRestoring] = useState(false);
+
+  // Clear selection when switching tabs
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setSelectedIds(new Set());
+    if (value === "trash") {
+      void fetchTrash();
+    }
+  };
+
+  const toggleSelect = (
+    docId: string,
+    e: React.MouseEvent | React.ChangeEvent,
+  ) => {
+    e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) {
+        next.delete(docId);
+      } else {
+        next.add(docId);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // ── Bulk delete (active tab) ─────────────────────────────────────────────
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (
+      !confirm(
+        `Delete ${selectedIds.size} document${selectedIds.size > 1 ? "s" : ""}? They will be moved to trash.`,
+      )
+    )
+      return;
+
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(
+      ids.map((id) => api.delete(`/api/v1/documents/${id}`)),
+    );
+
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const succeeded = results.length - failed;
+
+    if (succeeded > 0) {
+      toast.success(
+        `${succeeded} document${succeeded > 1 ? "s" : ""} moved to trash`,
+      );
+    }
+    if (failed > 0) {
+      toast.error(
+        `${failed} document${failed > 1 ? "s" : ""} could not be deleted`,
+      );
+    }
+
+    clearSelection();
+    setBulkDeleting(false);
+    await onDocumentsChange();
+  };
+
+  // ── Bulk restore (trash tab) ─────────────────────────────────────────────
+  const handleBulkRestore = async () => {
+    if (selectedIds.size === 0) return;
+
+    setBulkRestoring(true);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(
+      ids.map((id) => api.post(`/api/v1/documents/${id}/restore`)),
+    );
+
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const succeeded = results.length - failed;
+
+    if (succeeded > 0) {
+      toast.success(
+        `${succeeded} document${succeeded > 1 ? "s" : ""} restored`,
+      );
+    }
+    if (failed > 0) {
+      toast.error(
+        `${failed} document${failed > 1 ? "s" : ""} could not be restored`,
+      );
+    }
+
+    clearSelection();
+    setBulkRestoring(false);
+    void fetchTrash();
+    await onDocumentsChange();
+  };
+
+  const fetchTrash = useCallback(async () => {
+    setLoadingTrash(true);
+    try {
+      const res = await api.get<{ items: DocInfo[] }>(
+        "/api/v1/documents/trash",
+      );
+      setTrashDocuments(res.items || []);
+    } catch (err) {
+      console.error("Failed to fetch trash:", err);
+    } finally {
+      setLoadingTrash(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDriveStatus() {
+      try {
+        const data = await api.get<{ connected: boolean }>(
+          "/api/v1/auth/google-drive/status",
+        );
+        if (!cancelled) setDriveConnected(data.connected);
+      } catch {
+        if (!cancelled) setDriveError("Unable to load Google Drive status");
+      } finally {
+        if (!cancelled) setDriveLoading(false);
+      }
+    }
+
+    void loadDriveStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleRestore = async (docId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.post(`/api/v1/documents/${docId}/restore`);
+      toast.success("Document restored");
+      void fetchTrash();
+      onDocumentsChange();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Restore failed";
+      toast.error(`❌ ${message}`);
+    }
+  };
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -81,15 +250,18 @@ export default function DocumentSidebar({
             const file = acceptedFiles[i];
             const formData = new FormData();
             formData.append("file", file);
-            
+
             toast.info(`⏳ Uploading '${file.name}'...`);
             await api.postForm("/api/v1/documents/upload", formData);
             setUploadProgress(((i + 1) / acceptedFiles.length) * 100);
-            toast.success(`📤 '${file.name}' uploaded successfully! Ingestion started.`);
+            toast.success(
+              `📤 '${file.name}' uploaded successfully! Ingestion started.`,
+            );
           }
-          onDocumentsChange();
+          await onDocumentsChange();
         } catch (err) {
-          const message = err instanceof Error ? err.message : t("documents.uploadFailed");
+          const message =
+            err instanceof Error ? err.message : t("documents.uploadFailed");
           setUploadError(message);
           toast.error(`❌ Upload failed: ${message}`);
         } finally {
@@ -98,14 +270,15 @@ export default function DocumentSidebar({
         }
       })();
     },
-    [onDocumentsChange, t]
+    [onDocumentsChange, t],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       "application/pdf": [".pdf"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        [".docx"],
       "text/plain": [".txt"],
       "text/markdown": [".md"],
     },
@@ -118,7 +291,7 @@ export default function DocumentSidebar({
     setDeleting(docId);
     try {
       await api.delete(`/api/v1/documents/${docId}`);
-      onDocumentsChange();
+      await onDocumentsChange();
     } catch (err) {
       console.error("Delete failed:", err);
     } finally {
@@ -127,8 +300,8 @@ export default function DocumentSidebar({
   };
 
   const handleSettingsClick = (doc: DocInfo, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent triggering document selection
-    setSettingsDoc(doc); 
+    e.stopPropagation();
+    setSettingsDoc(doc);
   };
 
   const startRename = (doc: DocInfo, e?: React.MouseEvent) => {
@@ -173,7 +346,10 @@ export default function DocumentSidebar({
     }
   };
 
-  const handleRenameKeyDown = (doc: DocInfo, e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleRenameKeyDown = (
+    doc: DocInfo,
+    e: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
     if (e.key === "Enter") {
       e.preventDefault();
       void submitRename(doc);
@@ -191,6 +367,42 @@ export default function DocumentSidebar({
     }
   };
 
+  const handleConnectDrive = async () => {
+    setDriveConnecting(true);
+    setDriveError("");
+
+    try {
+      const data = await api.get<{ auth_url: string }>(
+        "/api/v1/auth/google-drive/connect",
+      );
+      window.location.assign(data.auth_url);
+    } catch (err) {
+      setDriveError(
+        err instanceof Error ? err.message : "Failed to connect Google Drive",
+      );
+      setDriveConnecting(false);
+    }
+  };
+
+  const handleDisconnectDrive = async () => {
+    setDriveConnecting(true);
+    setDriveError("");
+
+    try {
+      const data = await api.delete<{ connected: boolean }>(
+        "/api/v1/auth/google-drive/disconnect",
+      );
+      setDriveConnected(data.connected);
+    } catch (err) {
+      setDriveError(
+        err instanceof Error
+          ? err.message
+          : "Failed to disconnect Google Drive",
+      );
+    } finally {
+      setDriveConnecting(false);
+    }
+  };
 
   const statusIcon = (status: string) => {
     switch (status) {
@@ -233,14 +445,25 @@ export default function DocumentSidebar({
           {uploading ? (
             <div className="space-y-2">
               <Loader2 className="w-5 h-5 mx-auto animate-spin text-primary" />
-              <p className="text-xs text-muted-foreground">{t("documents.uploading")}</p>
+              <p className="text-xs text-muted-foreground">
+                {t("documents.uploading")}
+              </p>
               <Progress value={uploadProgress} className="h-1" />
             </div>
           ) : (
             <>
-              <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
-              <p className="text-xs text-muted-foreground">
-                {isDragActive ? t("documents.dropHere") : t("documents.dropOrClick")}
+              {isDragActive ? (
+                <UploadCloud className="w-6 h-6 mx-auto text-primary mb-2 animate-bounce" />
+              ) : (
+                <Upload className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
+              )}
+              <p
+                className={`text-xs transition-colors ${isDragActive ? "text-primary font-medium" : "text-muted-foreground"}`}
+                aria-live="polite"
+              >
+                {isDragActive
+                  ? t("documents.dropHere")
+                  : t("documents.dropOrClick")}
               </p>
               <p className="text-[10px] text-muted-foreground/60 mt-1">
                 {t("documents.uploadFormats")}
@@ -248,152 +471,294 @@ export default function DocumentSidebar({
             </>
           )}
         </div>
+
+
       </div>
 
       {/* ── Documents List ──────────────────────────── */}
-      <div className="px-3 pt-3 pb-1">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          {loading
-            ? t("documents.documentsTitle", { count: "..." })
-            : t("documents.documentsTitle", { count: documents.length })}
-        </h3>
-      </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={handleTabChange}
+        className="flex-1 flex flex-col min-h-0"
+      >
+        <div className="px-3 pt-3 pb-1 flex items-center justify-between">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {activeTab === "active"
+              ? loading
+                ? t("documents.documentsTitle", { count: "..." })
+                : t("documents.documentsTitle", { count: documents.length })
+              : loadingTrash
+                ? "TRASH (...)"
+                : `TRASH (${trashDocuments.length})`}
+          </h3>
+          <TabsList className="h-7 bg-sidebar-accent">
+            <TabsTrigger value="active" className="text-[10px] px-2 py-0.5">
+              Active
+            </TabsTrigger>
+            <TabsTrigger value="trash" className="text-[10px] px-2 py-0.5">
+              Trash
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-      <ScrollArea className="flex-1 px-3 overflow-auto" aria-busy={loading}>
-        {loading ? (
-          <DocumentListSkeleton />
-        ) : documents.length === 0 ? (
-          <div className="text-center py-12">
-            <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="text-sm text-muted-foreground">{t("documents.noDocuments")}</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">{t("documents.getStarted")}</p>
-          </div>
-        ) : (
-          <div className="space-y-1 pb-3">
-            {documents.map((doc) => {
-              const isEditing = editingDocId === doc.id;
-              const isRenaming = renamingDocId === doc.id;
+        {/* ── Bulk Action Bar ──────────────────────── */}
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          onDelete={handleBulkDelete}
+          onRestore={handleBulkRestore}
+          onClear={clearSelection}
+          deleting={bulkDeleting}
+          restoring={bulkRestoring}
+          mode={activeTab as "active" | "trash"}
+        />
 
-              return (
-                <div
-                  key={doc.id}
-                  role="button"
-                  tabIndex={doc.status === "ready" ? 0 : -1}
-                  aria-disabled={doc.status !== "ready"}
-                  aria-current={activeDoc?.id === doc.id ? "true" : undefined}
-                  aria-label={`Select document ${doc.original_name}. Status: ${doc.status}`}
-                  onClick={() => doc.status === "ready" && !isEditing && onSelectDoc(doc)}
-                  onKeyDown={(e) => handleDocumentKeyDown(doc, e)}
-                  className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
-                    ${activeDoc?.id === doc.id
-                      ? "bg-primary/15 border border-primary/30"
-                      : "hover:bg-sidebar-accent border border-transparent"}
-                    ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    {statusIcon(doc.status)}
-                    <div className="flex-1 min-w-0">
-                      {isEditing ? (
-                        <Input
-                          value={draftName}
-                          onChange={(e) => setDraftName(e.target.value)}
+        <TabsContent
+          value="active"
+          className="flex-1 min-h-0 m-0 data-[state=active]:flex flex-col"
+        >
+          <ScrollArea className="flex-1 px-3 overflow-auto" aria-busy={loading}>
+            {loading ? (
+              <DocumentListSkeleton />
+            ) : documents.length === 0 ? (
+              <div className="text-center py-12">
+                <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  {t("documents.noDocuments")}
+                </p>
+                <p className="text-xs text-muted-foreground/60 mt-1">
+                  {t("documents.getStarted")}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1 pb-3">
+                {documents.map((doc) => {
+                  const isEditing = editingDocId === doc.id;
+                  const isRenaming = renamingDocId === doc.id;
+                  const isSelected = selectedIds.has(doc.id);
+
+                  return (
+                    <div
+                      key={doc.id}
+                      role="button"
+                      tabIndex={doc.status === "ready" ? 0 : -1}
+                      aria-disabled={doc.status !== "ready"}
+                      aria-current={
+                        activeDoc?.id === doc.id ? "true" : undefined
+                      }
+                      aria-label={`Select document ${doc.original_name}. Status: ${doc.status}`}
+                      onClick={() =>
+                        doc.status === "ready" && !isEditing && onSelectDoc(doc)
+                      }
+                      onKeyDown={(e) => handleDocumentKeyDown(doc, e)}
+                      className={`w-full text-left p-2.5 rounded-lg transition-all duration-200 group
+                        ${
+                          activeDoc?.id === doc.id
+                            ? "bg-primary/15 border border-primary/30"
+                            : isSelected
+                              ? "bg-primary/8 border border-primary/20"
+                              : "hover:bg-sidebar-accent border border-transparent"
+                        }
+                        ${doc.status !== "ready" ? "opacity-60 cursor-default" : "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        {/* ── Checkbox ── */}
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${doc.original_name}`}
+                          checked={isSelected}
+                          onChange={(e) => toggleSelect(doc.id, e)}
                           onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => handleRenameKeyDown(doc, e)}
-                          disabled={isRenaming}
-                          autoFocus
-                          className="h-7 px-2 text-sm font-medium"
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border border-muted-foreground/40 accent-primary cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                          style={isSelected ? { opacity: 1 } : undefined}
                         />
-                      ) : (
-                        <p
-                          className="text-sm font-medium truncate leading-tight"
-                          onDoubleClick={(e) => startRename(doc, e)}
-                          title="Double-click to rename"
-                        >
-                          {doc.original_name}
-                        </p>
-                      )}
 
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {doc.summary || "📄 No summary available"}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-muted-foreground">
-                        {formatSize(doc.file_size)}
-                      </span>
-                      {doc.status === "ready" && (
-                        <>
-                          <span className="text-[10px] text-muted-foreground">•</span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {t("documents.pagesShort", { count: doc.page_count })}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">•</span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {t("documents.chunks", { count: doc.chunk_count })}
-                          </span>
-                        </>
-                      )}
-                      {doc.status === "processing" && (
-                        <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
-                          {t("documents.processing")}
-                        </Badge>
-                      )}
-                      {doc.status === "failed" && (
-                        <Badge variant="destructive" className="text-[9px] h-4 px-1.5">
-                          {t("documents.failed")}
-                        </Badge>
-                      )}
+                        {statusIcon(doc.status)}
+                        <div className="flex-1 min-w-0">
+                          {isEditing ? (
+                            <Input
+                              value={draftName}
+                              onChange={(e) => setDraftName(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => handleRenameKeyDown(doc, e)}
+                              disabled={isRenaming}
+                              autoFocus
+                              className="h-7 px-2 text-sm font-medium"
+                            />
+                          ) : (
+                            <p
+                              className="text-sm font-medium truncate leading-tight"
+                              onDoubleClick={(e) => startRename(doc, e)}
+                              title="Double-click to rename"
+                            >
+                              {doc.original_name}
+                            </p>
+                          )}
+
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {doc.summary || "📄 No summary available"}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatSize(doc.file_size)}
+                            </span>
+                            {doc.status === "ready" && (
+                              <>
+                                <span className="text-[10px] text-muted-foreground">
+                                  •
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {t("documents.pagesShort", {
+                                    count: doc.page_count,
+                                  })}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  •
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {t("documents.chunks", {
+                                    count: doc.chunk_count,
+                                  })}
+                                </span>
+                              </>
+                            )}
+                            {doc.status === "processing" && (
+                              <Badge
+                                variant="secondary"
+                                className="text-[9px] h-4 px-1.5"
+                              >
+                                {t("documents.processing")}
+                              </Badge>
+                            )}
+                            {doc.status === "failed" && (
+                              <Badge
+                                variant="destructive"
+                                className="text-[9px] h-4 px-1.5"
+                              >
+                                {t("documents.failed")}
+                              </Badge>
+                            )}
+                          </div>
+                          <DocumentCard document={doc} />
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity cursor-pointer"
+                            onClick={(e) => handleSettingsClick(doc, e)}
+                            disabled={doc.status !== "ready"}
+                            aria-label="Open chunking settings"
+                            title={`Open chunking settings for ${doc.original_name}`}
+                          >
+                            <Settings className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                            onClick={(e) => handleDelete(doc.id, e)}
+                            disabled={deleting === doc.id}
+                            aria-label="Delete document"
+                            title={`Delete ${doc.original_name}`}
+                          >
+                            {deleting === doc.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3 h-3 text-destructive" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                    {/* Action buttons (Settings and Delete) are only visible on hover and when the document is ready. The settings button is disabled if the document is not ready, and the delete button shows a loader when the document is being deleted. */} 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity cursor-pointer"
-                      onClick={(e) => handleSettingsClick(doc, e)}
-                      disabled={doc.status !== "ready"}
-                      aria-label="Open chunking settings"
-                      title={`Open chunking settings for ${doc.original_name}`}
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent
+          value="trash"
+          className="flex-1 min-h-0 m-0 data-[state=active]:flex flex-col"
+        >
+          <ScrollArea
+            className="flex-1 px-3 overflow-auto"
+            aria-busy={loadingTrash}
+          >
+            {loadingTrash ? (
+              <DocumentListSkeleton />
+            ) : trashDocuments.length === 0 ? (
+              <div className="text-center py-12">
+                <Trash2 className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">Trash is empty</p>
+              </div>
+            ) : (
+              <div className="space-y-1 pb-3">
+                {trashDocuments.map((doc) => {
+                  const isSelected = selectedIds.has(doc.id);
+
+                  return (
+                    <div
+                      key={doc.id}
+                      className={`w-full text-left p-2.5 rounded-lg border transition-all duration-200 group
+                        ${isSelected ? "bg-primary/8 border-primary/20" : "border-transparent hover:bg-sidebar-accent"}`}
                     >
-                      <Settings className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0 cursor-pointer"
-                      onClick={(e) => handleDelete(doc.id, e)}
-                      disabled={deleting === doc.id}
-                      aria-label="Delete document"
-                      title={`Delete ${doc.original_name}`}
-                    >
-                      {deleting === doc.id ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3 h-3 text-destructive" />
-                      )}
-                    </Button>
+                      <div className="flex items-start gap-2.5">
+                        {/* ── Checkbox ── */}
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${doc.original_name}`}
+                          checked={isSelected}
+                          onChange={(e) => toggleSelect(doc.id, e)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border border-muted-foreground/40 accent-primary cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                          style={isSelected ? { opacity: 1 } : undefined}
+                        />
+
+                        {statusIcon(doc.status)}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate leading-tight opacity-60">
+                            {doc.original_name}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatSize(doc.file_size)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            onClick={(e) => handleRestore(doc.id, e)}
+                            title={`Restore ${doc.original_name}`}
+                            aria-label={`Restore ${doc.original_name}`}
+                          >
+                            <RefreshCw className="w-3 h-3 text-primary" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
 
-
-          </div>
-        )}
-      </ScrollArea>
-      {/* Settings Modal */}
-      {/* The DocumentSettings component is rendered here and controlled by the settingsDoc state. When a user clicks the settings button for a document, it sets that document in settingsDoc, which opens the modal. The modal can then call onDocumentsChange to refresh the list after saving settings. */}
+      {/* ── Settings Modal ───────────────────────────── */}
       {settingsDoc && (
         <DocumentSettings
-          document={settingsDoc} // Pass the selected document to the document settings component
-          open={!!settingsDoc} // Open when settingsDoc is not null
-          onOpenChange={(open) => { // Close the modal when open is false
-            if (!open) setSettingsDoc(null); // Clear the settingsDoc state to close the modal
+          document={settingsDoc}
+          open={!!settingsDoc}
+          onOpenChange={(open) => {
+            if (!open) setSettingsDoc(null);
           }}
-          onSettingsSaved={() => { // Refresh documents after saving settings
-            onDocumentsChange(); // Refresh the document list to reflect any changes
-            setSettingsDoc(null); // Close the settings modal after saving
+          onSettingsSaved={() => {
+            onDocumentsChange();
+            setSettingsDoc(null);
           }}
         />
       )}

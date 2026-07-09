@@ -5,7 +5,7 @@ All config is loaded from environment variables with sensible defaults.
 import os
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-
+from pydantic import model_validator
 
 class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────
@@ -15,14 +15,24 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:7860"
 
+    # ── Logging ──────────────────────────────────────────
+    LOG_LEVEL: str | None = None
+    LOG_FILE: str = "./data/logs/app.log"
+
+
     # ── Database ─────────────────────────────────────────
     DATABASE_URL: str = "sqlite:///./data/app.db"
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_PRE_PING: bool = True
 
     # ── Auth ─────────────────────────────────────────────
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_EXPIRY_MINUTES: int = 15
     JWT_REFRESH_EXPIRY_DAYS: int = 7
     GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_DRIVE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google-drive/callback"
     HF_CLIENT_ID: str = ""
     HF_CLIENT_SECRET: str = ""
     HF_REDIRECT_URI: str = ""
@@ -48,6 +58,12 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     CELERY_TASK_TRACK_STARTED: bool = True
 
+    # ── Document Processing ──────────────────────────────
+    DOC_PROCESSING_TIMEOUT_MINUTES: int = 30
+    DOC_PROCESSING_MAX_RETRIES: int = 3
+    DOC_PROCESSING_RETRY_DELAY_SECONDS: int = 30
+    DOC_CLEANUP_MAX_AGE_DAYS: int = 90
+
     # ── File Upload ──────────────────────────────────────
     UPLOAD_DIR: str = "./data/uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
@@ -66,8 +82,12 @@ class Settings(BaseSettings):
     # ── RAG Pipeline ─────────────────────────────────────
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
-    TOP_K_RETRIEVAL: int = 10
-    TOP_K_RERANK: int = 5
+    TOP_K_RETRIEVAL: int = 20 # Fetch more candidates for reranking
+    TOP_K_RERANK: int = 8 # Final number of chunks to return after reranking
+
+    # ── Hybrid Search / RRF ───────────────────────────────
+    USE_HYBRID_SEARCH: bool = True   # set to False to fall back to vector-only
+    RRF_K: int = 60                  # RRF rank constant; 60 is the standard default
 
     # ── Knowledge Graph (GraphRAG) ───────────────────────
     GRAPH_PERSIST_DIR: str = "./data/graphs"
@@ -99,6 +119,17 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.3
     SUMMARY_MAX_TOKENS: int = 512
 
+    # ── Field-level Encryption ────────────────────────
+    # Dedicated key for encrypting sensitive user fields (tokens, secrets).
+    # Must be overridden in production — validate_production() enforces this.
+    # Generate a strong key: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    FIELD_ENCRYPTION_KEY: str = "change-me-in-production-field-encryption-key"
+    FIELD_ENCRYPTION_KEY_VERSION: int = 1
+
+    # ── Document Cleanup ─────────────────────────────
+    DOC_CLEANUP_ENABLED: bool = True
+    DOC_CLEANUP_INACTIVE_DAYS: int = 30
+
     # ── LangSmith Tracing (optional) ─────────────────────
     LANGSMITH_TRACING: bool = False
     LANGSMITH_API_KEY: str = ""
@@ -106,7 +137,7 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = "pdf-assistant-rag"
 
     # ── Reranker ─────────────────────────────────────────
-    RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3" # Lightweight 384-dim model fine-tuned for relevance ranking
     # ── Vision / Image captioning ─────────────────────
     VISION_PROVIDER: str | None = None  # e.g. 'openai'
     VISION_MODEL: str | None = None
@@ -121,11 +152,75 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
 
+    # ── Database Tuning ─────────────────────────────────
+    DATABASE_POOL_RECYCLE: int = 3600
+    DATABASE_SLOW_QUERY_THRESHOLD: float = 1.0
+
+    # ── Request Limits ───────────────────────────────────
+    MAX_REQUEST_BODY_SIZE_MB: int = 50
+
     @property
     def cors_origins(self) -> list[str]:
-        if self.ENVIRONMENT == "production":
-            return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
-        return ["*"]
+        origins = [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://pdf-assistant-rag.vercel.app",
+        ]
+        if self.ALLOWED_ORIGINS:
+            for o in self.ALLOWED_ORIGINS.split(","):
+                o_strip = o.strip()
+                if o_strip and o_strip not in origins:
+                    origins.append(o_strip)
+        return origins
+
+    @model_validator(mode="after")
+    def validate_vision_provider_keys(self) -> "Settings":
+        provider = self.VISION_PROVIDER.lower() if self.VISION_PROVIDER else None
+        if provider == "openai" and not self.OPENAI_API_KEY:
+            raise ValueError(
+                "ValidationError: OPENAI_API_KEY is required when VISION_PROVIDER is set to 'openai'."
+            )
+        return self
+
+    def validate_production(self) -> None:
+        """Validate that critical secrets are overridden in production.
+
+        Called during application startup (see ``main.py`` lifespan). In
+        non-production environments it only logs warnings; in production it
+        raises ``ValueError`` to prevent the app from starting with insecure
+        defaults.
+        """
+        import logging
+        _logger = logging.getLogger(__name__)
+
+        _INSECURE_DEFAULTS = {
+            "SECRET_KEY": "change-me-in-production-please",
+            "FIELD_ENCRYPTION_KEY": "change-me-in-production-field-encryption-key",
+        }
+
+        issues: list[str] = []
+        for field, default_value in _INSECURE_DEFAULTS.items():
+            current = getattr(self, field, None)
+            if current == default_value:
+                issues.append(
+                    f"{field} is set to the insecure default. "
+                    f"Override it via environment variable or .env file."
+                )
+
+        # Minimum key length check
+        if len(self.SECRET_KEY) < 32:
+            issues.append(
+                "SECRET_KEY is too short — use at least 32 characters. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+
+        if self.ENVIRONMENT == "production" and issues:
+            raise ValueError(
+                "Production configuration errors:\n  • " + "\n  • ".join(issues)
+            )
+        elif issues:
+            for issue in issues:
+                _logger.warning("Non-production config warning: %s", issue)
 
     class Config:
         env_file = ".env"

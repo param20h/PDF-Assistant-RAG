@@ -64,6 +64,14 @@ const getConfidenceBadgeMeta = (value?: number): ConfidenceBadgeMeta => {
 const getPrimarySourceMetric = (source: SourceChunk) =>
   source.confidence ?? source.score;
 
+// Returns true only when the source has a real, usable page number.
+// Some document types (e.g. .txt, .md) have no page concept, and the
+// backend may send page as undefined/null/NaN in those cases.
+const hasValidPage = (source: SourceChunk) =>
+  typeof source.page === "number" &&
+  Number.isFinite(source.page) &&
+  source.page >= 0;
+
 const MetricBadge = ({
   label,
   value,
@@ -134,27 +142,39 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
         <div className="px-3 pb-2 flex flex-wrap gap-1">
           {sources.map((src, i) => {
             const badgeMeta = getConfidenceBadgeMeta(
-              getPrimarySourceMetric(src)
+              getPrimarySourceMetric(src),
             );
+            const validPage = hasValidPage(src);
 
             return (
               <Tooltip key={i}>
                 <TooltipTrigger
                   type="button"
                   className="inline-flex"
-                  onClick={() =>
+                  disabled={!validPage}
+                  onClick={() => {
+                    if (!validPage) return;
                     onPageClick({
                       page: src.page + 1,
                       highlightRects: src.highlightRects,
-                    })
+                    });
+                  }}
+                  aria-label={
+                    validPage
+                      ? `Go to source page ${src.page + 1}. Confidence ${badgeMeta.label}`
+                      : `Source from ${src.filename}. Page unavailable. Confidence ${badgeMeta.label}`
                   }
-                  aria-label={`Go to source page ${src.page + 1}. Confidence ${badgeMeta.label}`}
                 >
                   <Badge
                     variant="outline"
-                    className={`text-[10px] h-5 cursor-pointer hover:bg-primary/20 transition-colors ${badgeMeta.className}`}
+                    className={`text-[10px] h-5 transition-colors ${badgeMeta.className} ${
+                      validPage
+                        ? "cursor-pointer hover:bg-primary/20"
+                        : "cursor-default opacity-70"
+                    }`}
                   >
-                    p.{src.page + 1} - {badgeMeta.label}
+                    {validPage ? `p.${src.page + 1}` : "Page N/A"} -{" "}
+                    {badgeMeta.label}
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent
@@ -178,58 +198,68 @@ export default function SourceCard({ sources = [], onPageClick }: Props) {
 
       {expanded && (
         <div id={sourceListId} className="border-t border-border/30">
-          {sources.map((src, i) => (
-            <div
-              key={i}
-              className="px-3 py-2.5 border-b border-border/20 last:border-b-0 hover:bg-accent/20 transition-colors"
-            >
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="truncate text-[10px] font-medium text-muted-foreground">
-                    {src.filename}
-                  </span>
-                  <Badge variant="outline" className="h-5 px-1.5 text-[9px]">
-                    Page {src.page + 1}
-                  </Badge>
-                  <MetricBadge label="Score" value={src.score} />
-                  <MetricBadge label="Confidence" value={src.confidence} />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 shrink-0 px-2 text-[10px]"
-                  onClick={() =>
-                    onPageClick({
-                      page: src.page + 1,
-                      highlightRects: src.highlightRects,
-                    })
-                  }
-                  aria-label={`View source page ${src.page + 1}`}
-                >
-                  <Eye className="w-3 h-3 mr-1" />
-                  View
-                </Button>
-              </div>
-              <p
-                className={`text-[11px] text-muted-foreground leading-relaxed ${
-                  excerptOpen.has(i) ? "" : "line-clamp-3"
-                }`}
+          {sources.map((src, i) => {
+            const validPage = hasValidPage(src);
+
+            return (
+              <div
+                key={i}
+                className="px-3 py-2.5 border-b border-border/20 last:border-b-0 hover:bg-accent/20 transition-colors"
               >
-                {src.text}
-              </p>
-              {src.text.length > EXCERPT_THRESHOLD && (
-                <button
-                  type="button"
-                  onClick={() => toggleExcerpt(i)}
-                  aria-expanded={excerptOpen.has(i)}
-                  className="mt-1.5 flex items-center gap-1 text-[10px] text-primary/70 hover:text-primary transition-colors"
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="truncate text-[10px] font-medium text-muted-foreground">
+                      {src.filename}
+                    </span>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[9px]">
+                      {validPage ? `Page ${src.page + 1}` : "Page N/A"}
+                    </Badge>
+                    <MetricBadge label="Score" value={src.score} />
+                    <MetricBadge label="Confidence" value={src.confidence} />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 shrink-0 px-2 text-[10px]"
+                    disabled={!validPage}
+                    onClick={() => {
+                      if (!validPage) return;
+                      onPageClick({
+                        page: src.page + 1,
+                        highlightRects: src.highlightRects,
+                      });
+                    }}
+                    aria-label={
+                      validPage
+                        ? `View source page ${src.page + 1}`
+                        : "Page reference unavailable for this source"
+                    }
+                  >
+                    <Eye className="w-3 h-3 mr-1" />
+                    {validPage ? "View" : "N/A"}
+                  </Button>
+                </div>
+                <p
+                  className={`text-[11px] text-muted-foreground leading-relaxed ${
+                    excerptOpen.has(i) ? "" : "line-clamp-3"
+                  }`}
                 >
-                  <TextQuote className="w-3 h-3" />
-                  {excerptOpen.has(i) ? "Hide excerpt" : "Show excerpt"}
-                </button>
-              )}
-            </div>
-          ))}
+                  {src.text}
+                </p>
+                {src.text.length > EXCERPT_THRESHOLD && (
+                  <button
+                    type="button"
+                    onClick={() => toggleExcerpt(i)}
+                    aria-expanded={excerptOpen.has(i)}
+                    className="mt-1.5 flex items-center gap-1 text-[10px] text-primary/70 hover:text-primary transition-colors"
+                  >
+                    <TextQuote className="w-3 h-3" />
+                    {excerptOpen.has(i) ? "Hide excerpt" : "Show excerpt"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

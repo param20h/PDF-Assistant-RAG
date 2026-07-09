@@ -15,6 +15,7 @@ pyjwt
 passlib[bcrypt]
 python-dotenv
 google-auth
+google-auth-oauthlib
 google-api-python-client
 APScheduler
 fastapi-mail
@@ -28,8 +29,12 @@ httpx
 
 # Document Processing
 PyMuPDF
+pymupdf4llm
+google-generativeai
+google-genai
 pdfplumber
 python-docx
+unstructured[pdf]
 
 # LangChain & RAG
 langchain
@@ -65,8 +70,18 @@ celery[redis]
 #brew install libmagic // for OSX
 python-magic-bin; sys_platform == "win32" # for windows
 python-magic; sys_platform != "win32"
+
+# OCR support for scanned/image-based PDFs
+pytesseract>=0.3.10
+easyocr>=1.7.1; extra == "easyocr"
+Pillow>=10.0.0
+
 python-docx
 pypdf
 reportlab
 # crawl4ai
 ddgs
+loguru
+redis>=4.6.0
+pymupdf4llm
+google-genai

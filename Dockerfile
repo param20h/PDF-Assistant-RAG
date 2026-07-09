@@ -1,22 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --------------------------------------------------------
-# Stage 1: Build Next.js frontend assets
-# --------------------------------------------------------
-FROM node:20-alpine AS frontend-builder
-
-WORKDIR /app/frontend
-
-# Install dependencies
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit
-
-# Copy frontend source and build
-COPY frontend/ ./
-RUN npm run build
-
-# --------------------------------------------------------
-# Stage 2: Build Python dependencies in an isolated venv
+# Stage 1: Build Python dependencies in an isolated venv
 # --------------------------------------------------------
 FROM python:3.11-slim AS python-builder
 
@@ -40,7 +25,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     find /opt/venv -type f -name "*.pyc" -delete
 
 # --------------------------------------------------------
-# Stage 3: Runtime image with only app code and artifacts
+# Stage 2: Runtime image with only backend code and dependencies
 # --------------------------------------------------------
 FROM python:3.11-slim
 
@@ -55,7 +40,7 @@ RUN useradd -m -u 1000 appuser
 
 WORKDIR /app
 
-# Runtime-only system packages. Build tools stay in python-builder.
+# Runtime-only system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libmagic1 \
@@ -68,9 +53,6 @@ COPY --from=python-builder /opt/venv /opt/venv
 COPY backend/app ./app
 COPY backend/__init__.py ./backend/__init__.py
 
-# Copy frontend build from stage 1
-COPY --from=frontend-builder /app/frontend/out ./frontend/out
-
 # Create data directories with proper permissions
 RUN mkdir -p /app/data/uploads /app/data/chroma_db /app/data/graphs /app/data/huggingface && \
     chown -R appuser:appuser /app
@@ -82,4 +64,3 @@ USER appuser
 EXPOSE 7860
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
-
