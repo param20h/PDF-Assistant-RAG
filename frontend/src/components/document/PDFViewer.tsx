@@ -182,7 +182,7 @@ export default function PDFViewer({
   }, [matches, currentIndex, currentPage]);
 
   const handlePageJump = (value: string) => {
-    const pageNumber = parseInt(value.trim(), 10);
+    const pageNumber = parseInt(value.trim(, 10), 10);
     if (
       !Number.isNaN(pageNumber) &&
       pageNumber >= 1 &&
