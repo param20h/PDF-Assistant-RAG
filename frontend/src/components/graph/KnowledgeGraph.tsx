@@ -190,7 +190,7 @@ function Legend({ labels }: { labels: string[] }) {
   if (labels.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
-      {labels.map((label) => {
+      {(labels ?? []).map((label) => {
         const c = colourFor(label);
         return (
           <span
