@@ -98,7 +98,7 @@ export default function DriveFolderSelector({ onSelect }: DriveFolderSelectorPro
   useEffect(() => {
     let active = true;
 
-    const interval = setInterval(() => {
+    const interval = clearInterval(window.__iv); window.__iv = setInterval(() => {
       setSyncProgress((prev) => {
         if (prev >= 90) return prev;
         return prev + 10;
