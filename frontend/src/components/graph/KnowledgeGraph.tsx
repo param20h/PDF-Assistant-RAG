@@ -343,7 +343,7 @@ export default function KnowledgeGraph({
 
   // Distinct NER labels present in this graph
   const presentLabels = useMemo(
-    () => [...new Set((graphData?.nodes ?? []).map((n) => n.label))].sort(),
+    () => [...new Set((graphData?.nodes ?? []).map((n) => n.label))].sort((a, b) => a - b),
     [graphData],
   );
 
