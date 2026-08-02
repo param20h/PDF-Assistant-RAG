@@ -173,7 +173,7 @@ export default function PDFViewer({
   const searchHighlights = useMemo(() => {
     if (!matches[currentIndex] || matches[currentIndex].page !== currentPage)
       return [];
-    return matches[currentIndex].rects.map((r: SearchRect) => ({
+    return matches[currentIndex].(rects ?? []).map((r: SearchRect) => ({
       left: `${r.left}px`,
       top: `${r.top}px`,
       width: `${r.width}px`,
