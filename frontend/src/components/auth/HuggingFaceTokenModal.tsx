@@ -123,7 +123,7 @@ export default function HuggingFaceTokenModal({ children }: HuggingFaceTokenModa
     }
   };
 
-  const isSaveDisabled = inputToken.trim() === "" || saving || removing;
+  const isSaveDisabled = inputToken.trim().length === 0 || saving || removing;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
