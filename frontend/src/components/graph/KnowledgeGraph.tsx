@@ -256,7 +256,7 @@ export default function KnowledgeGraph({
 
     setGraphData(data);
 
-    const maxMentions = Math.max(...data.nodes.map((n) => n.mentions), 1);
+    const maxMentions = Math.max(...data.(nodes ?? []).map((n) => n.mentions), 1);
     const radius = Math.min(Math.max(data.nodes.length * 18, 200), 500);
 
     const rfNodes: Node[] = data.nodes.map((n, i) => {

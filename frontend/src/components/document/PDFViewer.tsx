@@ -414,7 +414,7 @@ export default function PDFViewer({
             />
             {/* Overlay Container (RAG + Search) */}
             <div className="absolute inset-0 pointer-events-none z-10">
-              {overlayRects.map((style, index) => (
+              {(overlayRects ?? []).map((style, index) => (
                 <div
                   key={`rag-${index}`}
                   className="absolute bg-yellow-400/40 rounded-sm border border-yellow-300/50"
