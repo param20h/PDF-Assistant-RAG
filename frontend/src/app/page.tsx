@@ -54,18 +54,23 @@ const FEATURES = [
 export default function HomePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [hallOfFameOpen, setHallOfFameOpen] = useState(false);
   const [maintenanceVisible, setMaintenanceVisible] = useState(true);
 
   const docsUrl = (process.env.NEXT_PUBLIC_API_URL || "https://param20h-pdf-assit-rag.hf.space") + "/docs";
 
   useEffect(() => {
-    if (!loading && user) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (mounted && !loading && user) {
       router.replace("/dashboard");
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, mounted]);
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse w-12 h-12 rounded-full bg-primary/20" />

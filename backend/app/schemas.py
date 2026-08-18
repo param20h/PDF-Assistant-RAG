@@ -183,13 +183,13 @@ class UserResponse(BaseModel):
 class DocumentResponse(BaseModel):
     id: str
     original_name: str
-    file_size: int
-    page_count: int
-    chunk_count: int
-    status: str
+    file_size: int = 0
+    page_count: int = 0
+    chunk_count: int = 0
+    status: str = "pending"
     error_message: Optional[str] = None
     uploaded_at: datetime
-    summary: Optional[str] = None # New field for document summary
+    summary: Optional[str] = None
     task_id: Optional[str] = None
     keywords: Optional[List[str]] = []
     extracted_urls: Optional[List[str]] = None

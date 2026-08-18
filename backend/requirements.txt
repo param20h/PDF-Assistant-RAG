@@ -49,6 +49,7 @@ ragas>=0.3.0
 # Embeddings & ML
 sentence-transformers
 transformers
+scikit-learn
 
 # Vector Database
 chromadb
