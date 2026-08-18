@@ -145,7 +145,7 @@ def _migrate_schema():
         ("users", "google_refresh_token", "ALTER TABLE users ADD COLUMN google_refresh_token TEXT"),
         ("users", "role", "ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'"),
         ("users", "last_login", "ALTER TABLE users ADD COLUMN last_login TIMESTAMP"),
-        ("users", "is_verified", "ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT TRUE NOT NULL"),
+        ("users", "is_verified", "ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 1 NOT NULL"),
         ("users", "verification_token_hash", "ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR(64)"),
         (
             "users",
@@ -161,9 +161,9 @@ def _migrate_schema():
                 with engine.begin() as conn:
                     conn.execute(text(ddl))
                 logger.info("Migration: added column %s.%s", table, column)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
-                    "Migration skipped (may already exist): %s.%s", table, column
+                    "Migration failed for %s.%s: %s", table, column, exc
                 )
 
     # Migrate api_keys
@@ -182,16 +182,16 @@ def _migrate_schema():
                 with engine.begin() as conn:
                     conn.execute(text(ddl))
                 logger.info("Migration: added column %s.%s", table, column)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
-                    "Migration skipped (may already exist): %s.%s", table, column
+                    "Migration failed for %s.%s: %s", table, column, exc
                 )
 
     # Migrate documents
     existing_docs_columns = {c["name"] for c in inspector.get_columns("documents")}
     docs_migrations = [
         ("documents", "last_accessed_at", "ALTER TABLE documents ADD COLUMN last_accessed_at TIMESTAMP"),
-        ("documents", "is_deleted", "ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("documents", "is_deleted", "ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT 0 NOT NULL"),
         ("documents", "deleted_at", "ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP"),
         ("documents", "summary", "ALTER TABLE documents ADD COLUMN summary TEXT"),
         ("documents", "chunk_size", "ALTER TABLE documents ADD COLUMN chunk_size INTEGER"),
@@ -214,9 +214,9 @@ def _migrate_schema():
                 with engine.begin() as conn:
                     conn.execute(text(ddl))
                 logger.info("Migration: added column %s.%s", table, column)
-            except Exception:
+            except Exception as exc:
                 logger.warning(
-                    "Migration skipped (may already exist): %s.%s", table, column
+                    "Migration failed for %s.%s: %s", table, column, exc
                 )
 
     # Migrate chat_messages
