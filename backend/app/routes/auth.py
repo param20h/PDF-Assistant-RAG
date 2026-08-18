@@ -120,7 +120,10 @@ async def _send_verification_email(user: User, token: str) -> None:
         subtype=MessageType.html,
     )
 
-    await FastMail(conf).send_message(message)
+    try:
+        await FastMail(conf).send_message(message)
+    except Exception as exc:
+        logger.error("Failed to send verification email for %s: %s", user.email, exc)
 
 GOOGLE_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 GOOGLE_DRIVE_STATE_TOKEN_TYPE = "google_drive_oauth_state"
@@ -212,14 +215,15 @@ async def register(payload: UserRegister, db: Session = Depends(get_db)):
         email=payload.email,
         hashed_password=hash_password(payload.password),
         role=UserRole.user,
-        is_verified=False,
+        is_verified=not _mail_configured(),
     )
     token = _set_verification_token(user)
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    await _send_verification_email(user, token)
+    if _mail_configured():
+        await _send_verification_email(user, token)
 
     audit_log(
         action="user.register",

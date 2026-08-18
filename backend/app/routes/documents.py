@@ -632,44 +632,20 @@ def list_documents(
     """
     List documents for the authenticated user with offset pagination and
     optional keyword search on document names.
-
-    Pagination is controlled by ``page`` and ``per_page`` (or its alias
-    ``limit``).  Search is applied via ``query`` (or its short alias ``q``),
-    which performs a case-insensitive substring match on ``original_name``.
-
-    Args:
-        page:     Page number to retrieve (1-indexed). Defaults to 1.
-        per_page: Number of documents per page. Defaults to 20, max 100.
-        limit:    Alias for per_page – whichever is supplied takes effect.
-        q:        Case-insensitive substring filter on original_name.
-        query:    Alias for q – whichever is supplied takes effect.
-        user:     Authenticated user injected by get_current_user.
-        db:       Database session injected by get_db.
-
-    Returns:
-        DocumentListResponse with items, total, page, pages, total_pages,
-        limit, and query fields.
     """
-    # Allow `limit` as alias for `per_page`; `query` as alias for `q`
     effective_limit = limit if limit is not None else per_page
     effective_query = query if query is not None else q
     skip = (page - 1) * effective_limit
 
-    # ── Build filtered query via helper ───────────────────────────────────────
-    base_query = _get_documents_query(db, user.id, effective_query)
+    query_obj = db.query(Document).filter(
+        Document.user_id == user.id,
+        Document.is_deleted.is_(False),
+    )
+    if effective_query and effective_query.strip():
+        query_obj = query_obj.filter(Document.original_name.ilike(f"%{effective_query.strip()}%"))
 
-    # ── Total count (before pagination) ──────────────────────────────────────
-    total = db.execute(
-        select(func.count()).select_from(base_query.subquery())
-    ).scalar_one()
-
-    # ── Paginated results ─────────────────────────────────────────────────────
-    docs = db.execute(
-        base_query
-        .order_by(Document.uploaded_at.desc())
-        .limit(effective_limit)
-        .offset(skip)
-    ).scalars().all()
+    total = query_obj.count()
+    docs = query_obj.order_by(Document.uploaded_at.desc()).offset(skip).limit(effective_limit).all()
 
     total_pages = max(1, (total + effective_limit - 1) // effective_limit)
 
