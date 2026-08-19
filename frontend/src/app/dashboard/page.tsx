@@ -135,6 +135,14 @@ export default function DashboardPage() {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : CONNECTION_ERROR_MESSAGE;
+      if (
+        message.includes("Invalid or expired token") ||
+        message.includes("Unauthorized") ||
+        message.includes("User not found")
+      ) {
+        router.replace("/login");
+        return;
+      }
       setConnectionError(
         message === CONNECTION_ERROR_MESSAGE
           ? CONNECTION_ERROR_BANNER_MESSAGE
@@ -143,7 +151,7 @@ export default function DashboardPage() {
     } finally {
       setDocumentsLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!user) return;
