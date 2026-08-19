@@ -116,6 +116,13 @@ class ApiClient {
     return this.refreshPromise;
   }
 
+  private handleUnauthorized(): void {
+    this.clearTokens();
+    if (typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard")) {
+      window.location.href = "/login";
+    }
+  }
+
   private clearTokens(): void {
     localStorage.removeItem("token");
     localStorage.removeItem("refresh_token");
@@ -174,6 +181,7 @@ class ApiClient {
       if (newToken) {
         return this.get<T>(path, { ...options, token: newToken, _skipRefresh: true });
       }
+      this.handleUnauthorized();
     }
 
     if (!res.ok) {
@@ -197,6 +205,7 @@ class ApiClient {
       if (newToken) {
         return this.post<T>(path, body, { ...options, token: newToken, _skipRefresh: true });
       }
+      this.handleUnauthorized();
     }
 
     if (!res.ok) {
@@ -220,6 +229,7 @@ class ApiClient {
       if (newToken) {
         return this.put<T>(path, body, { ...options, token: newToken, _skipRefresh: true });
       }
+      this.handleUnauthorized();
     }
 
     if (!res.ok) {
@@ -243,6 +253,7 @@ class ApiClient {
       if (newToken) {
         return this.patch<T>(path, body, { ...options, token: newToken, _skipRefresh: true });
       }
+      this.handleUnauthorized();
     }
 
     if (!res.ok) {
@@ -277,6 +288,7 @@ class ApiClient {
       if (newToken) {
         return this.postForm<T>(path, formData, { ...options, token: newToken, _skipRefresh: true });
       }
+      this.handleUnauthorized();
     }
 
     if (!res.ok) {
@@ -285,8 +297,6 @@ class ApiClient {
 
     return res.json();
   }
-
-
 
   async delete<T>(path: string, options?: FetchOptions): Promise<T> {
     const res = await this.fetchWithConnectionError(`${this.baseUrl}${path}`, {
@@ -301,6 +311,7 @@ class ApiClient {
       if (newToken) {
         return this.delete<T>(path, { ...options, token: newToken, _skipRefresh: true });
       }
+      this.handleUnauthorized();
     }
 
     if (!res.ok) {
