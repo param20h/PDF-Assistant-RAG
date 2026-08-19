@@ -147,15 +147,15 @@ export default function HomePage() {
           </p>
 
           {/* CTAs */}
-          <div className="flex flex-wrap gap-3 justify-center pt-2">
+          <div className="flex flex-wrap gap-3.5 justify-center pt-2">
             <Link href="/register">
               <Button
                 size="lg"
                 className="px-8 text-base h-12 shadow-lg shadow-primary/20
                            hover:shadow-primary/30 hover:-translate-y-0.5
-                           transition-all duration-200"
+                           transition-all duration-200 font-medium"
               >
-                Get Started Free
+                Get Started for Free
               </Button>
             </Link>
 
@@ -169,22 +169,6 @@ export default function HomePage() {
                 Sign In
               </Button>
             </Link>
-
-            <a
-              href={docsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open Developer API Swagger documentation"
-            >
-              <Button
-                size="lg"
-                variant="secondary"
-                className="px-8 text-base h-12
-                           hover:-translate-y-0.5 transition-all duration-200"
-              >
-                Developer API
-              </Button>
-            </a>
           </div>
 
           {/* Social proof strip */}
@@ -199,62 +183,96 @@ export default function HomePage() {
           {FEATURES.map(({ icon: Icon, title, desc }, i) => (
             <div
               key={title}
-              className="group p-5 rounded-xl
-                         border border-border/40 bg-card/40 backdrop-blur-sm
-                         hover:border-primary/25 hover:bg-card/70
-                         transition-all duration-300 ease-out
-                         hover:-translate-y-0.5"
-              style={{ animationDelay: `${i * 80}ms` }}
+              className="group relative p-5 rounded-xl border border-border/50
+                         bg-card/40 backdrop-blur-sm
+                         hover:bg-card/70 hover:border-primary/30
+                         hover:-translate-y-0.5 transition-all duration-200
+                         flex flex-col gap-2"
+              style={{ animationDelay: `${i * 60}ms` }}
             >
-              {/* Icon with subtle glow on hover */}
-              <div className="w-8 h-8 mb-4 rounded-lg bg-primary/10 flex items-center justify-center
-                              group-hover:bg-primary/15 transition-colors duration-300">
-                <Icon className="w-4 h-4 text-primary group-hover:scale-110 transition-transform duration-300" />
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center
+                              text-primary group-hover:bg-primary/20 transition-colors duration-200">
+                <Icon className="w-4 h-4" />
               </div>
-
-              <h3 className="font-semibold text-sm mb-1.5 text-foreground">{title}</h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+              <h3 className="font-semibold text-sm text-foreground tracking-tight">
+                {title}
+              </h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {desc}
+              </p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ── Footer ────────────────────────────────────────────────────────── */}
-      <footer className="border-t border-border/40 bg-card/10 backdrop-blur-sm mt-auto">
-        <div className="max-w-6xl mx-auto px-6 py-10 md:py-16 grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Brand info */}
-          <div className="md:col-span-2 space-y-4">
-            <div className="flex items-center gap-2">
-              <img src="/logo.jpg" alt="Logo" className="w-6 h-6 rounded-md object-cover" />
-              <span className="font-semibold text-sm tracking-wide text-foreground">
+      {/* ── Enhanced Footer ────────────────────────────────────────────────── */}
+      <footer className="border-t border-border/40 bg-card/20 backdrop-blur-md mt-auto">
+        <div className="max-w-6xl mx-auto px-6 py-12 md:py-16 grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
+          
+          {/* Brand Info */}
+          <div className="md:col-span-5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <img src="/logo.jpg" alt="Logo" className="w-7 h-7 rounded-lg object-cover shadow-sm" />
+              <span className="font-bold text-base tracking-tight text-foreground">
                 Document AI Analyst
               </span>
             </div>
             <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
-              Enterprise Retrieval-Augmented Generation (RAG) platform. Analyze complex PDF documents and chat with intelligence.
+              Enterprise Agentic Retrieval-Augmented Generation (RAG) platform. Turn complex PDFs, contracts, and research papers into interactive, verified intelligence.
             </p>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground/80 pt-1">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                All Systems Operational
+              </span>
+            </div>
           </div>
 
-          {/* Links column 1 */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Product</h4>
-            <ul className="space-y-2 text-xs text-muted-foreground">
+          {/* Column 1: Product */}
+          <div className="md:col-span-2 space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground/80">Product</h4>
+            <ul className="space-y-2.5 text-xs text-muted-foreground">
+              <li>
+                <Link href="/register" className="hover:text-foreground transition-colors">Get Started</Link>
+              </li>
               <li>
                 <Link href="/login" className="hover:text-foreground transition-colors">Sign In</Link>
               </li>
               <li>
-                <Link href="/register" className="hover:text-foreground transition-colors">Create Account</Link>
-              </li>
-              <li>
-                <a href={docsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">Developer API</a>
+                <Link href="/dashboard" className="hover:text-foreground transition-colors">Workspace</Link>
               </li>
             </ul>
           </div>
 
-          {/* Links column 2 */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Legal & Privacy</h4>
-            <ul className="space-y-2 text-xs text-muted-foreground">
+          {/* Column 2: Resources & Community */}
+          <div className="md:col-span-3 space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground/80">Resources</h4>
+            <ul className="space-y-2.5 text-xs text-muted-foreground">
+              <li>
+                <a href={docsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors inline-flex items-center gap-1">
+                  API Documentation ↗
+                </a>
+              </li>
+              <li>
+                <button 
+                  onClick={() => setHallOfFameOpen(true)}
+                  className="hover:text-foreground transition-colors text-left"
+                >
+                  Hall of Fame (Contributors)
+                </button>
+              </li>
+              <li>
+                <a href="https://github.com/param20h/PDF-Assistant-RAG" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors inline-flex items-center gap-1">
+                  GitHub Repository ↗
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          {/* Column 3: Legal */}
+          <div className="md:col-span-2 space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground/80">Legal & Trust</h4>
+            <ul className="space-y-2.5 text-xs text-muted-foreground">
               <li>
                 <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
               </li>
@@ -265,12 +283,13 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/* Bottom Bar */}
         <div className="max-w-6xl mx-auto px-6 py-6 border-t border-border/20 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-[11px] text-muted-foreground/60">
-            &copy; {new Date().getFullYear()} Document AI Analyst. All rights reserved.
+          <p className="text-[11px] text-muted-foreground/70">
+            &copy; {new Date().getFullYear()} Document AI Analyst. Open-source under Apache-2.0.
           </p>
-          <p className="text-[11px] text-muted-foreground/50 flex flex-wrap items-center gap-1.5 justify-center">
-            Built with
+          <p className="text-[11px] text-muted-foreground/60 flex flex-wrap items-center gap-1.5 justify-center">
+            Powered by
             {["FastAPI", "LangChain", "ChromaDB", "HuggingFace", "Next.js"].map((tech, i, arr) => (
               <span key={tech} className="flex items-center gap-1.5">
                 <span className="text-muted-foreground/70">{tech}</span>
