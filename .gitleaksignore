@@ -1,0 +1,3 @@
+.secrets.baseline
+backend/tests/*
+.env.example

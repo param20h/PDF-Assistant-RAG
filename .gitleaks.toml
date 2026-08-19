@@ -1,0 +1,7 @@
+[allowlist]
+description = "Global allowlist for false positive baseline files and test data"
+paths = [
+  '''\.secrets\.baseline''',
+  '''backend/tests/.*''',
+  '''\.env\.example'''
+]

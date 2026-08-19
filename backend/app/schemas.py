@@ -182,21 +182,38 @@ class UserResponse(BaseModel):
 
 class DocumentResponse(BaseModel):
     id: str
-    original_name: str
+    original_name: str = "Untitled Document"
     file_size: int = 0
     page_count: int = 0
     chunk_count: int = 0
     status: str = "pending"
     error_message: Optional[str] = None
-    uploaded_at: datetime
+    uploaded_at: Optional[datetime] = None
     summary: Optional[str] = None
     task_id: Optional[str] = None
     keywords: Optional[List[str]] = []
-    extracted_urls: Optional[List[str]] = None
+    extracted_urls: Optional[List[str]] = []
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def parse_id(cls, v):
+        return str(v) if v is not None else ""
 
     @field_validator("keywords", mode="before")
     @classmethod
     def parse_keywords(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        try:
+            return json.loads(v)
+        except (ValueError, TypeError):
+            return []
+
+    @field_validator("extracted_urls", mode="before")
+    @classmethod
+    def parse_extracted_urls(cls, v):
         if v is None:
             return []
         if isinstance(v, list):

@@ -11,6 +11,9 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libmagic1 \
+    libxml2-dev \
+    libxslt1-dev \
+    pkg-config \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
@@ -44,6 +47,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libmagic1 \
+    libxml2 \
+    libxslt1.1 \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
