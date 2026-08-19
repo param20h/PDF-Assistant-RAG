@@ -264,12 +264,12 @@ class DocumentStatusResponse(BaseModel):
 
 
 class DocumentListResponse(BaseModel):
-    items: List[DocumentResponse]
-    total: int
-    page: int
-    pages: int
-    total_pages: int
-    limit: int
+    items: List[DocumentResponse] = []
+    total: int = 0
+    page: int = 1
+    pages: int = 1
+    total_pages: int = 1
+    limit: int = 20
     query: Optional[str] = None
 
 

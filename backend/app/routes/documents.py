@@ -566,10 +566,12 @@ def list_trash(user: User = Depends(get_current_user), db: Session = Depends(get
     ).order_by(Document.deleted_at.desc()).all()
     
     return DocumentListResponse(
-        items=[DocumentResponse.model_validate(d) for d in docs],
+        items=[_deserialize_doc(d) for d in docs],
         total=len(docs),
         page=1,
-        pages=1
+        pages=1,
+        total_pages=1,
+        limit=20
     )
 
 @router.post("/{document_id}/restore", response_model=DocumentResponse)
