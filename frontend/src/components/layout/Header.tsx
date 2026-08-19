@@ -48,6 +48,7 @@ import {
 import { api } from "@/lib/api";
 
 import { KeyboardShortcutsModal } from "./KeyboardShortcutsModal";
+import Logo from "./Logo";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -169,10 +170,10 @@ export default function Header({
           {/* LOGO — clicking navigates to dashboard */}
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 hover:opacity-75 transition-opacity cursor-pointer"
+            className="flex items-center gap-2.5 hover:opacity-85 transition-opacity cursor-pointer"
             aria-label="Go to homepage"
           >
-            <img src="/logo.jpg" alt="Logo" className="w-7 h-7 rounded-lg object-cover" />
+            <Logo size={28} />
             <span className="font-semibold text-sm hidden sm:inline">
               Document AI Analyst
             </span>
@@ -352,11 +353,11 @@ export default function Header({
           {/* MOBILE LOGO — clicking navigates to dashboard and closes the sheet */}
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 hover:opacity-75 transition-opacity cursor-pointer"
+            className="flex items-center gap-2.5 hover:opacity-85 transition-opacity cursor-pointer"
             aria-label="Go to homepage"
             onClick={() => setSheetOpen(false)}
           >
-            <img src="/logo.jpg" alt="Logo" className="w-7 h-7 rounded-lg object-cover" />
+            <Logo size={28} />
             <span className="font-semibold text-sm">Document AI Analyst</span>
           </Link>
           <Button

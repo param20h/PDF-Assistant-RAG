@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import ContributorsPanel from "@/components/layout/ContributorsPanel";
 import OpenSourceBadge from "@/components/layout/OpenSourceBadge";
+import Logo from "@/components/layout/Logo";
 
 // ─── Feature card data ───────────────────────────────────────────────────────
 const FEATURES = [
@@ -212,7 +213,7 @@ export default function HomePage() {
           {/* Brand Info */}
           <div className="md:col-span-5 space-y-4">
             <div className="flex items-center gap-2.5">
-              <img src="/logo.jpg" alt="Logo" className="w-7 h-7 rounded-lg object-cover shadow-sm" />
+              <Logo size={28} />
               <span className="font-bold text-base tracking-tight text-foreground">
                 Document AI Analyst
               </span>
