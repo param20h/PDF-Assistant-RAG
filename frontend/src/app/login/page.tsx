@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Brain, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Brain, Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import GoogleSignInButton from "@/components/auth/GoogleSignInButton";
 import HuggingFaceSignInButton from "@/components/auth/HuggingFaceSignInButton";
@@ -50,11 +50,20 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 relative overflow-hidden">
       {/* Background glow */}
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary/8 rounded-full blur-[100px] pointer-events-none" />
       
-      <Card className="w-full max-w-md relative z-10 bg-card/80 backdrop-blur-xl border-border/50 animate-fade-in-up">
+      <div className="w-full max-w-md relative z-10 space-y-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors group"
+        >
+          <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1" />
+          Back to Home
+        </Link>
+
+        <Card className="w-full bg-card/80 backdrop-blur-xl border-border/50 animate-fade-in-up">
         <CardHeader className="text-center pb-2">
           <div className="flex justify-center mb-4">
             <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center">
@@ -161,6 +170,7 @@ export default function LoginPage() {
           </p>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
